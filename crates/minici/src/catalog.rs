@@ -428,6 +428,91 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         blacksmith_equiv_rate_usd: 0.004,
         self_hosted_spot_rate_usd: 0.0011,
     },
+    // --- Parallel Antigravity 7-Provider Audit Additions (GitHub Slim, GCP Cloud Build, Azure DevOps, CircleCI M1/ARM, AWS ARM) ---
+    RunnerSkuSpec {
+        provider: "github-actions",
+        sku_label: "ubuntu-slim",
+        os: "Linux",
+        arch: "x86_64",
+        vcpus: 1,
+        ram_gb: 4.0,
+        rate_per_min_usd: 0.002,
+        ceil_to_whole_minute: true,
+        free_tier_mins_per_month: 2000.0,
+        paid_team_included_mins: 3000.0,
+        blacksmith_equiv_rate_usd: 0.002,
+        self_hosted_spot_rate_usd: 0.0007,
+    },
+    RunnerSkuSpec {
+        provider: "gcp-cloud-build",
+        sku_label: "cloudbuild-e2-standard-2",
+        os: "Linux",
+        arch: "x86_64",
+        vcpus: 2,
+        ram_gb: 8.0,
+        rate_per_min_usd: 0.006,
+        ceil_to_whole_minute: false,
+        free_tier_mins_per_month: 2500.0,
+        paid_team_included_mins: 2500.0,
+        blacksmith_equiv_rate_usd: 0.004,
+        self_hosted_spot_rate_usd: 0.0010,
+    },
+    RunnerSkuSpec {
+        provider: "azure-pipelines",
+        sku_label: "azure-pipelines-ms-hosted",
+        os: "Linux",
+        arch: "x86_64",
+        vcpus: 2,
+        ram_gb: 7.0,
+        rate_per_min_usd: 0.008,
+        ceil_to_whole_minute: false,
+        free_tier_mins_per_month: 1800.0,
+        paid_team_included_mins: 1800.0,
+        blacksmith_equiv_rate_usd: 0.004,
+        self_hosted_spot_rate_usd: 0.0011,
+    },
+    RunnerSkuSpec {
+        provider: "circleci",
+        sku_label: "circleci-macos-m1-medium",
+        os: "macOS",
+        arch: "arm64",
+        vcpus: 4,
+        ram_gb: 6.0,
+        rate_per_min_usd: 0.090,
+        ceil_to_whole_minute: false,
+        free_tier_mins_per_month: 200.0,
+        paid_team_included_mins: 200.0,
+        blacksmith_equiv_rate_usd: 0.035,
+        self_hosted_spot_rate_usd: 0.022,
+    },
+    RunnerSkuSpec {
+        provider: "circleci",
+        sku_label: "circleci-arm-medium",
+        os: "Linux",
+        arch: "arm64",
+        vcpus: 2,
+        ram_gb: 8.0,
+        rate_per_min_usd: 0.0078,
+        ceil_to_whole_minute: false,
+        free_tier_mins_per_month: 2300.0,
+        paid_team_included_mins: 2300.0,
+        blacksmith_equiv_rate_usd: 0.004,
+        self_hosted_spot_rate_usd: 0.0012,
+    },
+    RunnerSkuSpec {
+        provider: "aws-codebuild",
+        sku_label: "BUILD_ARM1_SMALL",
+        os: "Linux",
+        arch: "arm64",
+        vcpus: 2,
+        ram_gb: 3.0,
+        rate_per_min_usd: 0.0034,
+        ceil_to_whole_minute: true,
+        free_tier_mins_per_month: 100.0,
+        paid_team_included_mins: 100.0,
+        blacksmith_equiv_rate_usd: 0.003,
+        self_hosted_spot_rate_usd: 0.0008,
+    },
 ];
 
 pub fn catalog_to_json() -> String {
@@ -659,7 +744,19 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         }
         s
     } else if lower.contains("bitbucket") {
-        if lower.contains("16x") {
+        if lower.contains("32x") {
+            let mut s = EMBEDDED_SKU_CATALOG[17].clone();
+            s.vcpus = 64;
+            s.ram_gb = 128.0;
+            s.rate_per_min_usd = 0.320;
+            s
+        } else if lower.contains("24x") {
+            let mut s = EMBEDDED_SKU_CATALOG[17].clone();
+            s.vcpus = 48;
+            s.ram_gb = 96.0;
+            s.rate_per_min_usd = 0.240;
+            s
+        } else if lower.contains("16x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
             s.vcpus = 32;
             s.ram_gb = 64.0;
@@ -682,26 +779,36 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         } else {
             EMBEDDED_SKU_CATALOG[16].clone()
         }
-    } else if lower.contains("codebuild") || lower.contains("general1") {
-        let mut s = if lower.contains("medium") {
-            EMBEDDED_SKU_CATALOG[19].clone()
+    } else if lower.contains("cloudbuild") || lower.contains("cloud-build") {
+        EMBEDDED_SKU_CATALOG[27].clone()
+    } else if lower.contains("azure-pipelines") || lower.contains("ms-hosted") {
+        EMBEDDED_SKU_CATALOG[28].clone()
+    } else if lower.contains("ubuntu-slim") || lower.contains("linux-slim") || lower.contains("actions_linux_slim") {
+        EMBEDDED_SKU_CATALOG[26].clone()
+    } else if lower.contains("codebuild") || lower.contains("general1") || lower.contains("arm1") || lower.contains("build_lambda") {
+        if lower.contains("arm1") {
+            EMBEDDED_SKU_CATALOG[31].clone()
         } else {
-            EMBEDDED_SKU_CATALOG[18].clone()
-        };
-        if lower.contains("2xlarge") {
-            s.vcpus = 72;
-            s.ram_gb = 145.0;
-            s.rate_per_min_usd = 0.160;
-        } else if lower.contains("xlarge") {
-            s.vcpus = 36;
-            s.ram_gb = 72.0;
-            s.rate_per_min_usd = 0.080;
-        } else if lower.contains("large") {
-            s.vcpus = 8;
-            s.ram_gb = 15.0;
-            s.rate_per_min_usd = 0.020;
+            let mut s = if lower.contains("medium") {
+                EMBEDDED_SKU_CATALOG[19].clone()
+            } else {
+                EMBEDDED_SKU_CATALOG[18].clone()
+            };
+            if lower.contains("2xlarge") {
+                s.vcpus = 72;
+                s.ram_gb = 145.0;
+                s.rate_per_min_usd = 0.160;
+            } else if lower.contains("xlarge") {
+                s.vcpus = 36;
+                s.ram_gb = 72.0;
+                s.rate_per_min_usd = 0.080;
+            } else if lower.contains("large") {
+                s.vcpus = 8;
+                s.ram_gb = 15.0;
+                s.rate_per_min_usd = 0.020;
+            }
+            s
         }
-        s
     } else if lower.contains("blacksmith") || lower.contains("buildjet") || lower.contains("warpbuild") {
         let mut s = EMBEDDED_SKU_CATALOG[20].clone();
         if lower.contains("32vcpu") || lower.contains("32-core") {

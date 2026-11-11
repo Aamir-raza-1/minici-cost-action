@@ -1,17 +1,14 @@
 # 💰 MiniCI (`Skipwise`) — Infracost for CI/CD Pipelines (`354 µs` Pure Rust)
 
-**Stop Discovering `$3,600/mo` CI Matrix Spikes on Next Month's Invoice.**
-Sub-millisecond Pure Rust engine (`541 KB` zero-dependency binary, `1.20 MB` peak RAM, `0.00s` CPU) that expands your CI workflow matrices on every Pull Request, local `pre-push` hook, and Claude Code + Wozcode session—showing exact **Free-Tier Quota Burn %**, **Developer Wait-Time Dollars**, and **Per-PR Compute Cost Deltas** (`Exit 0` Always).
+**Catch Expensive Pull Request CI Matrix Spikes Before You Merge.**  
+Sub-millisecond Pure Rust engine (`573 KB` zero-dependency binary, `1.20 MB` peak RAM, `0.00s` CPU) that expands your CI workflow matrices on every Pull Request, local `pre-push` hook, and Claude Code session—showing exact **Free-Tier Quota Burn %**, **Developer Wait-Time Dollars**, and **Per-PR Compute Cost Deltas** across all **7 Official CI Providers** (`GitHub Actions`, `GitLab CI`, `CircleCI`, `Bitbucket`, `AWS CodeBuild`, `GCP Cloud Build`, `Azure DevOps`) + **Blacksmith** & **AWS Spot via Infracost** (`Exit 0` Always).
+
+* 🌐 **Live Interactive Website & 7-Provider Calculator:** https://minici-cost-action.raza-aamir01.workers.dev
+* 🎬 **Playable MP4 Product Demo (`1.8 MB`):** [https://minici-cost-action.raza-aamir01.workers.dev/minici-cost-demo.mp4](https://minici-cost-action.raza-aamir01.workers.dev/minici-cost-demo.mp4) (`web/minici-cost-demo.mp4`)
 
 ---
 
-## 🎬 Interactive 5-Skill Product Video & Token Budget Receipt
-
-![MiniCI 5-Skill Opus Launch Video](web/launch-video.svg)
-
----
-
-## 🏗️ Zero-YAML-Execution Shift-Left Architecture
+## 🏗️ Shift-Left Architecture
 
 ![MiniCI Customer Architecture Diagram](web/customer-diagram.svg)
 
@@ -47,14 +44,14 @@ jobs:
 ## 🛠️ Local CLI, Zero-Clone Public GitHub URL Audit & Multi-Format Reports
 
 ```bash
-# 1. Build & install the 541 KB zero-dependency Rust binary locally
+# 1. Build & install the 573 KB zero-dependency Rust binary locally
 cargo build --release --manifest-path crates/minici/Cargo.toml
 cp crates/minici/target/release/minici ~/.local/bin/minici
 
 # 2. Audit any local repository in < 1 ms (Cross-Platform ASCII Box Table)
 minici breakdown --path .
 
-# 3. Audit ANY public GitHub repository WITHOUT cloning (Zero-Clone API + 1.46 ms Local Cache!)
+# 3. Audit ANY public GitHub repository WITHOUT cloning (Zero-Clone API + 1.46 ms Local Cache)
 minici breakdown --repo https://github.com/vercel/next.js
 minici breakdown --repo ollama/ollama
 
@@ -65,23 +62,8 @@ minici --report report.json --quiet
 # 5. Compare PR branch CI cost delta against main before pushing
 minici diff --path . --compare-to main
 
-# 6. Install Claude Code (PreToolUse + PostToolUse + Wozcode), MCP (.mcp.json) & GitHub Action hooks
-minici init-hooks --path .
-```
-
----
-
-## 🔄 3-Layer Zero-Break Self-Updating Pricing Engine
-
-Vendor runner rates change and custom cloud labels (`aws-c6i.4xlarge`, `gcloud-n2-standard-16`, `azure-Standard_D8s_v5`) appear across enterprise repos. MiniCI updates its catalog in `< 1 ms` without recompiling and without ever breaking CI (`Exit Code 0 Always`):
-
-```bash
-# Sync 26 official vendor SKUs into ~/.minici/pricing_overrides.json (0-Recompile)
+# 6. Sync all 7 CI Providers + Infracost v2.19.0 Cloud Instance SKUs (0-Recompile)
 minici self-update
-
-# Override any custom or negotiated enterprise runner rate at runtime
-minici catalog set ubuntu-latest-16-core-oss 0.058
-minici catalog reset
 ```
 
 ---
