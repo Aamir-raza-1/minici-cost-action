@@ -1,0 +1,30 @@
+{
+  "enabledPlugins": {
+    "woz@wozcode-marketplace": true
+  },
+  "agent": "woz:code",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "minici breakdown --path . --hook claude-pre-tool-use"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "minici diff --path . --compare-to HEAD"
+          }
+        ]
+      }
+    ]
+  }
+}
