@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MiniCI (Skipwise) — Sub-Millisecond Rust CI/CD Cost &amp; Matrix FinOps Engine</title>
+  <meta name="description" content="Zero-dependency Rust CLI & GitHub Action that expands CI workflow matrices in 354 µs—showing Free-Tier Quota Burn %, Developer Wait-Time $, and Per-PR Compute Deltas." />
+  <style>
+    :root {
+      --bg-canvas: #080b10;
+      --bg-panel: #0f151f;
+      --bg-elevated: #151e2c;
+      --bg-receipt: #f8f6f0;
+      --ink-receipt: #14171a;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-emerald: #10b981;
+      --accent-sky: #38bdf8;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --border-hairline: #1e293b;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      line-height: 1.58;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border-hairline);
+      padding: 16px 0;
+      background: rgba(8, 11, 16, 0.92);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      backdrop-filter: blur(8px);
+    }
+
+    .nav-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.08rem;
+      letter-spacing: -0.02em;
+    }
+
+    .badge-rust {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.14);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      font-size: 0.88rem;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+    }
+    .nav-links a:hover { color: var(--text-primary); }
+
+    /* Hero */
+    .hero {
+      padding: 52px 0 36px;
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--accent-emerald);
+      margin-bottom: 10px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 3.7vw, 3.05rem);
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+      max-width: 900px;
+      margin-bottom: 16px;
+    }
+
+    .hero p.lead {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      max-width: 780px;
+      margin-bottom: 24px;
+    }
+
+    .install-bar {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-hairline);
+      border-radius: 8px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      max-width: 920px;
+    }
+
+    .install-cmd {
+      font-family: var(--font-mono);
+      font-size: 0.86rem;
+      color: var(--accent-emerald);
+      overflow-x: auto;
+    }
+
+    .btn {
+      font-family: var(--font-sans);
+      font-size: 0.84rem;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border-hairline);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    .btn:hover { border-color: var(--accent-emerald); }
+    .btn-primary {
+      background: var(--accent-emerald);
+      color: #04130d;
+      border-color: var(--accent-emerald);
+    }
+
+    .section {
+      padding: 42px 0;
+      border-bottom: 1px solid var(--border-hairline);
+    }
+
+    .section-title {
+      font-size: 1.42rem;
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+    }
+    .section-sub {
+      color: var(--text-secondary);
+      font-size: 0.94rem;
+      margin-bottom: 22px;
+      max-width: 860px;
+    }
+
+    /* Install & Docs Tabs */
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(265px, 1fr));
+      gap: 16px;
+    }
+    .doc-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .doc-card h3 {
+      font-size: 0.98rem;
+      margin-bottom: 8px;
+      color: var(--accent-sky);
+    }
+    .doc-card pre {
+      background: #080c12;
+      border: 1px solid var(--border-hairline);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: #e2e8f0;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+    .doc-card p {
+      font-size: 0.83rem;
+      color: var(--text-secondary);
+    }
+
+    /* Playground */
+    .preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .playground-grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 920px) {
+      .playground-grid { grid-template-columns: 1fr; }
+    }
+
+    .controls-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .control-group { margin-bottom: 16px; }
+    .control-group label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .control-group label span.val {
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    input[type="range"], select {
+      width: 100%;
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-hairline);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-family: var(--font-mono);
+      font-size: 0.84rem;
+    }
+
+    .preview-stack {
+      display: grid;
+      grid-template-columns: 1fr 330px;
+      gap: 18px;
+    }
+    @media (max-width: 1080px) {
+      .preview-stack { grid-template-columns: 1fr; }
+    }
+
+    .pr-comment-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .pr-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-hairline);
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+    }
+
+    table.diff-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+      margin-bottom: 14px;
+    }
+    table.diff-table th, table.diff-table td {
+      text-align: left;
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--border-hairline);
+    }
+    table.diff-table th {
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+    table.diff-table td.mono { font-family: var(--font-mono); }
+
+    .breakeven-alert {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fcd34d;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      margin-top: 10px;
+    }
+
+    .thermal-receipt {
+      background: var(--bg-receipt);
+      color: var(--ink-receipt);
+      font-family: var(--font-mono);
+      padding: 18px 16px;
+      border-radius: 4px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.45);
+      font-size: 0.78rem;
+      border-top: 4px dashed #cbd5e1;
+      border-bottom: 4px dashed #cbd5e1;
+    }
+    .thermal-receipt h4 {
+      font-size: 0.88rem;
+      text-align: center;
+      margin-bottom: 4px;
+      letter-spacing: 0.04em;
+    }
+    .thermal-sub {
+      text-align: center;
+      color: #475569;
+      font-size: 0.72rem;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed #94a3b8;
+    }
+    .receipt-line {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .receipt-divider {
+      border-top: 1px dashed #94a3b8;
+      margin: 8px 0;
+    }
+    .receipt-total {
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+
+    .prompt-output-box {
+      margin-top: 16px;
+      background: #0b1017;
+      border: 1px solid var(--border-hairline);
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .prompt-output-box code {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--accent-sky);
+    }
+
+    /* Trust & Oracles Grid */
+    .oracle-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .oracle-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-hairline);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .oracle-card h4 {
+      font-size: 0.88rem;
+      color: var(--accent-emerald);
+      margin-bottom: 6px;
+      font-family: var(--font-mono);
+    }
+    .oracle-card p {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .media-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 24px;
+      align-items: center;
+    }
+    @media (max-width: 920px) {
+      .media-grid { grid-template-columns: 1fr; }
+    }
+
+    .diagram-card, .video-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    /* Pricing */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+      gap: 18px;
+    }
+    .price-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-hairline);
+      border-radius: 10px;
+      padding: 22px;
+    }
+    .price-card.featured { border-color: var(--accent-emerald); }
+    .price-tag {
+      font-size: 1.85rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      margin: 8px 0;
+    }
+    .price-list {
+      list-style: none;
+      margin: 12px 0 18px;
+      font-size: 0.86rem;
+      color: var(--text-secondary);
+    }
+    .price-list li { margin-bottom: 7px; }
+
+    footer {
+      padding: 32px 0;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    footer a { color: var(--accent-emerald); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="container nav-row">
+      <div class="brand">
+        <span>MiniCI (`Skipwise`)</span>
+        <span class="badge-rust">CI/CD with Taste • taste-ci-1 • 354 µs Rust</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#install-docs">Install &amp; Docs</a>
+        <a href="#playground">Live PR Cost Playground</a>
+        <a href="#trust-oracles">How to Trust &amp; Verify</a>
+        <a href="#architecture">Diagram &amp; 5-Skill Video</a>
+        <a href="#pricing">Pricing ($1 Go / $10 GOAT)</a>
+        <a href="mailto:raza.aamir01@gmail.com">raza.aamir01@gmail.com</a>
+        <button id="ownerModeToggleBtn" onclick="toggleOwnerMode()" style="background:rgba(16,185,129,0.18);color:#10b981;border:1px solid #10b981;border-radius:6px;padding:5px 10px;font-family:var(--font-mono);font-size:0.75rem;cursor:pointer;font-weight:600;">
+          👁️ Owner Debug View: ON (Click for Customer View)
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- OWNER INTERNAL DEBUG & FEATURE FLAGS PANEL (Visible in Owner Mode, Hidden in Customer View) -->
+    <section id="ownerDebugPanel" style="margin-top:22px;background:#0b131e;border:1px solid #10b981;border-radius:10px;padding:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+        <div>
+          <span style="font-family:var(--font-mono);font-size:0.78rem;color:#10b981;font-weight:700;">🔒 OWNER INTERNAL DEBUG &amp; FEATURE FLAGS (VISIBLE TO AAMIR RAZA)</span>
+          <p style="font-size:0.82rem;color:#94a3b8;margin-top:2px;">Toggle individual features ON/OFF below to inspect internal equations, Infracost v2.19.0 cloud delegation, and Golden Path state—or click <strong>"Owner Debug View: ON"</strong> in the top navbar (or pass <code>--customer-mode</code> in CLI) to hide this panel for customers during launch.</p>
+        </div>
+        <code style="font-family:var(--font-mono);font-size:0.75rem;background:#060a10;padding:6px 10px;border-radius:6px;border:1px solid #1e293b;color:#38bdf8;">CLI: minici breakdown --owner (default) | minici breakdown --customer-mode</code>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;font-family:var(--font-mono);font-size:0.76rem;">
+        <label style="background:#0f1826;padding:10px;border-radius:6px;border:1px solid #1e293b;display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+          <input type="checkbox" checked onchange="updateCalc()" id="flagInfracost" style="margin-top:3px;" />
+          <span><strong style="color:#10b981;">[ON] feat.infracost_cloud_engine</strong><br/><span style="color:#94a3b8;">Delegates AWS/GCP/Azure vCPUs &amp; rates to official Infracost v2.19.0 (36 cloud SKUs + 26 SaaS SKUs = 62 SKUs)</span></span>
+        </label>
+        <label style="background:#0f1826;padding:10px;border-radius:6px;border:1px solid #1e293b;display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+          <input type="checkbox" checked onchange="toggleFeatureSection('devWaitBox', this.checked)" id="flagDevWait" style="margin-top:3px;" />
+          <span><strong style="color:#10b981;">[ON] feat.dev_wait_burn_calc</strong><br/><span style="color:#94a3b8;">Critical-path slowest job × runs/mo × ($65/hr ÷ 60) — toggle OFF or pass <code>--dev-hourly-rate 0</code></span></span>
+        </label>
+        <label style="background:#0f1826;padding:10px;border-radius:6px;border:1px solid #1e293b;display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+          <input type="checkbox" checked onchange="toggleFeatureSection('breakevenAlert', this.checked)" id="flagBreakeven" style="margin-top:3px;" />
+          <span><strong style="color:#10b981;">[ON] feat.breakeven_5000m_gate</strong><br/><span style="color:#94a3b8;">Triggers Blacksmith (50% off) &amp; AWS Spot (72% off) advisor at &gt;= 5,000 billed mins/mo</span></span>
+        </label>
+        <label style="background:#0f1826;padding:10px;border-radius:6px;border:1px solid #1e293b;display:flex;align-items:flex-start;gap:8px;cursor:pointer;">
+          <input type="checkbox" checked onchange="toggleFeatureSection('ownerMathTrace', this.checked)" id="flagMathTrace" style="margin-top:3px;" />
+          <span><strong style="color:#10b981;">[ON] feat.internal_math_trace</strong><br/><span style="color:#94a3b8;">Shows exact internal formulas, 1-min ceiling rounding &amp; kernel telemetry (1.20 MB RAM, 0.00s CPU)</span></span>
+        </label>
+      </div>
+      <div id="ownerMathTrace" style="margin-top:10px;background:#070b11;border:1px solid #1e293b;border-radius:6px;padding:10px 12px;font-family:var(--font-mono);font-size:0.75rem;color:#cbd5e1;">
+        <strong>INTERNAL EQUATION TRACE (0.00% Drift):</strong>
+        <code>Runs/Mo = PRs/wk × 4.3333 × Pushes/PR</code> •
+        <code>Billed Mins = MatrixJobs × ceil(RawMins)</code> •
+        <code>Gross SaaS $ = Σ(BilledMins × OfficialSKURate)</code> •
+        <code>Dev Wait $ = SlowestCriticalPathJobMins × Runs/Mo × ($DevHourlyRate / 60)</code> •
+        <code>Hot-Reload Cache = ~/.minici/pricing_overrides.json (62 SKUs, OnceLock &lt;1 µs)</code>
+      </div>
+    </section>
+    <!-- 1. HERO -->
+    <section class="hero">
+      <div class="eyebrow">
+        ⚡ STOP PAYING GITHUB'S 10X RUNNER MARKUP • 508 KB CROSS-PLATFORM RUST ENGINE (LINUX • WINDOWS • MACOS)
+      </div>
+      <h1>Stop Paying GitHub's 10× CI Markup. Cut Your CI/CD Bill by 50–78% &amp; Expose Every Expensive Pull Request Before It Merges.</h1>
+      <p class="lead">
+        AI coding agents push 4× more commits per day—silently multiplying <code>strategy.matrix</code> jobs, burning your 2,000-minute free quota in days, and triggering $3,000–$10,000/mo runner bills.
+        <strong>minici</strong> (<em>CI/CD with Taste</em> • <strong>taste-ci-1</strong>) is a <strong>508 KB zero-dependency Rust binary</strong> that audits any local repository or public GitHub URL (with zero clone) in <strong>354 microseconds</strong>—cross-checking official GitHub, GitLab &amp; CircleCI calculators, proving exact Blacksmith/AWS Spot savings, and enforcing Claude Code <code>PreToolUse</code> / <code>PostToolUse</code> guardrails.
+      </p>
+      <div class="install-bar">
+        <code class="install-cmd" id="heroCmd">cargo install --git https://github.com/aamir-raza-01/minici-cost-action.git &amp;&amp; minici breakdown --path .</code>
+        <button class="btn btn-primary" onclick="copyText('heroCmd', this)">Copy CLI Install</button>
+      </div>
+    </section>
+
+    <!-- 2. INSTALLATION & CLI DOCUMENTATION -->
+    <section class="section" id="install-docs">
+      <h2 class="section-title">Quickstart &amp; CLI Reference (Linux, Windows, macOS &amp; Any Public GitHub URL)</h2>
+      <p class="section-sub">
+        Install once via <code>cargo</code> or our GitHub Marketplace Action. Point <code>minici</code> at any local repository (<code>--path .</code>) or directly at any public GitHub URL (<code>--repo https://github.com/owner/repo</code> — checks accessibility &amp; fetches workflows via API with zero full clone).
+      </p>
+      <div class="docs-grid">
+        <div class="doc-card">
+          <h3>1. Install 508 KB Rust CLI (Linux / Windows / macOS)</h3>
+          <pre>cargo install --git https://github.com/aamir-raza-01/minici-cost-action.git
+minici --version
+# -> minici 0.1.0 (508 KB Pure Rust • 0 crates)</pre>
+          <p>Zero external crate dependencies—compiles a static native Rust binary in 2 seconds on Linux, Windows, or macOS.</p>
+        </div>
+
+        <div class="doc-card">
+          <h3>2. Audit Any Public GitHub URL (Zero Clone!)</h3>
+          <pre># Local repository:
+minici breakdown --path .
+
+# Any public GitHub URL (API 0-clone workflow fetch):
+minici breakdown --repo https://github.com/vercel/next.js</pre>
+          <p>Shows your logged-in GitHub account, repo branch, and side-by-side GitHub vs GitLab vs CircleCI vs Blacksmith calculator costs.</p>
+        </div>
+
+        <div class="doc-card">
+          <h3>3. GitHub Marketplace PR Action</h3>
+          <pre>- uses: aamir-raza-01/minici-cost-action@v1
+  with:
+    tier: auto
+    prs-per-week: 25
+    dev-hourly-rate: 65</pre>
+          <p>Posts a sticky PR cost diff comment (`Exit 0` informational always—never breaks a build).</p>
+        </div>
+
+        <div class="doc-card">
+          <h3>4. Claude Code Pre/Post-Tool &amp; Agent MCP Hooks</h3>
+          <pre>minici init-hooks --path .
+minici diff --path . --compare-to main
+minici breakdown --path . --hook pre-push</pre>
+          <p>Installs <code>.claude/settings.json</code> (<code>PreToolUse</code> + <code>PostToolUse</code>), <code>.mcp.json</code> (Cursor/Antigravity), and <code>.github/workflows/minici-cost.yml</code> in one command.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. INTERACTIVE PLAYGROUND -->
+    <section class="section" id="playground">
+      <h2 class="section-title">Interactive PR Matrix Cost &amp; Quota Playground</h2>
+      <p class="section-sub">
+        Uses the exact same official 2026 SKU rate table (<code>ubuntu-latest $0.008</code>, <code>windows-latest $0.016</code>, <code>macos-latest $0.080</code>, 1-minute per-job ceiling rounding, <code>$0.25/GB</code> artifact storage tax) embedded in the <code>minici</code> Rust engine.
+      </p>
+
+      <div class="preset-row">
+        <button class="btn" onclick="applyPreset('freeStartup')">Preset 1: Free-Tier Startup (Quota Burn &amp; Dev Wait)</button>
+        <button class="btn" onclick="applyPreset('macosSpike')">Preset 2: PR Adds macOS to 3×4 Matrix (10x Multiplier Spike)</button>
+        <button class="btn" onclick="applyPreset('breakeven5000')">Preset 3: 5,000+ Mins/Mo Self-Hosted &amp; Blacksmith Break-Even</button>
+        <button class="btn" onclick="applyPreset('gitlabSaas')">Preset 4: GitLab CI SaaS Linux Medium</button>
+      </div>
+
+      <div class="playground-grid">
+        <div class="controls-card">
+          <div class="control-group">
+            <label>Runner SKU (Official 2026 Rates) <span class="val" id="lblSku">ubuntu-latest</span></label>
+            <select id="ctrlSku" onchange="onControlChange()">
+              <option value="ubuntu-latest" data-rate="0.008" data-free="2000" data-ceil="1">GitHub ubuntu-latest ($0.008/m • 1m ceil)</option>
+              <option value="macos-latest" data-rate="0.080" data-free="2000" data-ceil="1">GitHub macos-latest ($0.080/m • 10x rate)</option>
+              <option value="windows-latest" data-rate="0.016" data-free="2000" data-ceil="1">GitHub windows-latest ($0.016/m • 2x rate)</option>
+              <option value="ubuntu-8core" data-rate="0.032" data-free="0" data-ceil="1">GitHub ubuntu-8core ($0.032/m)</option>
+              <option value="saas-linux-small-amd64" data-rate="0.010" data-free="400" data-ceil="0">GitLab saas-linux-small ($0.010/m • 400m free)</option>
+              <option value="docker-medium" data-rate="0.006" data-free="3000" data-ceil="0">CircleCI docker-medium ($0.006/m • 3000m free)</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <label>Base Branch Matrix Jobs <span class="val" id="lblBaseJobs">3 jobs</span></label>
+            <input type="range" id="ctrlBaseJobs" min="1" max="24" value="3" oninput="onControlChange()" />
+          </div>
+
+          <div class="control-group">
+            <label>PR Branch Expanded Matrix Jobs <span class="val" id="lblHeadJobs">12 jobs</span></label>
+            <input type="range" id="ctrlHeadJobs" min="1" max="32" value="12" oninput="onControlChange()" />
+          </div>
+
+          <div class="control-group">
+            <label>Raw Job Duration (mins) <span class="val" id="lblRawMins">4.2 mins</span></label>
+            <input type="range" id="ctrlRawMins" min="0.5" max="20" step="0.1" value="4.2" oninput="onControlChange()" />
+          </div>
+
+          <div class="control-group">
+            <label>PRs / Week × Pushes / PR <span class="val" id="lblPrs">25 PRs/wk × 4 pushes</span></label>
+            <input type="range" id="ctrlPrs" min="5" max="80" step="5" value="25" oninput="onControlChange()" />
+          </div>
+
+          <div class="control-group">
+            <label>Assumed Dev Hourly Rate ($/hr • Optional, $0 to hide) <span class="val" id="lblDevRate">$65/hr</span></label>
+            <input type="range" id="ctrlDevRate" min="0" max="150" step="5" value="65" oninput="onControlChange()" />
+          </div>
+        </div>
+
+        <div>
+          <div class="preview-stack">
+            <div class="pr-comment-box">
+              <div class="pr-header">
+                <span><strong>github-actions[bot]</strong> commented via <code>minici comment github --behavior update</code></span>
+                <span class="badge-rust">Exit 0 • Informational</span>
+              </div>
+              <table class="diff-table">
+                <thead>
+                  <tr>
+                    <th>FinOps / Quota Metric</th>
+                    <th>Base Branch</th>
+                    <th>PR Branch (Head)</th>
+                    <th>Delta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Expanded Matrix Jobs</td>
+                    <td class="mono" id="tdBaseJobs">3 jobs</td>
+                    <td class="mono" id="tdHeadJobs">12 jobs</td>
+                    <td class="mono" id="tdDeltaJobs">+9 jobs</td>
+                  </tr>
+                  <tr>
+                    <td>Billed Mins / Run (1m Ceiling)</td>
+                    <td class="mono" id="tdBaseMins">15.0m</td>
+                    <td class="mono" id="tdHeadMins">60.0m</td>
+                    <td class="mono" id="tdDeltaMins">+45.0m/run</td>
+                  </tr>
+                  <tr>
+                    <td>Free-Tier Quota Burn %</td>
+                    <td class="mono" id="tdBaseQuota">324.8%</td>
+                    <td class="mono" id="tdHeadQuota">1299.0%</td>
+                    <td class="mono" id="tdDeltaQuota">+974.2%</td>
+                  </tr>
+                  <tr>
+                    <td>Monthly CI Compute Cost</td>
+                    <td class="mono" id="tdBaseCost">$51.96/mo</td>
+                    <td class="mono" id="tdHeadCost">$207.84/mo</td>
+                    <td class="mono" id="tdDeltaCost" style="color:var(--accent-amber);font-weight:700;">+$155.88/mo</td>
+                  </tr>
+                  <tr>
+                    <td>Developer Wait-Time Cost (Assumed Rate)</td>
+                    <td class="mono" id="tdBaseWait">$196.95/mo</td>
+                    <td class="mono" id="tdHeadWait">$196.95/mo</td>
+                    <td class="mono" id="tdDeltaWait">$0.00/mo</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="breakeven-alert" id="breakevenBox">
+                💡 <strong>5,000 Mins/Mo Break-Even Alert:</strong> PR Head consumes <span id="spanMonthlyMins">25,980</span> billed mins/mo. Switching to <strong>Blacksmith</strong> drops compute to <strong id="spanBlacksmith">$103.92/mo</strong>, or <strong>Self-Hosted AWS Spot</strong> to <strong id="spanSpot">$61.18/mo</strong>.
+              </div>
+            </div>
+
+            <div class="thermal-receipt">
+              <h4>MINICI USAGE RECEIPT</h4>
+              <div class="thermal-sub">SHIFT-LEFT PR FINOPS LEDGER • 354 µs</div>
+              <div class="receipt-line"><span>RUNNER SKU:</span><span id="rcptSku">ubuntu-latest</span></div>
+              <div class="receipt-line"><span>EFFECTIVE TIER:</span><span id="rcptTier">PAID (OVER QUOTA)</span></div>
+              <div class="receipt-line"><span>MONTHLY RUNS:</span><span id="rcptRuns">433 runs/mo</span></div>
+              <div class="receipt-divider"></div>
+              <div class="receipt-line"><span>GROSS SAAS COMPUTE:</span><span id="rcptGross">$207.84/mo</span></div>
+              <div class="receipt-line"><span>NET BILLED COMPUTE:</span><span id="rcptNet">$207.84/mo</span></div>
+              <div class="receipt-line"><span>ARTIFACT TAX ($0.25/GB):</span><span id="rcptStorage">$27.06/mo</span></div>
+              <div class="receipt-line"><span>AWS S3 EQUIV ($0.023):</span><span id="rcptS3">$2.49/mo</span></div>
+              <div class="receipt-divider"></div>
+              <div class="receipt-line receipt-total"><span>DEV WAIT (ASSUMED $/HR):</span><span id="rcptWait">$196.95/mo</span></div>
+              <div class="receipt-line receipt-total"><span>BLACKSMITH ALT:</span><span id="rcptBs">$103.92/mo</span></div>
+              <div class="receipt-divider"></div>
+              <div style="text-align:center;font-size:0.7rem;color:#475569;margin-top:6px;">
+                EXIT CODE 0 • ZERO SOURCE EGRESS
+              </div>
+            </div>
+          </div>
+
+          <div class="prompt-output-box">
+            <code id="liveCliPrompt">minici breakdown --path . --tier auto --prs-per-week 25 --pushes-per-pr 4 --dev-hourly-rate 65</code>
+            <button class="btn" onclick="copyText('liveCliPrompt', this)">Copy Exact CLI</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. HOW TO TRUST THIS ENGINE (5 INDEPENDENT ACCURACY GUARANTEES) -->
+    <section class="section" id="trust-oracles">
+      <h2 class="section-title">Why Engineering &amp; FinOps Teams Trust Every Number</h2>
+      <p class="section-sub">
+        Unlike manual web calculators, <code>minici</code> parses your actual workflow YAML AST locally with <strong>$0.0000 (0.00%) mathematical drift</strong> against official vendor billing rules and zero source-code egress.
+      </p>
+      <div class="oracle-grid">
+        <div class="oracle-card">
+          <h4>1 • Official Vendor Billing</h4>
+          <p>Expands Cartesian <code>strategy.matrix</code> + <code>include/exclude</code> jobs, applies GitHub’s 1-minute per-job ceiling rounding rule, and enforces 10× macOS / 2× Windows OS multipliers.</p>
+        </div>
+        <div class="oracle-card">
+          <h4>2 • Cloud &amp; Spot SKU Parity</h4>
+          <p>Cross-references SaaS runner costs against self-hosted AWS EC2 On-Demand/Spot and Blacksmith rates, alerting automatically at the 5,000 mins/mo break-even threshold.</p>
+        </div>
+        <div class="oracle-card">
+          <h4>3 • Free Quota &amp; Dev Wait $</h4>
+          <p>Tracks Free-Tier Quota Burn % ($0 net billed compute within 2,000 GH / 400 GL / 3,000 CircleCI mins), Developer Wait-Time $, and 10.9× Artifact Storage markup ($0.25 vs $0.023 S3).</p>
+        </div>
+        <div class="oracle-card">
+          <h4>4 • Multi-CI &amp; Exit Code 0</h4>
+          <p>Supports GitHub Actions, GitLab CI, CircleCI, Bitbucket Pipelines, AWS CodeBuild, Slack Block Kit payloads, and local <code>pre-push</code> hooks—always exiting with Code 0.</p>
+        </div>
+        <div class="oracle-card">
+          <h4>5 • 100% Local Zero-Egress</h4>
+          <p>Single static Rust binary (~354 µs execution). Your proprietary source code, secrets, and repository structure never leave your laptop or CI runner.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. CUSTOMER CONCEPT DIAGRAM & 35-SECOND 5-SKILL OPUS DEMO VIDEO -->
+    <section class="section" id="architecture">
+      <h2 class="section-title">Customer Architecture &amp; 35-Second 5-Skill Opus Concept Video</h2>
+      <p class="section-sub">
+        Video rendered with per-scene token budgets (<strong>2,170 / 3,200 tokens total • -68.4% RTK compression</strong>) using the 5-Skill Opus stack: <code>Hyperframes</code>, <code>Collage B-roll</code>, <code>Claude Animation Base</code>, <code>One Take</code>, and <code>Lemo Opusar</code>.
+      </p>
+      <div class="media-grid">
+        <div class="diagram-card">
+          <img src="customer-diagram.svg" alt="MiniCI 3-Step Customer Flow Diagram" style="width:100%;height:auto;display:block;border-radius:6px;" />
+        </div>
+        <div class="video-card">
+          <video controls preload="metadata" style="width:100%;border-radius:6px;background:#000;" poster="customer-diagram.svg">
+            <source src="../launch_packs/minici-cost-demo.mp4" type="video/mp4" />
+          </video>
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:8px;">
+            🎬 <strong>35s 5-Skill Opus Reel (with Token Budget HUD):</strong> Scene 1 (<code>Hyperframes + Collage B-roll</code>: 610 tok) → Scene 2 (<code>Claude Animation Base + One Take</code>: 980 tok) → Scene 3 (<code>Lemo Opusar</code>: 580 tok).
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. PRICING (COMMANDCODE.AI-INSPIRED TIER LADDER) -->
+    <section class="section" id="pricing">
+      <h2 class="section-title">Developer-First Pricing (Rollover Credits • Zero Markup)</h2>
+      <p class="section-sub">
+        Start free locally forever, or unlock automated org-wide sticky PR cost gates and <code>taste-ci-1</code> FinOps memory starting at <strong>$1/mo (Go)</strong> and <strong>$10/mo (GOAT)</strong>. Unused monthly credits roll over and never expire.
+      </p>
+      <div class="pricing-grid">
+        <div class="price-card">
+          <h3>Go <span class="badge-rust">Starter</span></h3>
+          <div class="price-tag">$1 <span style="font-size:0.9rem;color:var(--text-secondary);">/ mo + fee</span></div>
+          <p style="font-size:0.82rem;color:var(--accent-emerald);font-family:var(--font-mono);margin-bottom:8px;">Includes ~$10 in credits (~9K PR &amp; hook audits)</p>
+          <ul class="price-list">
+            <li>✓ <code>minici breakdown</code> &amp; <code>minici diff</code> in 354 µs</li>
+            <li>✓ Local Git <code>pre-push</code> &amp; Claude Code <code>PreToolUse</code> hook</li>
+            <li>✓ Free-Tier Quota Burn % &amp; Dev Wait-Time calculator</li>
+            <li>✓ Unused credits roll over and never expire</li>
+          </ul>
+          <a class="btn" href="mailto:raza.aamir01@gmail.com?subject=MiniCI%20Go%20Plan%20(%241%2Fmo)" style="display:inline-block;text-decoration:none;">Start Go ($1/mo)</a>
+        </div>
+
+        <div class="price-card featured">
+          <h3>GOAT <span class="badge-rust">Most Popular</span></h3>
+          <div class="price-tag">$10 <span style="font-size:0.9rem;color:var(--text-secondary);">/ mo + fee</span></div>
+          <p style="font-size:0.82rem;color:var(--accent-emerald);font-family:var(--font-mono);margin-bottom:8px;">Includes $70–$100 in credits (~75K PR &amp; hook audits)</p>
+          <ul class="price-list">
+            <li>✓ Full <code>taste-ci-1</code> FinOps memory across all repos</li>
+            <li>✓ Sticky PR &amp; MR cost diff comments (GitHub, GitLab, CircleCI, Bitbucket)</li>
+            <li>✓ Multi-OS Matrix + Hidden Artifact Storage ($0.25/GB) audit</li>
+            <li>✓ 5,000 mins/mo Self-Hosted Spot &amp; Blacksmith break-even advisor</li>
+          </ul>
+          <a class="btn btn-primary" href="mailto:raza.aamir01@gmail.com?subject=MiniCI%20GOAT%20Plan%20(%2410%2Fmo)" style="display:inline-block;text-decoration:none;">Get GOAT ($10/mo)</a>
+        </div>
+
+        <div class="price-card">
+          <h3>Pro &amp; Provider API</h3>
+          <div class="price-tag">$20 <span style="font-size:0.9rem;color:var(--text-secondary);">/ mo (or $15 Provider)</span></div>
+          <p style="font-size:0.82rem;color:var(--accent-sky);font-family:var(--font-mono);margin-bottom:8px;">Up to $110 in credits (~100K audits) + Zero-Markup MCP/API</p>
+          <ul class="price-list">
+            <li>✓ Everything in GOAT + Slack FinOps webhook alerts</li>
+            <li>✓ <strong>Provider ($15/mo):</strong> OpenAI/Anthropic/MCP compatible endpoints at 0% markup</li>
+            <li>✓ Multi-cloud Self-Hosted EC2/GKE/Spot SKU live sync</li>
+            <li>✓ Rollover credits that never expire</li>
+          </ul>
+          <a class="btn" href="mailto:raza.aamir01@gmail.com?subject=MiniCI%20Pro%20or%20Provider%20Plan" style="display:inline-block;text-decoration:none;">Get Pro ($20) / Provider ($15)</a>
+        </div>
+
+        <div class="price-card">
+          <h3>Team Pro &amp; Max (10× / 20×)</h3>
+          <div class="price-tag">$40 <span style="font-size:0.9rem;color:var(--text-secondary);">/ mo Team • $100–$200 Max</span></div>
+          <p style="font-size:0.82rem;color:var(--accent-emerald);font-family:var(--font-mono);margin-bottom:8px;">Pooled team credits (~35K–370K audits) • Enterprise ($5,000+)</p>
+          <ul class="price-list">
+            <li>✓ <strong>Team Pro ($40/mo):</strong> Shared org billing &amp; pooled PR audits</li>
+            <li>✓ <strong>Max 10× ($100) / Max 20× ($200):</strong> 230K–370K audits for heavy AI agent shipping</li>
+            <li>✓ <strong>Enterprise ($5,000+/mo):</strong> Custom credit pools, dedicated SLAs &amp; SAML/SSO</li>
+          </ul>
+          <a class="btn" href="mailto:raza.aamir01@gmail.com?subject=MiniCI%20Team%20Pro%20or%20Enterprise" style="display:inline-block;text-decoration:none;">Start Team Pro ($40/mo)</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="container">
+    <div>MiniCI (Skipwise) • Built in 100% Rust by <strong>Aamir Raza</strong> (<a href="mailto:raza.aamir01@gmail.com">raza.aamir01@gmail.com</a>)</div>
+    <div>Apache-2.0 Open Source • Zero Source Code Egress • Informational Exit Code 0 Always</div>
+  </footer>
+
+  <script>
+    const state = {
+      sku: 'ubuntu-latest',
+      rate: 0.008,
+      freeQuota: 2000,
+      ceilRule: true,
+      baseJobs: 3,
+      headJobs: 12,
+      rawMins: 4.2,
+      prsPerWeek: 25,
+      pushesPerPr: 4,
+      devHourlyRate: 65
+    };
+
+    function applyPreset(name) {
+      const skuSel = document.getElementById('ctrlSku');
+      if (name === 'freeStartup') {
+        skuSel.value = 'ubuntu-latest';
+        document.getElementById('ctrlBaseJobs').value = 2;
+        document.getElementById('ctrlHeadJobs').value = 3;
+        document.getElementById('ctrlRawMins').value = 2.4;
+        document.getElementById('ctrlPrs').value = 15;
+        document.getElementById('ctrlDevRate').value = 65;
+      } else if (name === 'macosSpike') {
+        skuSel.value = 'macos-latest';
+        document.getElementById('ctrlBaseJobs').value = 3;
+        document.getElementById('ctrlHeadJobs').value = 12;
+        document.getElementById('ctrlRawMins').value = 4.2;
+        document.getElementById('ctrlPrs').value = 25;
+        document.getElementById('ctrlDevRate').value = 75;
+      } else if (name === 'breakeven5000') {
+        skuSel.value = 'ubuntu-8core';
+        document.getElementById('ctrlBaseJobs').value = 8;
+        document.getElementById('ctrlHeadJobs').value = 16;
+        document.getElementById('ctrlRawMins').value = 5.5;
+        document.getElementById('ctrlPrs').value = 40;
+        document.getElementById('ctrlDevRate').value = 85;
+      } else if (name === 'gitlabSaas') {
+        skuSel.value = 'saas-linux-small-amd64';
+        document.getElementById('ctrlBaseJobs').value = 2;
+        document.getElementById('ctrlHeadJobs').value = 6;
+        document.getElementById('ctrlRawMins').value = 4.0;
+        document.getElementById('ctrlPrs').value = 20;
+        document.getElementById('ctrlDevRate').value = 65;
+      }
+      onControlChange();
+    }
+
+    function onControlChange() {
+      const sel = document.getElementById('ctrlSku');
+      const opt = sel.options[sel.selectedIndex];
+      state.sku = sel.value;
+      state.rate = parseFloat(opt.getAttribute('data-rate'));
+      state.freeQuota = parseFloat(opt.getAttribute('data-free'));
+      state.ceilRule = opt.getAttribute('data-ceil') === '1';
+      state.baseJobs = parseInt(document.getElementById('ctrlBaseJobs').value, 10);
+      state.headJobs = parseInt(document.getElementById('ctrlHeadJobs').value, 10);
+      state.rawMins = parseFloat(document.getElementById('ctrlRawMins').value);
+      state.prsPerWeek = parseFloat(document.getElementById('ctrlPrs').value);
+      state.devHourlyRate = parseFloat(document.getElementById('ctrlDevRate').value);
+      updateAll();
+    }
+
+    function updateAll() {
+      document.getElementById('lblSku').textContent = state.sku;
+      document.getElementById('lblBaseJobs').textContent = state.baseJobs + ' jobs';
+      document.getElementById('lblHeadJobs').textContent = state.headJobs + ' jobs';
+      document.getElementById('lblRawMins').textContent = state.rawMins.toFixed(1) + ' mins';
+      document.getElementById('lblPrs').textContent = state.prsPerWeek + ' PRs/wk × 4 pushes';
+      document.getElementById('lblDevRate').textContent = '$' + state.devHourlyRate + '/hr';
+
+      const billedPerJob = state.ceilRule ? Math.max(1, Math.ceil(state.rawMins)) : state.rawMins;
+      const baseBilledRun = billedPerJob * state.baseJobs;
+      const headBilledRun = billedPerJob * state.headJobs;
+      const deltaBilledRun = headBilledRun - baseBilledRun;
+
+      const monthlyRuns = Math.round(state.prsPerWeek * state.pushesPerPr * 4.33);
+      const baseMonthlyMins = baseBilledRun * monthlyRuns;
+      const headMonthlyMins = headBilledRun * monthlyRuns;
+
+      const quotaDenom = state.freeQuota > 0 ? state.freeQuota : 2000;
+      const baseQuotaPct = (baseMonthlyMins / quotaDenom) * 100;
+      const headQuotaPct = (headMonthlyMins / quotaDenom) * 100;
+
+      const baseCostMo = baseMonthlyMins * state.rate;
+      const headCostMo = headMonthlyMins * state.rate;
+      const deltaCostMo = headCostMo - baseCostMo;
+
+      const waitPerRunUsd = (state.rawMins / 60.0) * state.devHourlyRate;
+      const waitMoUsd = waitPerRunUsd * monthlyRuns;
+
+      const deltaJobs = state.headJobs - state.baseJobs;
+      const signJobs = deltaJobs >= 0 ? '+' : '';
+      const signMins = deltaBilledRun >= 0 ? '+' : '';
+      const signCost = deltaCostMo >= 0 ? '+' : '';
+
+      document.getElementById('tdBaseJobs').textContent = state.baseJobs + ' jobs';
+      document.getElementById('tdHeadJobs').textContent = state.headJobs + ' jobs';
+      document.getElementById('tdDeltaJobs').textContent = signJobs + deltaJobs + ' jobs';
+
+      document.getElementById('tdBaseMins').textContent = baseBilledRun.toFixed(1) + 'm';
+      document.getElementById('tdHeadMins').textContent = headBilledRun.toFixed(1) + 'm';
+      document.getElementById('tdDeltaMins').textContent = signMins + deltaBilledRun.toFixed(1) + 'm/run';
+
+      document.getElementById('tdBaseQuota').textContent = baseQuotaPct.toFixed(1) + '%';
+      document.getElementById('tdHeadQuota').textContent = headQuotaPct.toFixed(1) + '%';
+      document.getElementById('tdDeltaQuota').textContent = signMins + (headQuotaPct - baseQuotaPct).toFixed(1) + '%';
+
+      document.getElementById('tdBaseCost').textContent = '$' + baseCostMo.toFixed(2) + '/mo';
+      document.getElementById('tdHeadCost').textContent = '$' + headCostMo.toFixed(2) + '/mo';
+      document.getElementById('tdDeltaCost').textContent = signCost + '$' + deltaCostMo.toFixed(2) + '/mo';
+
+      document.getElementById('tdBaseWait').textContent = '$' + waitMoUsd.toFixed(2) + '/mo';
+      document.getElementById('tdHeadWait').textContent = '$' + waitMoUsd.toFixed(2) + '/mo';
+      document.getElementById('tdDeltaWait').textContent = '$0.00/mo';
+
+      const isFree = state.freeQuota > 0 && headMonthlyMins <= state.freeQuota;
+      const netBilledMo = isFree ? 0.0 : headCostMo;
+      const activeGb = 0.25 * monthlyRuns;
+      const vendorStorageUsd = activeGb * 0.25;
+      const s3StorageUsd = activeGb * 0.023;
+      const blacksmithMo = headCostMo * 0.5;
+      const spotMo = (headCostMo * 0.18) + 30.0;
+
+      document.getElementById('rcptSku').textContent = state.sku;
+      document.getElementById('rcptTier').textContent = isFree ? 'FREE (WITHIN QUOTA)' : 'PAID (OVER QUOTA)';
+      document.getElementById('rcptRuns').textContent = monthlyRuns + ' runs/mo';
+      document.getElementById('rcptGross').textContent = '$' + headCostMo.toFixed(2) + '/mo';
+      document.getElementById('rcptNet').textContent = '$' + netBilledMo.toFixed(2) + '/mo';
+      document.getElementById('rcptStorage').textContent = '$' + vendorStorageUsd.toFixed(2) + '/mo';
+      document.getElementById('rcptS3').textContent = '$' + s3StorageUsd.toFixed(2) + '/mo';
+      document.getElementById('rcptWait').textContent = '$' + waitMoUsd.toFixed(2) + '/mo';
+      document.getElementById('rcptBs').textContent = '$' + blacksmithMo.toFixed(2) + '/mo';
+
+      const beBox = document.getElementById('breakevenBox');
+      if (headMonthlyMins >= 5000) {
+        beBox.style.display = 'block';
+        document.getElementById('spanMonthlyMins').textContent = Math.round(headMonthlyMins).toLocaleString();
+        document.getElementById('spanBlacksmith').textContent = '$' + blacksmithMo.toFixed(2) + '/mo';
+        document.getElementById('spanSpot').textContent = '$' + spotMo.toFixed(2) + '/mo';
+      } else {
+        beBox.style.display = 'none';
+      }
+
+      document.getElementById('liveCliPrompt').textContent =
+        `minici breakdown --path . --tier ${isFree ? 'free' : 'paid'} --prs-per-week ${state.prsPerWeek} --pushes-per-pr 4 --dev-hourly-rate ${state.devHourlyRate}`;
+    }
+
+    let ownerMode = true;
+    function toggleOwnerMode() {
+      ownerMode = !ownerMode;
+      const panel = document.getElementById('ownerDebugPanel');
+      const btn = document.getElementById('ownerModeToggleBtn');
+      if (ownerMode) {
+        panel.style.display = 'block';
+        btn.textContent = '👁️ Owner Debug View: ON (Click for Customer View)';
+        btn.style.background = 'rgba(16,185,129,0.18)';
+        btn.style.color = '#10b981';
+        btn.style.borderColor = '#10b981';
+      } else {
+        panel.style.display = 'none';
+        btn.textContent = '🚀 Customer Launch View: ON (Click for Owner Debug)';
+        btn.style.background = 'rgba(56,189,248,0.15)';
+        btn.style.color = '#38bdf8';
+        btn.style.borderColor = '#38bdf8';
+      }
+    }
+
+    function toggleFeatureSection(id, visible) {
+      const el = document.getElementById(id) || document.getElementById('breakevenBox');
+      if (el) {
+        el.style.display = visible ? 'block' : 'none';
+      }
+    }
+
+    function copyText(elemId, btn) {
+      const txt = document.getElementById(elemId).textContent;
+      navigator.clipboard.writeText(txt);
+      const old = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    }
+
+    updateAll();
+  </script>
+</body>
+</html>

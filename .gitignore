@@ -1,0 +1,5 @@
+crates/minici/target/
+target/
+.wrangler/
+node_modules/
+.DS_Store

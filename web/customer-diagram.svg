@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 340" width="100%" height="100%" role="img" aria-label="MiniCI Customer Architecture Diagram: How Sub-Millisecond CI Cost Receipts Work">
+  <defs>
+    <style>
+      .bg { fill: #0a0e14; }
+      .box { fill: #111722; stroke: #253042; stroke-width: 1.5; rx: 10; }
+      .box-accent { fill: #0d1b18; stroke: #10b981; stroke-width: 2; rx: 10; }
+      .box-receipt { fill: #141923; stroke: #38bdf8; stroke-width: 1.8; rx: 10; }
+      .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; font-size: 15px; font-weight: 700; fill: #f8fafc; }
+      .step-tag { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 600; fill: #10b981; }
+      .sub { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; font-size: 12.5px; fill: #94a3b8; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; fill: #e2e8f0; }
+      .pill { fill: #1e293b; rx: 5; }
+      .arrow { stroke: #475569; stroke-width: 2; fill: none; stroke-dasharray: 4 3; }
+      .arrow-head { fill: #10b981; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1120" height="340" rx="14"/>
+
+  <!-- Header -->
+  <text x="36" y="38" class="title" font-size="16">How MiniCI Works in Your Repository (Sub-Millisecond Rust • 100% Local • Exit Code 0 Always)</text>
+  <text x="36" y="58" class="sub">No source code ever leaves your laptop or CI runner. Drop into any GitHub Action, GitLab CI, CircleCI, Bitbucket, or local Git pre-push hook.</text>
+
+  <!-- Step 1: Developer / PR Trigger -->
+  <rect class="box" x="32" y="82" width="310" height="225"/>
+  <text x="52" y="110" class="step-tag">STEP 1 • SHIFT-LEFT TRIGGER</text>
+  <text x="52" y="134" class="title">Pull Request or Local Git Push</text>
+  <text x="52" y="158" class="sub">Triggered when a developer or AI agent</text>
+  <text x="52" y="175" class="sub">modifies any CI configuration or pushes:</text>
+  <rect class="pill" x="52" y="192" width="270" height="26"/>
+  <text x="64" y="209" class="mono">.github/workflows/*.yml</text>
+  <rect class="pill" x="52" y="226" width="270" height="26"/>
+  <text x="64" y="243" class="mono">.gitlab-ci.yml / .circleci/config.yml</text>
+  <rect class="pill" x="52" y="260" width="270" height="26"/>
+  <text x="64" y="277" class="mono">git push (PreToolUse / pre-push)</text>
+
+  <!-- Arrow 1 -> 2 -->
+  <line x1="342" y1="194" x2="396" y2="194" class="arrow"/>
+  <polygon points="396,189 406,194 396,199" class="arrow-head"/>
+  <text x="350" y="182" class="step-tag">~0.5 ms</text>
+
+  <!-- Step 2: Pure Rust Engine -->
+  <rect class="box-accent" x="406" y="82" width="320" height="225"/>
+  <text x="426" y="110" class="step-tag">STEP 2 • ZERO-COPY RUST ENGINE</text>
+  <text x="426" y="134" class="title">minici breakdown &amp; minici diff</text>
+  <text x="426" y="158" class="sub">Single static Rust binary (~519 µs avg):</text>
+  <rect class="pill" x="426" y="176" width="280" height="26"/>
+  <text x="438" y="193" class="mono">1. Expands Matrix (OS × Version)</text>
+  <rect class="pill" x="426" y="208" width="280" height="26"/>
+  <text x="438" y="225" class="mono">2. Applies 1-Min Ceiling &amp; macOS 10x</text>
+  <rect class="pill" x="426" y="240" width="280" height="26"/>
+  <text x="438" y="257" class="mono">3. 23 SaaS + Cloud Spot Runner SKUs</text>
+  <text x="426" y="288" class="sub" fill="#10b981">✓ Zero network lag • ✓ Zero telemetry egress</text>
+
+  <!-- Arrow 2 -> 3 -->
+  <line x1="726" y1="194" x2="778" y2="194" class="arrow"/>
+  <polygon points="778,189 788,194 778,199" class="arrow-head"/>
+  <text x="734" y="182" class="step-tag">Exit 0</text>
+
+  <!-- Step 3: Sticky PR Receipt & Slack -->
+  <rect class="box-receipt" x="788" y="82" width="300" height="225"/>
+  <text x="808" y="110" class="step-tag" fill="#38bdf8">STEP 3 • PR &amp; FINOPS RECEIPT</text>
+  <text x="808" y="134" class="title">Sticky PR Comment &amp; Slack Diff</text>
+  <rect class="pill" x="808" y="154" width="260" height="26"/>
+  <text x="820" y="171" class="mono">Matrix Jobs: 4 → 12 (+8 jobs)</text>
+  <rect class="pill" x="808" y="186" width="260" height="26"/>
+  <text x="820" y="203" class="mono">Free Quota Burn: 18% → 78%/mo</text>
+  <rect class="pill" x="808" y="218" width="260" height="26"/>
+  <text x="820" y="235" class="mono">Compute Delta: +$173.20 / mo</text>
+  <rect class="pill" x="808" y="250" width="260" height="26"/>
+  <text x="820" y="267" class="mono">Dev Wait Cost: $202/mo ($65/hr)</text>
+  <text x="808" y="294" class="sub" fill="#38bdf8">✓ Informational only — never breaks CI</text>
+</svg>

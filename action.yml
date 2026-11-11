@@ -1,0 +1,69 @@
+name: "MiniCI — Infracost for CI/CD (PR Cost Diff & Quota Receipt)"
+description: "Sub-millisecond Rust engine that expands CI workflow matrices and posts PR cost diffs, free-tier quota burn %, and dev wait-time cost."
+author: "Aamir Raza <raza.aamir01@gmail.com>"
+branding:
+  icon: "dollar-sign"
+  color: "green"
+
+inputs:
+  path:
+    description: "Path to repository root or workflow directory"
+    required: false
+    default: "."
+  tier:
+    description: "Pricing tier mode: auto, free, or paid"
+    required: false
+    default: "auto"
+  prs-per-week:
+    description: "Pull requests per week for monthly run-rate projection"
+    required: false
+    default: "25"
+  pushes-per-pr:
+    description: "Average pushes per pull request"
+    required: false
+    default: "4"
+  dev-hourly-rate:
+    description: "Developer hourly engineering rate (USD) for wait-time cost calculation"
+    required: false
+    default: "65"
+  post-pr-comment:
+    description: "Post or update sticky PR cost receipt comment when GITHUB_TOKEN is provided"
+    required: false
+    default: "true"
+
+outputs:
+  monthly-compute-usd:
+    description: "Projected gross monthly CI compute cost in USD"
+    value: ${{ steps.minici.outputs.monthly_compute_usd }}
+  free-quota-burn-pct:
+    description: "Percentage of monthly free-tier CI minutes consumed"
+    value: ${{ steps.minici.outputs.free_quota_burn_pct }}
+  monthly-dev-wait-usd:
+    description: "Projected monthly developer wait-time cost in USD"
+    value: ${{ steps.minici.outputs.monthly_dev_wait_usd }}
+  execution-time-us:
+    description: "MiniCI Rust engine execution time in microseconds"
+    value: ${{ steps.minici.outputs.execution_time_us }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run MiniCI Sub-Millisecond Rust CI/CD Cost Breakdown & PR Diff
+      id: minici
+      shell: bash
+      run: |
+        set +e
+        BIN_PATH="${{ github.action_path }}/target/release/minici"
+        if [ ! -x "$BIN_PATH" ]; then
+          cargo build --release --manifest-path "${{ github.action_path }}/crates/minici/Cargo.toml"
+          BIN_PATH="${{ github.action_path }}/crates/minici/target/release/minici"
+        fi
+        "$BIN_PATH" breakdown \
+          --path "${{ inputs.path }}" \
+          --tier "${{ inputs.tier }}" \
+          --prs-per-week "${{ inputs.prs-per-week }}" \
+          --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
+          --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+          --format markdown \
+          --out-file .minici_breakdown.md
+        exit 0

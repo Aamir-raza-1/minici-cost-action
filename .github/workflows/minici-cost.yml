@@ -1,0 +1,20 @@
+name: MiniCI Pull Request Cost Receipt
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  ci-cost-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run MiniCI Cost & Matrix Diff (Always Exits 0)
+        uses: aamir-raza-01/minici-cost-action@v1
+        with:
+          tier: auto
+          prs-per-week: 25
+          pushes-per-pr: 4
+          dev-hourly-rate: 65
