@@ -686,13 +686,15 @@ fn main() {
                 _ => render_cli_compact_diff(&diff),
             };
 
-            if let Some(out) = out_file {
+            if let Some(ref out) = out_file {
                 if let Some(parent) = out.parent() {
                     let _ = fs::create_dir_all(parent);
                 }
-                let _ = fs::write(&out, &rendered);
+                let _ = fs::write(out, &rendered);
+            } else if !quiet || format == "json" {
+                println!("{}", rendered);
             }
-            if !quiet || format != "json" {
+            if !quiet && out_file.is_some() {
                 println!("{}", rendered);
             }
         }
