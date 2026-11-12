@@ -1,0 +1,67 @@
+{
+  "github": {
+    "github-ubuntu-24.04-x86_64-4": {
+      "rate_usd_per_min": 0.012,
+      "raw_label": "github-ubuntu-24.04-x86_64-4",
+      "reason": "Parsed os=linux, arch=x64, cores=4, gpu=False",
+      "resolution_mode": "heuristic_pattern",
+      "resolved_sku": "linux_4"
+    },
+    "linux-8-core": {
+      "rate_usd_per_min": 0.022,
+      "raw_label": "linux-8-core",
+      "reason": "Parsed os=linux, arch=x64, cores=8, gpu=False",
+      "resolution_mode": "heuristic_pattern",
+      "resolved_sku": "linux_8"
+    },
+    "linux-gpu-t4-4core": {
+      "rate_usd_per_min": 0.052,
+      "raw_label": "linux-gpu-t4-4core",
+      "reason": "Parsed os=linux, arch=x64, cores=4, gpu=True",
+      "resolution_mode": "heuristic_pattern",
+      "resolved_sku": "linux_gpu_t4_4core"
+    },
+    "rust-linux-16-core": {
+      "rate_usd_per_min": 0.042,
+      "raw_label": "rust-linux-16-core",
+      "reason": "Parsed os=linux, arch=x64, cores=16, gpu=False",
+      "resolution_mode": "heuristic_pattern",
+      "resolved_sku": "linux_16"
+    },
+    "self-hosted-gpu-runner": {
+      "rate_usd_per_min": 0.0,
+      "raw_label": "self-hosted-gpu-runner",
+      "reason": "Matched self-hosted / Kubernetes ARC runner pattern",
+      "resolution_mode": "heuristic_pattern",
+      "resolved_sku": "self_hosted"
+    },
+    "ubuntu-26.04": {
+      "rate_usd_per_min": 0.006,
+      "raw_label": "ubuntu-26.04",
+      "reason": "Parsed os=linux, arch=x64, cores=2, gpu=False",
+      "resolution_mode": "heuristic_pattern",
+      "resolved_sku": "linux"
+    },
+    "ubuntu-8vcpu-custom": {
+      "rate_usd_per_min": 0.022,
+      "raw_label": "ubuntu-8vcpu-custom",
+      "reason": "Parsed os=linux, arch=x64, cores=8, gpu=False",
+      "resolution_mode": "heuristic_pattern",
+      "resolved_sku": "linux_8"
+    },
+    "vscode-large-runners-ubuntu-8-core": {
+      "rate_usd_per_min": 0.022,
+      "raw_label": "vscode-large-runners-ubuntu-8-core",
+      "reason": "Parsed os=linux, arch=x64, cores=8, gpu=False",
+      "resolution_mode": "heuristic_pattern",
+      "resolved_sku": "linux_8"
+    },
+    "vscode-large-runners-windows-8-core": {
+      "rate_usd_per_min": 0.042,
+      "raw_label": "vscode-large-runners-windows-8-core",
+      "reason": "Parsed os=windows, arch=x64, cores=8, gpu=False",
+      "resolution_mode": "heuristic_pattern",
+      "resolved_sku": "windows_x64_8core"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+platform,sku,os,arch,cores,gpu,unit,usd,plan,included_qty,uses_allowance,rounding,source_url,checked_on,status
+gcp,e2-medium,linux,x64,1,false,minute,0.003,all,0,false,exact_seconds,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,e2-standard-2,linux,x64,2,false,minute,0.006,all,2500,true,exact_seconds,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,e2-highcpu-8,linux,x64,8,false,minute,0.0156,all,0,false,exact_seconds,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,e2-highcpu-32,linux,x64,32,false,minute,0.0624,all,0,false,exact_seconds,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,private-e2-standard-4,linux,x64,4,false,minute,0.012,all,0,false,exact_seconds,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,private-n2d-highmem-2,linux,x64,2,false,minute,0.0111,all,0,false,exact_seconds,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,private-n2d-highmem-8,linux,x64,8,false,minute,0.0444,all,0,false,exact_seconds,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,private-c3d-standard-8,linux,x64,8,false,minute,0.036,all,0,false,exact_seconds,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,private-t2d-standard-8,linux,x64,8,false,minute,0.031,all,0,false,exact_seconds,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,worker-ssd-storage,all,all,0,false,gb_hour,0.000233,all,100,false,gb_hour,https://cloud.google.com/build/pricing,2026-11-11,official
+gcp,cloud_deploy_pipeline,all,all,0,false,pipeline_month,3,all,1,false,month,https://cloud.google.com/deploy/pricing,2026-11-11,official
+gcp,artifact_registry_gb,all,all,0,false,gb_month,0.1,all,0.5,false,gb_month,https://cloud.google.com/artifact-registry/pricing,2026-11-11,official

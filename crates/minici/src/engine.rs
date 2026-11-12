@@ -138,7 +138,11 @@ pub struct BreakdownReport {
     pub effective_tier: String,
     pub gross_compute_cost_per_run_usd: f64,
     pub gross_monthly_compute_cost_usd: f64,
+    pub discount_allowance_monthly_usd: f64,
     pub net_billed_monthly_compute_cost_usd: f64,
+    pub third_party_runner_monthly_cost_usd: f64,
+    pub shard_setup_duplication_mins_per_run: f64,
+    pub clones_per_ci_run: usize,
     pub dev_wait_cost_per_run_usd: f64,
     pub monthly_dev_wait_cost_usd: f64,
     pub monthly_artifact_storage_vendor_usd: f64,
@@ -158,7 +162,7 @@ impl BreakdownReport {
             .collect();
         let job_strs: Vec<String> = self.jobs.iter().map(|j| j.to_json()).collect();
         format!(
-            "{{\n  \"target_path\": \"{}\",\n  \"execution_time_us\": {},\n  \"execution_time_ms\": {:.3},\n  \"detected_providers\": [{}],\n  \"usage\": {},\n  \"total_workflows\": {},\n  \"total_defined_jobs\": {},\n  \"total_expanded_matrix_jobs\": {},\n  \"raw_duration_mins_per_run\": {:.2},\n  \"critical_path_wait_mins_per_run\": {:.2},\n  \"billed_mins_per_run\": {:.2},\n  \"monthly_runs\": {:.1},\n  \"monthly_billed_mins\": {:.2},\n  \"free_tier_included_mins\": {:.1},\n  \"free_tier_quota_burn_pct\": {:.1},\n  \"effective_tier\": \"{}\",\n  \"gross_compute_cost_per_run_usd\": {:.4},\n  \"gross_monthly_compute_cost_usd\": {:.2},\n  \"net_billed_monthly_compute_cost_usd\": {:.2},\n  \"dev_wait_cost_per_run_usd\": {:.2},\n  \"monthly_dev_wait_cost_usd\": {:.2},\n  \"monthly_artifact_storage_vendor_usd\": {:.2},\n  \"monthly_artifact_storage_s3_usd\": {:.2},\n  \"monthly_blacksmith_cost_usd\": {:.2},\n  \"monthly_self_hosted_spot_cost_usd\": {:.2},\n  \"exceeds_5000m_self_hosted_breakeven\": {},\n  \"jobs\": [\n    {}\n  ]\n}}",
+            "{{\n  \"target_path\": \"{}\",\n  \"execution_time_us\": {},\n  \"execution_time_ms\": {:.3},\n  \"detected_providers\": [{}],\n  \"usage\": {},\n  \"total_workflows\": {},\n  \"total_defined_jobs\": {},\n  \"total_expanded_matrix_jobs\": {},\n  \"raw_duration_mins_per_run\": {:.2},\n  \"critical_path_wait_mins_per_run\": {:.2},\n  \"billed_mins_per_run\": {:.2},\n  \"shard_setup_duplication_mins_per_run\": {:.2},\n  \"clones_per_ci_run\": {},\n  \"monthly_runs\": {:.1},\n  \"monthly_billed_mins\": {:.2},\n  \"free_tier_included_mins\": {:.1},\n  \"free_tier_quota_burn_pct\": {:.1},\n  \"effective_tier\": \"{}\",\n  \"gross_compute_cost_per_run_usd\": {:.4},\n  \"gross_monthly_compute_cost_usd\": {:.2},\n  \"discount_allowance_monthly_usd\": {:.2},\n  \"net_billed_monthly_compute_cost_usd\": {:.2},\n  \"third_party_runner_monthly_cost_usd\": {:.2},\n  \"dev_wait_cost_per_run_usd\": {:.2},\n  \"monthly_dev_wait_cost_usd\": {:.2},\n  \"monthly_artifact_storage_vendor_usd\": {:.2},\n  \"monthly_artifact_storage_s3_usd\": {:.2},\n  \"monthly_blacksmith_cost_usd\": {:.2},\n  \"monthly_self_hosted_spot_cost_usd\": {:.2},\n  \"exceeds_5000m_self_hosted_breakeven\": {},\n  \"jobs\": [\n    {}\n  ]\n}}",
             json_escape(&self.target_path),
             self.execution_time_us,
             self.execution_time_ms,
@@ -170,6 +174,8 @@ impl BreakdownReport {
             self.raw_duration_mins_per_run,
             self.critical_path_wait_mins_per_run,
             self.billed_mins_per_run,
+            self.shard_setup_duplication_mins_per_run,
+            self.clones_per_ci_run,
             self.monthly_runs,
             self.monthly_billed_mins,
             self.free_tier_included_mins,
@@ -177,7 +183,9 @@ impl BreakdownReport {
             json_escape(&self.effective_tier),
             self.gross_compute_cost_per_run_usd,
             self.gross_monthly_compute_cost_usd,
+            self.discount_allowance_monthly_usd,
             self.net_billed_monthly_compute_cost_usd,
+            self.third_party_runner_monthly_cost_usd,
             self.dev_wait_cost_per_run_usd,
             self.monthly_dev_wait_cost_usd,
             self.monthly_artifact_storage_vendor_usd,
@@ -981,6 +989,34 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     } else {
         gross_monthly_compute_cost_usd
     };
+    let discount_allowance_monthly_usd =
+        ((gross_monthly_compute_cost_usd - net_billed_monthly_compute_cost_usd).max(0.0) * 100.0)
+            .round()
+            / 100.0;
+    let third_party_runner_monthly_cost_usd = ((jobs
+        .iter()
+        .filter(|j| {
+            let l = j.runner_label.to_lowercase();
+            l.contains("blacksmith")
+                || l.contains("warpbuild")
+                || l.contains("buildjet")
+                || l.contains("namespace")
+        })
+        .map(|j| j.run_compute_cost_usd)
+        .sum::<f64>()
+        * monthly_runs)
+        * 100.0)
+        .round()
+        / 100.0;
+    let shard_setup_duplication_mins_per_run = ((jobs
+        .iter()
+        .filter(|j| j.matrix_combination_count > 1)
+        .map(|j| ((j.matrix_combination_count.saturating_sub(1)) as f64) * 1.25)
+        .sum::<f64>())
+        * 100.0)
+        .round()
+        / 100.0;
+    let clones_per_ci_run = total_expanded_matrix_jobs;
 
     let dev_wait_cost_per_run_usd =
         (((critical_path_wait_mins_per_run / 60.0) * usage.dev_hourly_rate_usd) * 100.0).round()
@@ -1038,7 +1074,11 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         effective_tier,
         gross_compute_cost_per_run_usd,
         gross_monthly_compute_cost_usd,
+        discount_allowance_monthly_usd,
         net_billed_monthly_compute_cost_usd,
+        third_party_runner_monthly_cost_usd,
+        shard_setup_duplication_mins_per_run,
+        clones_per_ci_run,
         dev_wait_cost_per_run_usd,
         monthly_dev_wait_cost_usd,
         monthly_artifact_storage_vendor_usd,

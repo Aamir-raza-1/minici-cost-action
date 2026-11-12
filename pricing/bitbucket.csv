@@ -1,0 +1,14 @@
+platform,sku,os,arch,cores,gpu,unit,usd,plan,included_qty,uses_allowance,rounding,source_url,checked_on,status
+bitbucket,plan_free,all,all,0,false,user_month,0,free,50,false,month,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,plan_standard,all,all,0,false,user_month,3.3,standard,2500,false,month,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,plan_premium,all,all,0,false,user_month,6.6,premium,3500,false,month,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,linux_1x,linux,x64,2,false,minute,0.01,all,0,true,ceil_minute_per_job,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,linux_2x,linux,x64,4,false,minute,0.02,all,0,true,ceil_minute_per_job,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,linux_4x,linux,x64,8,false,minute,0.04,all,0,true,ceil_minute_per_job,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,linux_8x,linux,x64,16,false,minute,0.08,all,0,true,ceil_minute_per_job,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,linux_16x,linux,x64,32,false,minute,0.16,all,0,true,ceil_minute_per_job,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,linux_24x,linux,x64,48,false,minute,0.24,standard,0,true,ceil_minute_per_step,https://support.atlassian.com/bitbucket-cloud/docs/configure-bitbucket-pipelines-yml/,2026-11-11,official
+bitbucket,linux_32x,linux,x64,64,false,minute,0.32,standard,0,true,ceil_minute_per_step,https://support.atlassian.com/bitbucket-cloud/docs/configure-bitbucket-pipelines-yml/,2026-11-11,official
+bitbucket,self_hosted,any,any,0,false,minute,0,all,0,false,none,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,extra_minutes_1000,any,any,0,false,1000_minutes,10,all,1000,false,pack_1000_minutes,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
+bitbucket,lfs_storage_100gb,any,any,0,false,100gb_month,10,all,100,false,pack_100gb_month,https://www.atlassian.com/software/bitbucket/pricing,2026-11-01,official
