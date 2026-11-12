@@ -53,10 +53,9 @@ runs:
       shell: bash
       run: |
         set +e
-        BIN_PATH="${{ github.action_path }}/target/release/minici"
+        BIN_PATH="${{ github.action_path }}/crates/minici/target/release/minici"
         if [ ! -x "$BIN_PATH" ]; then
           cargo build --release --manifest-path "${{ github.action_path }}/crates/minici/Cargo.toml"
-          BIN_PATH="${{ github.action_path }}/crates/minici/target/release/minici"
         fi
         "$BIN_PATH" breakdown \
           --path "${{ inputs.path }}" \

@@ -31,6 +31,7 @@ COMMANDS:\n  \
   diff         Compare base vs PR workflows/branches/repos to isolate Pull Request CI cost & time deltas\n  \
   comment      Render or post sticky Pull Request / Merge Request / Slack CI Cost comment\n  \
   catalog      Inspect, sync, or override the Multi-Vendor + Infracost Cloud Pricing SKU Catalog\n  \
+  mcp          Start JSON-RPC 2.0 stdio MCP server for Claude Code, Antigravity, Cursor & VS Code\n  \
   self-update  Sync live pricing catalog, verify 0 drift, and self-upgrade binary (--install-dir <DIR>)\n  \
   init-hooks   Install Claude Code + Wozcode (PreToolUse/PostToolUse), Agent MCP (.mcp.json) & GitHub Action\n  \
   launch-pack  Generate automatic PostToolUse 6-Channel Launch & Partner Profile Pack\n\n\
@@ -49,6 +50,79 @@ OPTIONS (breakdown):\n  \
   --benchmark                Run 100-iteration microsecond/millisecond latency benchmark\n  \
   --quiet, -q                Non-interactive silent mode (suppress progress & terminal banners)\n"
     );
+}
+
+fn extract_json_id(raw: &str) -> String {
+    let needle = "\"id\":";
+    if let Some(idx) = raw.find(needle) {
+        let rest = raw[idx + needle.len()..].trim_start();
+        let end = rest
+            .find(|c: char| c == ',' || c == '}' || c.is_whitespace())
+            .unwrap_or(rest.len());
+        let token = rest[..end].trim();
+        if !token.is_empty() {
+            return token.to_string();
+        }
+    }
+    "null".to_string()
+}
+
+pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let id = extract_json_id(trimmed);
+    let method = extract_json_str(trimmed, "method").unwrap_or_default();
+
+    match method.as_str() {
+        "initialize" => Some(format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"minici\",\"version\":\"0.1.0\"}}}}}}",
+            id
+        )),
+        "notifications/initialized" | "initialized" => None,
+        "ping" => Some(format!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{}}}}", id)),
+        "tools/list" => Some(format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"tools\":[{{\"name\":\"minici_breakdown\",\"description\":\"Calculate CI/CD workflow cost, free-tier quota burn %, and developer wait-time breakdown\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\",\"description\":\"Repository path or GitHub owner/repo\"}}}}}}}},{{\"name\":\"minici_diff\",\"description\":\"Compare Pull Request CI workflow cost delta against a base branch\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"compare_to\":{{\"type\":\"string\"}}}}}}}}]}}}}",
+            id
+        )),
+        "tools/call" => {
+            let tool_name = extract_json_str(trimmed, "name").unwrap_or_else(|| "minici_breakdown".to_string());
+            let target_arg = extract_json_str(trimmed, "path")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| default_path.to_path_buf());
+            if tool_name == "minici_diff" {
+                let cmp_arg = extract_json_str(trimmed, "compare_to")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("main"));
+                let base = load_or_analyze_in_repo(&cmp_arg, Some(&target_arg), None, false, true);
+                let head = load_or_analyze_in_repo(&target_arg, None, Some(base.usage.clone()), false, true);
+                let diff = compute_diff(&base, &head);
+                let text = engine::json_escape(&diff.to_json());
+                Some(format!(
+                    "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":false}}}}",
+                    id, text
+                ))
+            } else {
+                let rep = load_or_analyze_in_repo(&target_arg, None, None, false, true);
+                let text = engine::json_escape(&rep.to_json());
+                Some(format!(
+                    "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":false}}}}",
+                    id, text
+                ))
+            }
+        }
+        _ => {
+            if id != "null" {
+                Some(format!(
+                    "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{}}}}",
+                    id
+                ))
+            } else {
+                None
+            }
+        }
+    }
 }
 
 fn extract_json_str(raw: &str, key: &str) -> Option<String> {
@@ -245,8 +319,28 @@ fn resolve_target_to_dir_ext(raw_spec: &str, force_refresh: bool, quiet: bool) -
         }
     }
 
-    // Check if `raw_spec` is a Git branch/ref (like `main`, `master`, `HEAD~1`) in the current repository!
+    // Check if `raw_spec` is a Git branch/ref (like `main`, `master`, `HEAD~1`) in the target or current repository!
+    resolve_target_to_dir_in_repo(raw_spec, None, force_refresh, quiet)
+}
+
+fn resolve_target_to_dir_in_repo(
+    raw_spec: &str,
+    repo_hint: Option<&Path>,
+    _force_refresh: bool,
+    _quiet: bool,
+) -> (PathBuf, Option<PathBuf>, String) {
+    let p = Path::new(raw_spec);
+    if p.exists() {
+        return (p.to_path_buf(), None, raw_spec.to_string());
+    }
+    let git_dir = repo_hint
+        .filter(|rp| rp.exists())
+        .map(|rp| if rp.is_file() { rp.parent().unwrap_or(Path::new(".")) } else { rp })
+        .unwrap_or_else(|| Path::new("."));
+
     let check_ref = Command::new("git")
+        .arg("-C")
+        .arg(git_dir)
         .args(["rev-parse", "--verify", "--quiet", raw_spec])
         .output();
     if let Ok(out) = check_ref {
@@ -258,9 +352,10 @@ fn resolve_target_to_dir_ext(raw_spec: &str, force_refresh: bool, quiet: bool) -
             ));
             let _ = fs::remove_dir_all(&tmp_dir);
             let _ = fs::create_dir_all(&tmp_dir);
-            // Extract CI workflow files from that Git ref using `git archive`
+            // Extract CI workflow files from that Git ref inside `git_dir` using `git archive`
             let cmd_str = format!(
-                "git archive {} | tar -x -C \"{}\"",
+                "git -C \"{}\" archive {} | tar -x -C \"{}\"",
+                git_dir.display(),
                 raw_spec,
                 tmp_dir.display()
             );
@@ -282,7 +377,13 @@ fn load_or_analyze(path: &Path, cfg: Option<UsageConfig>) -> BreakdownReport {
     load_or_analyze_ext(path, cfg, false, true)
 }
 
-fn load_or_analyze_ext(path: &Path, cfg: Option<UsageConfig>, force_refresh: bool, quiet: bool) -> BreakdownReport {
+fn load_or_analyze_in_repo(
+    path: &Path,
+    repo_hint: Option<&Path>,
+    cfg: Option<UsageConfig>,
+    force_refresh: bool,
+    quiet: bool,
+) -> BreakdownReport {
     if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json") {
         if let Ok(raw) = fs::read_to_string(path) {
             if let Some(orig_target) = extract_json_str(&raw, "target_path") {
@@ -294,13 +395,26 @@ fn load_or_analyze_ext(path: &Path, cfg: Option<UsageConfig>, force_refresh: boo
         }
     }
     let raw_str = path.to_str().unwrap_or(".");
-    let (resolved_dir, cleanup_dir, display_label) = resolve_target_to_dir_ext(raw_str, force_refresh, quiet);
+    let (resolved_dir, cleanup_dir, display_label) = if !path.exists() && repo_hint.is_some() {
+        let (r, c, l) = resolve_target_to_dir_in_repo(raw_str, repo_hint, force_refresh, quiet);
+        if c.is_some() || r.exists() {
+            (r, c, l)
+        } else {
+            resolve_target_to_dir_ext(raw_str, force_refresh, quiet)
+        }
+    } else {
+        resolve_target_to_dir_ext(raw_str, force_refresh, quiet)
+    };
     let mut rep = analyze_path(&resolved_dir, cfg);
     rep.target_path = display_label;
     if let Some(tmp) = cleanup_dir {
         let _ = fs::remove_dir_all(tmp);
     }
     rep
+}
+
+fn load_or_analyze_ext(path: &Path, cfg: Option<UsageConfig>, force_refresh: bool, quiet: bool) -> BreakdownReport {
+    load_or_analyze_in_repo(path, None, cfg, force_refresh, quiet)
 }
 
 fn main() {
@@ -562,8 +676,8 @@ fn main() {
                 i += 1;
             }
 
-            let base = load_or_analyze(&compare_to, None);
-            let head = load_or_analyze(&path, Some(base.usage.clone()));
+            let base = load_or_analyze_in_repo(&compare_to, Some(&path), None, false, true);
+            let head = load_or_analyze_in_repo(&path, None, Some(base.usage.clone()), false, true);
             let diff = compute_diff(&base, &head);
 
             let rendered = match format.as_str() {
@@ -894,7 +1008,7 @@ fn main() {
   "mcpServers": {
     "minici": {
       "command": "minici",
-      "args": ["breakdown", "--path", ".", "--format", "json"],
+      "args": ["mcp"],
       "description": "Sub-millisecond CI/CD Cost, Matrix & Quota Guardrail for Claude, Cursor, Antigravity & Windsurf"
     }
   }
@@ -919,7 +1033,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run MiniCI Cost & Matrix Diff (Always Exits 0)
-        uses: aamir-raza-01/minici-cost-action@v1
+        uses: Aamir-raza-1/minici-cost-action@v1
         with:
           tier: auto
           prs-per-week: 25
@@ -936,6 +1050,27 @@ jobs:
             println!("  2. Universal Agent MCP   : {} (Claude Desktop, Cursor, Antigravity, Windsurf)", mcp_file.display());
             println!("  3. GitHub Action Workflow: {} (PR sticky cost comment active)", gh_action_file.display());
             println!("+====================================================================================+");
+        }
+
+        "mcp" => {
+            use std::io::{self, BufRead, Write};
+            let mut default_path = PathBuf::from(".");
+            let mut i = 0;
+            while i < rest.len() {
+                if (rest[i] == "--path" || rest[i] == "--repo") && i + 1 < rest.len() {
+                    default_path = PathBuf::from(&rest[i + 1]);
+                    i += 1;
+                }
+                i += 1;
+            }
+            let stdin = io::stdin();
+            let mut stdout = io::stdout();
+            for line in stdin.lock().lines().map_while(Result::ok) {
+                if let Some(resp) = handle_mcp_jsonrpc_line(&line, &default_path) {
+                    let _ = writeln!(stdout, "{}", resp);
+                    let _ = stdout.flush();
+                }
+            }
         }
 
         "launch-pack" => {
@@ -1025,6 +1160,217 @@ jobs:
         assert!(rep.gross_compute_cost_per_run_usd > 0.0);
         assert!(rep.dev_wait_cost_per_run_usd > 0.0);
         assert!(rep.monthly_artifact_storage_vendor_usd > rep.monthly_artifact_storage_s3_usd);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_golden_exact_sku_math_and_ceiling_rounding() {
+        let tmp = std::env::temp_dir().join("minici_golden_math_test");
+        let _ = fs::remove_dir_all(&tmp);
+        let wf_dir = tmp.join(".github").join("workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+
+        // Explicit 1.2m raw duration -> GitHub Actions ceilings to 2.0 billed mins per job.
+        // 1 job on ubuntu-latest ($0.0080/min) = 2.0 * $0.0080 = $0.0160/run.
+        let wf_yaml = r#"
+name: Golden CI
+on: [pull_request]
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    est-minutes: 1.2
+    steps:
+      - uses: actions/checkout@v4
+"#;
+        fs::write(wf_dir.join("golden.yml"), wf_yaml).unwrap();
+
+        let rep = analyze_path(
+            &tmp,
+            Some(UsageConfig {
+                tier: "auto".to_string(),
+                prs_per_week: 25.0,
+                pushes_per_pr: 4.0,
+                dev_hourly_rate_usd: 60.0,
+                artifact_gb_per_run: 0.25,
+                artifact_retention_days: 30,
+            }),
+        );
+
+        assert_eq!(rep.total_workflows, 1);
+        assert_eq!(rep.total_expanded_matrix_jobs, 1);
+        assert_eq!(rep.billed_mins_per_run, 2.0);
+        assert_eq!(rep.gross_compute_cost_per_run_usd, 0.016);
+        assert_eq!(rep.monthly_runs, 433.0);
+        assert_eq!(rep.gross_monthly_compute_cost_usd, 6.93);
+        assert_eq!(rep.net_billed_monthly_compute_cost_usd, 0.0); // within 2,000 free mins
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_diff_zero_delta_and_matrix_spike_detection() {
+        let base_dir = std::env::temp_dir().join("minici_diff_base_test");
+        let head_dir = std::env::temp_dir().join("minici_diff_head_test");
+        let _ = fs::remove_dir_all(&base_dir);
+        let _ = fs::remove_dir_all(&head_dir);
+        fs::create_dir_all(base_dir.join(".github/workflows")).unwrap();
+        fs::create_dir_all(head_dir.join(".github/workflows")).unwrap();
+
+        let base_yml = r#"
+name: Base CI
+on: [pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    est-minutes: 2.0
+    steps:
+      - uses: actions/checkout@v4
+"#;
+        fs::write(base_dir.join(".github/workflows/ci.yml"), base_yml).unwrap();
+        fs::write(head_dir.join(".github/workflows/ci.yml"), base_yml).unwrap();
+
+        let base_rep = analyze_path(&base_dir, None);
+        let same_rep = analyze_path(&head_dir, None);
+        let zero_diff = compute_diff(&base_rep, &same_rep);
+
+        assert_eq!(zero_diff.delta_expanded_jobs, 0);
+        assert_eq!(zero_diff.delta_billed_mins_per_run, 0.0);
+        assert_eq!(zero_diff.delta_monthly_compute_usd, 0.0);
+        assert!(zero_diff.job_changes.is_empty());
+
+        // Now spike the PR head to a 3-OS matrix
+        let spiked_yml = r#"
+name: Base CI
+on: [pull_request]
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    est-minutes: 2.0
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+"#;
+        fs::write(head_dir.join(".github/workflows/ci.yml"), spiked_yml).unwrap();
+        let spiked_rep = analyze_path(&head_dir, None);
+        let spike_diff = compute_diff(&base_rep, &spiked_rep);
+
+        assert_eq!(spike_diff.delta_expanded_jobs, 2); // 1 -> 3 jobs
+        assert!(spike_diff.delta_monthly_compute_usd > 0.0);
+        assert!(!spike_diff.job_changes.is_empty());
+
+        let _ = fs::remove_dir_all(&base_dir);
+        let _ = fs::remove_dir_all(&head_dir);
+    }
+
+    #[test]
+    fn test_git_ref_resolution_in_external_repo_path() {
+        let tmp_repo = std::env::temp_dir().join("minici_git_ref_repo_test");
+        let _ = fs::remove_dir_all(&tmp_repo);
+        fs::create_dir_all(tmp_repo.join(".github/workflows")).unwrap();
+        fs::write(
+            tmp_repo.join(".github/workflows/ci.yml"),
+            "name: CI\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    est-minutes: 2.0\n    steps:\n      - uses: actions/checkout@v4\n",
+        )
+        .unwrap();
+
+        // Initialize git repo and commit on `main`
+        let _ = Command::new("git").arg("-C").arg(&tmp_repo).args(["init", "-b", "main"]).output();
+        let _ = Command::new("git").arg("-C").arg(&tmp_repo).args(["config", "user.email", "test@example.com"]).output();
+        let _ = Command::new("git").arg("-C").arg(&tmp_repo).args(["config", "user.name", "Test"]).output();
+        let _ = Command::new("git").arg("-C").arg(&tmp_repo).args(["add", "."]).output();
+        let _ = Command::new("git").arg("-C").arg(&tmp_repo).args(["commit", "-m", "init"]).output();
+
+        // Compare `HEAD` against `tmp_repo` when standing in any working directory
+        let base = load_or_analyze_in_repo(Path::new("HEAD"), Some(&tmp_repo), None, false, true);
+        let head = load_or_analyze_in_repo(&tmp_repo, None, Some(base.usage.clone()), false, true);
+        let diff = compute_diff(&base, &head);
+
+        assert_eq!(diff.delta_expanded_jobs, 0);
+        assert_eq!(diff.delta_billed_mins_per_run, 0.0);
+        assert_eq!(diff.delta_monthly_compute_usd, 0.0);
+
+        let _ = fs::remove_dir_all(&tmp_repo);
+    }
+
+    #[test]
+    fn test_all_render_formats_and_customer_vs_owner_views() {
+        let tmp = std::env::temp_dir().join("minici_render_modes_test");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join(".github/workflows")).unwrap();
+        fs::write(
+            tmp.join(".github/workflows/ci.yml"),
+            "name: CI\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n",
+        )
+        .unwrap();
+
+        let rep = analyze_path(&tmp, None);
+
+        env::set_var("MINICI_CUSTOMER_MODE", "0");
+        let owner_out = render_cli_compact_summary(&rep);
+        assert!(owner_out.contains("OWNER / INTERNAL DEBUG VIEW"));
+        assert!(owner_out.contains("[MATH TRACE]"));
+
+        env::set_var("MINICI_CUSTOMER_MODE", "1");
+        let cust_out = render_cli_compact_summary(&rep);
+        assert!(cust_out.contains("CUSTOMER LAUNCH VIEW"));
+        assert!(!cust_out.contains("[MATH TRACE]"));
+        env::set_var("MINICI_CUSTOMER_MODE", "0");
+
+        let json_out = rep.to_json();
+        assert!(json_out.contains("\"detected_providers\": [\"github-actions\"]"));
+
+        let html_out = render_breakdown_html(&rep);
+        assert!(html_out.starts_with("<!DOCTYPE html>"));
+
+        let csv_out = render_breakdown_csv(&rep);
+        assert!(csv_out.contains("workflow_file,job_id"));
+
+        let md_out = render_breakdown_markdown(&rep);
+        assert!(md_out.contains("MiniCI"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_mcp_jsonrpc_handshake_and_tool_execution() {
+        let tmp = std::env::temp_dir().join("minici_mcp_test");
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join(".github/workflows")).unwrap();
+        fs::write(
+            tmp.join(".github/workflows/ci.yml"),
+            "name: CI\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    est-minutes: 2.0\n    steps:\n      - uses: actions/checkout@v4\n",
+        )
+        .unwrap();
+
+        // 1. initialize handshake
+        let init_resp = handle_mcp_jsonrpc_line(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+            &tmp,
+        )
+        .unwrap();
+        assert!(init_resp.contains("\"protocolVersion\":\"2024-11-05\""));
+        assert!(init_resp.contains("\"id\":1"));
+
+        // 2. tools/list
+        let list_resp = handle_mcp_jsonrpc_line(
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+            &tmp,
+        )
+        .unwrap();
+        assert!(list_resp.contains("\"name\":\"minici_breakdown\""));
+        assert!(list_resp.contains("\"name\":\"minici_diff\""));
+
+        // 3. tools/call -> minici_breakdown
+        let call_resp = handle_mcp_jsonrpc_line(
+            r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"minici_breakdown"}}"#,
+            &tmp,
+        )
+        .unwrap();
+        assert!(call_resp.contains("\"isError\":false"));
+        assert!(call_resp.contains("gross_monthly_compute_cost_usd"));
 
         let _ = fs::remove_dir_all(&tmp);
     }

@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run MiniCI Cost & Matrix Diff (Always Exits 0)
-        uses: aamir-raza-01/minici-cost-action@v1
+        uses: Aamir-raza-1/minici-cost-action@v1
         with:
           tier: auto
           prs-per-week: 25

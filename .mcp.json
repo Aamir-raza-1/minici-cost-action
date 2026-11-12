@@ -2,7 +2,7 @@
   "mcpServers": {
     "minici": {
       "command": "minici",
-      "args": ["breakdown", "--path", ".", "--format", "json"],
+      "args": ["mcp"],
       "description": "Sub-millisecond CI/CD Cost, Matrix & Quota Guardrail for Claude, Cursor, Antigravity & Windsurf"
     }
   }

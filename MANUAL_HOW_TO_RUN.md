@@ -52,7 +52,7 @@ If you log into a **brand-new MacBook, Linux VM, Docker container, or CI runner*
 
 ### Option 1: Install Globally with `cargo` (Works on Any Machine with Rust)
 ```bash
-cargo install --git https://github.com/aamir-raza-01/minici-cost-action.git
+cargo install --git https://github.com/Aamir-raza-1/minici-cost-action.git
 minici --version
 minici breakdown --repo https://github.com/psf/requests
 ```
@@ -60,7 +60,7 @@ minici breakdown --repo https://github.com/psf/requests
 ### Option 2: Clone & Build in 2 Seconds (Zero External Dependencies!)
 Because `crates/minici` uses **zero external crates (`std` only)**, it compiles in `~2 seconds` even on an air-gapped or fresh server without downloading anything from `crates.io`:
 ```bash
-git clone https://github.com/aamir-raza-01/minici-cost-action.git
+git clone https://github.com/Aamir-raza-1/minici-cost-action.git
 cd minici-cost-action
 cargo build --release --manifest-path crates/minici/Cargo.toml
 sudo cp crates/minici/target/release/minici /usr/local/bin/minici
@@ -72,7 +72,7 @@ minici breakdown --path .
 ### Option 3: Run in Any GitHub Repository with Zero Install (`GitHub Action`)
 Add 1 step to `.github/workflows/ci.yml`:
 ```yaml
-- uses: aamir-raza-01/minici-cost-action@v1
+- uses: Aamir-raza-1/minici-cost-action@v1
   with:
     tier: auto
     prs-per-week: 25
