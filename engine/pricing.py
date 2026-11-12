@@ -558,28 +558,53 @@ def resolve_sku_via_ollama(
 
 
 LEARNED_SKU_REGISTRY_PATH = PRICING_DIR / "learned_sku_registry.json"
+_LEARNED_SKU_CACHE: dict[str, dict[str, Any]] | None = None
 
 
-def load_learned_sku_registry() -> dict[str, dict[str, Any]]:
-    """Load the persistent learned SKU alias registry (`pricing/learned_sku_registry.json`)."""
+def load_learned_sku_registry(*, force_reload: bool = False) -> dict[str, dict[str, Any]]:
+    """Load the persistent learned SKU alias registry (`pricing/learned_sku_registry.json`) with in-memory caching."""
+    global _LEARNED_SKU_CACHE
+    if _LEARNED_SKU_CACHE is not None and not force_reload:
+        return _LEARNED_SKU_CACHE
     if not LEARNED_SKU_REGISTRY_PATH.exists():
-        return {}
+        _LEARNED_SKU_CACHE = {}
+        return _LEARNED_SKU_CACHE
     try:
-        return json.loads(LEARNED_SKU_REGISTRY_PATH.read_text(encoding="utf-8"))
+        _LEARNED_SKU_CACHE = json.loads(LEARNED_SKU_REGISTRY_PATH.read_text(encoding="utf-8"))
     except Exception:
-        return {}
+        _LEARNED_SKU_CACHE = {}
+    return _LEARNED_SKU_CACHE
 
 
 def save_learned_sku_entry(platform: str, raw_label: str, meta: dict[str, Any]) -> None:
     """Persist a newly discovered runner label mapping into `pricing/learned_sku_registry.json`."""
     reg = load_learned_sku_registry()
     plat_reg = reg.setdefault(platform, {})
-    if raw_label not in plat_reg:
+    if raw_label not in plat_reg or plat_reg[raw_label].get("resolved_sku") != meta.get("resolved_sku"):
         plat_reg[raw_label] = meta
-        LEARNED_SKU_REGISTRY_PATH.write_text(
-            json.dumps(reg, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        try:
+            LEARNED_SKU_REGISTRY_PATH.write_text(
+                json.dumps(reg, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            # Read-only filesystem or sandboxed environment: keep in-memory cache without crashing
+            pass
+
+
+def _normalized_rate_per_min(row: dict[str, Any]) -> float:
+    """Return a SKU row's effective per-minute USD rate for metadata display."""
+    if row.get("sku") == "self_hosted":
+        return float(row.get("effective_usd", 0.0))
+    raw_unit_rate = float(row.get("usd", 0.0))
+    sku_unit = str(row.get("unit", "minute")).lower()
+    if sku_unit == "hour":
+        return round(raw_unit_rate / 60.0, 10)
+    if sku_unit == "second":
+        return round(raw_unit_rate * 60.0, 10)
+    if sku_unit == "1000_compute_minutes":
+        return round(raw_unit_rate / 1000.0, 10)
+    return round(raw_unit_rate, 10)
 
 
 def resolve_sku_row(
@@ -604,7 +629,7 @@ def resolve_sku_row(
             "raw_label": raw_key,
             "resolved_sku": row.get("engine_key") or row["sku"],
             "resolution_mode": "exact_catalog",
-            "rate_usd_per_min": float(row["usd"]),
+            "rate_usd_per_min": _normalized_rate_per_min(row),
         }
 
     # Stage 1B: Check Persistent Learned Registry
@@ -624,21 +649,64 @@ def resolve_sku_row(
     if any(tok in low for tok in ("self-hosted", "self_hosted", "arc-runner", "k8s-runner", "actuated")):
         if "self_hosted" in smap:
             row = smap["self_hosted"]
-            return row, {
+            meta = {
                 "raw_label": raw_key,
                 "resolved_sku": row.get("engine_key") or row["sku"],
                 "resolution_mode": "heuristic_pattern",
                 "rate_usd_per_min": float(row.get("effective_usd", 0.0)),
                 "reason": "Matched self-hosted / Kubernetes ARC runner pattern",
             }
+            if persist_learned:
+                save_learned_sku_entry(platform, raw_key, meta)
+            return row, meta
+
+    # Detect OS, Arch, GPU
+    is_win = any(w in low for w in ("windows", "win-", "win_", "win10", "win11", "win20"))
+    is_mac = any(m in low for m in ("macos", "osx", "mac-"))
+    os_name = "windows" if is_win else ("macos" if is_mac else "linux")
+    is_arm = any(a in low for a in ("arm64", "aarch64", "_arm", "-arm", "m1", "m2", "graviton"))
+    arch = "arm64" if is_arm else "x64"
+    is_gpu = any(g in low for g in ("gpu", "t4", "a10", "l4", "cuda"))
+    has_xlarge = bool(re.search(r"(?:^|[-_])xlarge(?:$|[-_])", low))
+    has_2xlarge = bool(re.search(r"(?:^|[-_])2xlarge(?:$|[-_])", low))
+    has_large = bool(re.search(r"(?:^|[-_])large(?:$|[-_])", low))
+    has_medium = bool(re.search(r"(?:^|[-_])medium(?:$|[-_])", low))
+    has_small = bool(re.search(r"(?:^|[-_])small(?:$|[-_])", low))
+
+    # Strip canonical OS release versions BEFORE extracting bare `-(\d+)` core counts so that
+    # `windows-2022`, `windows-2025`, `windows-11-arm64`, `macos-14`, `macos-15`, and `ubuntu-24.04`
+    # never misparse OS version numbers as CPU core counts.
+    cleaned_for_cores = re.sub(
+        r"(?:^|(?<=[-_ ]))(?:"
+        r"ubuntu[-_ ]?(?:latest|(?:18|2\d)\.?\d{2})"
+        r"|windows[-_ ]?(?:latest|20\d{2}|1[01])"
+        r"|macos[-_ ]?(?:latest|1[1-9]|2\d)"
+        r")(?=$|[-_ ])",
+        lambda m: m.group(0).split("-")[0].split("_")[0].split(" ")[0],
+        low,
+    )
 
     # Extract core count from patterns like: `-8-core`, `-8core`, `-8vcpu`, `-x86_64-4`, `-16x`, `8cpu`
     core_match = (
-        re.search(r"(?:^|[-_=])(\d+)[-_ ]*(?:v?cpus?|cores?)(?:$|[-_])", low)
-        or re.search(r"(?:x86_64|arm64|aarch64|ubuntu-[0-9.]+|linux|windows|macos)-(\d+)(?:$|[-_])", low)
-        or re.search(r"-(\d+)x$", low)
+        re.search(r"(?:^|[-_=])(\d+)[-_ ]*(?:v?cpus?|cores?)(?:$|[-_])", cleaned_for_cores)
+        or re.search(r"-(\d+)x(?:$|[-_])", cleaned_for_cores)
+        or re.search(
+            r"(?:x86_64|x64|arm64|aarch64|ubuntu|linux|windows|macos)-(\d+)(?:$|[-_])",
+            cleaned_for_cores,
+        )
     )
-    cores = int(core_match.group(1)) if core_match else 2
+    if core_match:
+        cores = int(core_match.group(1))
+    elif is_mac and (has_xlarge or has_large):
+        cores = 12
+    elif has_2xlarge:
+        cores = 16
+    elif has_xlarge:
+        cores = 8
+    elif has_large:
+        cores = 4
+    else:
+        cores = 2
 
     # Stage 2B: Third-party microVM providers (blacksmith, warpbuild, buildjet, depot, namespace, runs-on)
     if platform == "github" and any(
@@ -648,97 +716,215 @@ def resolve_sku_row(
         target_key = f"blacksmith_{snapped}vcpu"
         if target_key in smap:
             row = smap[target_key]
-            return row, {
+            meta = {
                 "raw_label": raw_key,
                 "resolved_sku": target_key,
                 "resolution_mode": "heuristic_pattern",
-                "rate_usd_per_min": float(row["usd"]),
+                "rate_usd_per_min": _normalized_rate_per_min(row),
                 "reason": f"Matched 3rd-party microVM runner pattern ({snapped} vCPU)",
             }
+            if persist_learned:
+                save_learned_sku_entry(platform, raw_key, meta)
+            return row, meta
 
-    # Detect OS, Arch, GPU
-    is_win = any(w in low for w in ("windows", "win-", "win_"))
-    is_mac = any(m in low for m in ("macos", "osx", "mac-"))
-    os_name = "windows" if is_win else ("macos" if is_mac else "linux")
-    is_arm = any(a in low for a in ("arm64", "aarch64", "_arm", "-arm", "m1", "m2"))
-    arch = "arm64" if is_arm else "x64"
-    is_gpu = any(g in low for g in ("gpu", "t4", "a10", "l4", "cuda"))
+    has_known_heuristic_signal = bool(
+        core_match
+        or is_win
+        or is_mac
+        or is_arm
+        or is_gpu
+        or has_small
+        or has_medium
+        or has_large
+        or has_xlarge
+        or has_2xlarge
+        or any(
+            tok in low
+            for tok in (
+                "ubuntu",
+                "linux",
+                "slim",
+                "runner",
+                "docker",
+                "general1",
+                "arm1",
+                "lambda",
+                "e2-",
+                "n2d-",
+                "c3d-",
+                "t2d-",
+                "standard_",
+                "mdp_",
+            )
+        )
+    )
 
-    if platform == "github":
-        if is_gpu:
-            gk = "windows_gpu_t4_4core" if is_win else "linux_gpu_t4_4core"
-            row = smap[gk]
-        elif is_mac:
-            row = smap["macos_large_m2pro"] if cores >= 12 and is_arm else (smap["macos_12core_intel"] if cores >= 12 else smap["macos"])
-        elif is_win:
-            if cores <= 2:
-                row = smap["windows_arm64_2core"] if is_arm else smap["windows"]
+    if has_known_heuristic_signal:
+        row = None
+        if platform == "github":
+            if is_gpu:
+                gk = "windows_gpu_t4_4core" if is_win else "linux_gpu_t4_4core"
+                row = smap.get(gk)
+            elif is_mac:
+                if has_xlarge or (cores >= 12 and is_arm):
+                    row = smap.get("macos_large_m2pro")
+                elif has_large or cores >= 12:
+                    row = smap.get("macos_12core_intel")
+                else:
+                    row = smap.get("macos")
+            elif is_win:
+                if cores <= 2:
+                    row = smap.get("windows_arm64_2core") if is_arm else smap.get("windows")
+                else:
+                    snapped = min((4, 8, 16, 32, 64, 96), key=lambda c: abs(c - cores))
+                    wk = f"windows_{'arm64' if is_arm else 'x64'}_{snapped}core"
+                    row = smap.get(wk, smap.get("windows"))
             else:
-                snapped = min((4, 8, 16, 32, 64, 96), key=lambda c: abs(c - cores))
-                wk = f"windows_{'arm64' if is_arm else 'x64'}_{snapped}core"
-                row = smap.get(wk, smap["windows"])
-        else:
-            if "slim" in low or cores == 1:
-                row = smap["actions_linux_slim"]
-            elif cores <= 2 and not is_arm and "large" not in low:
-                row = smap["linux"]
-            elif cores <= 2 and is_arm:
-                row = smap["linux_arm64_2core"]
+                if "slim" in low or cores == 1:
+                    row = smap.get("actions_linux_slim")
+                elif cores <= 2 and not is_arm and not has_large and not has_xlarge:
+                    row = smap.get("linux")
+                elif cores <= 2 and is_arm:
+                    row = smap.get("linux_arm64_2core")
+                else:
+                    snapped = min((4, 8, 16, 32, 64, 96), key=lambda c: abs(c - cores))
+                    lk = f"linux_arm64_{snapped}core" if is_arm else f"linux_{snapped}"
+                    row = smap.get(lk) or smap.get(f"linux_x64_{snapped}core") or smap.get("linux")
+        elif platform == "gitlab":
+            if is_gpu:
+                row = smap.get("linux_gpu_standard")
+            elif is_mac:
+                row = smap.get("macos")
+            elif is_win:
+                row = smap.get("windows")
             else:
-                snapped = min((4, 8, 16, 32, 64, 96), key=lambda c: abs(c - cores))
-                lk = f"linux_arm64_{snapped}core" if is_arm else f"linux_{snapped}"
-                row = smap.get(lk) or smap.get(f"linux_x64_{snapped}core") or smap["linux"]
+                snapped = min((2, 4, 8, 16, 32, 64), key=lambda c: abs(c - cores))
+                row = smap.get(f"linux_{snapped}") or smap.get("linux")
+        elif platform == "circleci":
+            if is_gpu:
+                row = smap.get("gpu_nvidia_t4") or smap.get("linux")
+            elif is_mac:
+                row = smap.get("macos_m2pro_medium") if (has_xlarge or has_large) else smap.get("macos")
+            elif is_win:
+                row = smap.get("windows")
+            elif is_arm:
+                row = smap.get("linux_arm64_large") if cores >= 4 else smap.get("linux_arm64_medium")
+            else:
+                snapped = min((2, 4, 8, 16, 32), key=lambda c: abs(c - cores))
+                row = smap.get(f"linux_{snapped}") or smap.get("linux")
+        elif platform == "bitbucket":
+            snapped = min((2, 4, 8, 16, 32), key=lambda c: abs(c - cores))
+            row = smap.get(f"linux_{snapped}") or smap.get("linux")
+        elif platform == "aws":
+            if "lambda" in low:
+                row = smap.get("BUILD_LAMBDA_ARM_1GB") if is_arm else smap.get("BUILD_LAMBDA_X86_1GB")
+            elif is_win:
+                row = smap.get("WINDOWS_LARGE") if cores >= 8 else smap.get("windows")
+            elif is_arm:
+                row = smap.get("BUILD_ARM1_LARGE") if cores >= 8 else smap.get("BUILD_ARM1_SMALL")
+            else:
+                snapped = min((2, 4, 8, 16, 32, 64), key=lambda c: abs(c - cores))
+                row = smap.get(f"linux_{snapped}") or smap.get("linux")
+        elif platform == "gcp":
+            snapped = min((2, 4, 8, 16, 32, 64), key=lambda c: abs(c - cores))
+            row = smap.get(f"linux_{snapped}") or smap.get("linux")
+        elif platform == "azure":
+            if cores >= 4 or "d4" in low or "mdp" in low:
+                row = smap.get(f"linux_{min((4, 8, 16, 32), key=lambda c: abs(c - max(4, cores)))}") or smap.get("linux_4")
+            else:
+                row = smap.get("linux")
 
-        return row, {
-            "raw_label": raw_key,
-            "resolved_sku": row.get("engine_key") or row["sku"],
-            "resolution_mode": "heuristic_pattern",
-            "rate_usd_per_min": float(row["usd"]),
-            "reason": f"Parsed os={os_name}, arch={arch}, cores={cores}, gpu={is_gpu}",
-        }
+        if row is not None:
+            meta = {
+                "raw_label": raw_key,
+                "resolved_sku": row.get("engine_key") or row["sku"],
+                "resolution_mode": "heuristic_pattern",
+                "rate_usd_per_min": _normalized_rate_per_min(row),
+                "reason": f"Parsed os={os_name}, arch={arch}, cores={cores}, gpu={is_gpu}",
+            }
+            if persist_learned:
+                save_learned_sku_entry(platform, raw_key, meta)
+            return row, meta
 
     # Stage 3: Optional Local Ollama AI Fallback
     if use_ai_fallback:
         ai_res = resolve_sku_via_ollama(raw_key, platform=platform)
         if ai_res is not None:
             row = ai_res["row"]
-            return row, {
+            meta = {
                 "raw_label": raw_key,
                 "resolved_sku": row.get("engine_key") or row["sku"],
                 "resolution_mode": "ai_ollama_fallback",
-                "rate_usd_per_min": float(row["usd"]),
+                "rate_usd_per_min": _normalized_rate_per_min(row),
                 "reason": ai_res["reason"],
             }
+            if persist_learned:
+                save_learned_sku_entry(platform, raw_key, meta)
+            return row, meta
 
-    # Final safe fallback to default SKU on platform
-    first_row = next(iter(smap.values()))
-    return first_row, {
+    # Stage 4: Final safe fallback to default compute SKU (`linux`) on platform (never a seat/plan SKU!)
+    default_row = (
+        smap.get("linux")
+        or next(
+            (r for r in smap.values() if str(r.get("unit", "")).lower() in ("minute", "action_minute", "second", "hour")),
+            next(iter(smap.values())),
+        )
+    )
+    return default_row, {
         "raw_label": raw_key,
-        "resolved_sku": first_row.get("engine_key") or first_row["sku"],
+        "resolved_sku": default_row.get("engine_key") or default_row["sku"],
         "resolution_mode": "default_fallback",
-        "rate_usd_per_min": float(first_row["usd"]),
-        "reason": f"Fallback to default SKU for platform={platform}",
+        "rate_usd_per_min": _normalized_rate_per_min(default_row),
+        "reason": f"Fallback to default compute SKU for platform={platform}",
     }
 
 
-def _extract_sku_minutes(val) -> float:
+def _effective_sku_rounding(platform: str, row: dict[str, Any], rules: dict[str, Any] | None = None) -> str:
+    """Determine the canonical rounding rule for a resolved SKU on a given platform."""
+    sku_rounding = str(row.get("rounding") or (rules or {}).get("job_rounding") or "")
+    if platform in ("gitlab", "circleci", "gcp") or sku_rounding == "exact_seconds":
+        return "exact_seconds"
+    if platform == "bitbucket" or sku_rounding == "ceil_minute_per_step":
+        return "ceil_minute_per_step"
+    return "ceil_minute_per_job"
+
+
+def _extract_sku_minutes(val, *, rounding: str = "ceil_minute_per_job") -> float:
     """Extract monthly billed minutes from a value (number, job list, or audit/job dict)."""
     if val is None:
         return 0.0
     if isinstance(val, (int, float)):
-        return float(val)
+        return max(0.0, float(val))
     if isinstance(val, (list, tuple)):
-        return float(billed_minutes_for_jobs(val, unit="minutes"))
+        return float(billed_minutes_for_jobs(val, unit="minutes", rounding=rounding))
     if isinstance(val, dict):
         if "billed" in val:
-            return float(val["billed"])
+            return max(0.0, float(val["billed"]))
         if "job_durations_s" in val:
-            return float(billed_minutes_for_jobs(val["job_durations_s"], unit="seconds"))
+            return float(billed_minutes_for_jobs(val["job_durations_s"], unit="seconds", rounding=rounding))
         if "job_durations_min" in val:
-            return float(billed_minutes_for_jobs(val["job_durations_min"], unit="minutes"))
-        if "jobs" in val and ("duration_s" in val or "duration_min" in val):
-            return float(billed_minutes_for_jobs([val]))
+            return float(billed_minutes_for_jobs(val["job_durations_min"], unit="minutes", rounding=rounding))
+        if ("jobs" in val or "count" in val or "shards" in val) and (
+            "duration_s" in val or "duration_seconds" in val or "seconds" in val or "duration_min" in val or "minutes" in val
+        ):
+            return float(billed_minutes_for_jobs([val], rounding=rounding))
     raise ValueError(f"cannot extract billed minutes from {val!r}")
+
+
+NON_COMPUTE_SKU_UNITS = frozenset(
+    {
+        "gb_month",
+        "gb_hour",
+        "10gb_year",
+        "100gb_year",
+        "100gb_month",
+        "user_month",
+        "pipeline_month",
+        "25000_credits",
+        "gb",
+        "job",
+    }
+)
 
 
 def calculate_monthly_cost(
@@ -748,8 +934,12 @@ def calculate_monthly_cost(
     plan: str = "team",
     seats: int = 0,
     public_repo: bool = False,
+    public_larger_runners_free: bool = True,
     storage_gb: float = 0.0,
     cache_gb: float = 0.0,
+    egress_gb: float = 0.0,
+    dlc_enabled: bool = False,
+    dlc_job_runs: int | None = None,
     sku_order: Sequence[str] | None = None,
     allowance_mode: str = "ordered",
     include_self_hosted_announced: bool = False,
@@ -762,15 +952,16 @@ def calculate_monthly_cost(
     jobs: Sequence[dict] | None = None,
     workflows: Sequence[dict] | None = None,
 ) -> dict:
-    """Exact monthly CI cost calculator across seats, runner SKUs, allowance, storage, and cache.
+    """Exact monthly CI cost calculator across seats, runner SKUs, allowance, storage, cache, egress, and DLC.
 
     Formula:
-      cost = seats * seat_rate
+      cost = seats_usd
            + sum_sku(max(0, billed_min_sku - allowance_covered_min_sku) * rate_sku)
-           + storage_over_included + cache_over_included
+           + storage_over_included + cache_over_included + egress_usd + dlc_usd
     """
     data = load_platform_pricing(platform)
     plans_dict = data["plans"]
+    rules_dict = data.get("rules", {})
     plan_aliases = {
         "free_tier": "free",
         "default_pool": "free",
@@ -785,21 +976,29 @@ def calculate_monthly_cost(
     plan_info = plans_dict[plan]
     sku_map = get_sku_map(data)
 
+    # Clamp negative storage / cache / egress inputs to 0.0
+    storage_gb = max(0.0, float(storage_gb))
+    cache_gb = max(0.0, float(cache_gb))
+    egress_gb = max(0.0, float(egress_gb))
+
     # 1. Aggregate per-SKU billed minutes (preserving caller / sku_order)
     aggregated: dict[str, float] = {}
     order_list: list[str] = []
     per_workflow_breakdown: dict[str, dict[str, Any]] = {}
     sku_resolutions: dict[str, dict[str, Any]] = {}
+    inferred_job_executions = 0
     t_start_ns = time.perf_counter_ns()
+
+    def _resolve_and_get_rounding(raw_key: str) -> tuple[dict[str, Any], dict[str, Any], str]:
+        canonical_row, res_meta = resolve_sku_row(raw_key, platform=platform, sku_map=sku_map)
+        sku_resolutions[raw_key] = res_meta
+        eff_rounding = _effective_sku_rounding(platform, canonical_row, rules_dict)
+        return canonical_row, res_meta, eff_rounding
 
     def _add_sku_min(raw_key: str, mins: float) -> str:
         if raw_key in ("billed_total", "raw", "raw_total"):
             return raw_key
-        canonical_row, res_meta = resolve_sku_row(raw_key, platform=platform, sku_map=sku_map)
-        if res_meta.get("resolution_mode") in ("heuristic_pattern", "ai_ollama_fallback"):
-            save_learned_sku_entry(platform, raw_key, res_meta)
-        sku_resolutions[raw_key] = res_meta
-        # Keep engine_key as primary key for standard/larger runners if present, else row['sku']
+        canonical_row, _res_meta, _eff_rounding = _resolve_and_get_rounding(raw_key)
         canon_key = canonical_row.get("engine_key") or canonical_row["sku"]
         if canon_key not in sku_map:
             sku_map[canon_key] = canonical_row
@@ -809,33 +1008,84 @@ def calculate_monthly_cost(
         return canon_key
 
     for k, v in (minutes_by_sku or {}).items():
-        _add_sku_min(k, _extract_sku_minutes(v))
+        if k in ("billed_total", "raw", "raw_total"):
+            continue
+        _row, _meta, eff_rounding = _resolve_and_get_rounding(k)
+        _add_sku_min(k, _extract_sku_minutes(v, rounding=eff_rounding))
 
     for job in (jobs or ()):
-        sku_k = job.get("sku") or job.get("os") or "linux"
-        _add_sku_min(sku_k, float(billed_minutes_for_jobs([job])))
+        if str(job.get("conclusion", "success")).lower() == "skipped":
+            continue
+        sku_k = (
+            job.get("sku")
+            or job.get("os")
+            or job.get("runs_on")
+            or (job.get("labels", ["linux"])[0] if isinstance(job.get("labels"), (list, tuple)) and job.get("labels") else job.get("labels"))
+            or "linux"
+        )
+        _row, _meta, eff_rounding = _resolve_and_get_rounding(str(sku_k))
+        j_mins = float(billed_minutes_for_jobs([job], rounding=eff_rounding))
+        if j_mins > 0:
+            inferred_job_executions += max(0, int(job.get("shards", job.get("count", job.get("jobs", 1)))))
+        _add_sku_min(str(sku_k), j_mins)
 
     for wf in (workflows or ()):
         wf_name = str(wf.get("workflow_name") or wf.get("name") or "Workflow")
-        monthly_runs = float(wf.get("monthly_runs", 0.0))
-        skipped_runs = float(wf.get("monthly_skipped_runs", 0.0))
+        raw_monthly = wf.get("monthly_runs", wf.get("daily_runs", 0.0) * 30.0)
+        monthly_runs = max(0.0, float(raw_monthly))
+        if "monthly_skipped_runs" in wf:
+            raw_skipped = float(wf.get("monthly_skipped_runs", 0.0))
+        else:
+            raw_skipped = float(wf.get("skipped_runs_pct", 0.0)) * monthly_runs
+        skipped_runs = min(monthly_runs, max(0.0, raw_skipped))
         active_runs = max(0.0, monthly_runs - skipped_runs)
         wf_billed_per_run = 0.0
         wf_sku_mins: dict[str, float] = {}
+        wf_shard_tax_per_run = 0.0
+        active_job_wall_mins: list[float] = []
+
         for j in wf.get("jobs", ()):
             if str(j.get("conclusion", "success")).lower() == "skipped":
                 continue
-            sku_k = j.get("sku") or j.get("runs_on") or (j.get("labels", ["linux"])[0] if j.get("labels") else "linux")
-            j_ceil_min = float(billed_minutes_for_jobs([j]))
+            dur_s = float(
+                j.get(
+                    "duration_s",
+                    j.get("duration_seconds", j.get("seconds", float(j.get("duration_min", j.get("minutes", 0.0))) * 60.0)),
+                )
+            )
+            if dur_s <= 1.0 and bool(j.get("is_gatekeeper_skip", False)):
+                continue
+            raw_labels = j.get("labels")
+            first_label = raw_labels[0] if isinstance(raw_labels, (list, tuple)) and raw_labels else (raw_labels if isinstance(raw_labels, str) else None)
+            sku_k = str(j.get("sku") or j.get("runs_on") or first_label or "linux")
+            _row, _meta, eff_rounding = _resolve_and_get_rounding(sku_k)
+            j_ceil_min = float(billed_minutes_for_jobs([j], rounding=eff_rounding))
+            if j_ceil_min <= 0.0 and dur_s <= 0.0:
+                continue
+            shards = max(0, int(j.get("shards", j.get("count", j.get("jobs", 1)))))
+            if shards <= 0:
+                continue
+            setup_min = max(0.0, float(j.get("setup_min_per_shard", 0.0)))
+            if shards > 1 and setup_min > 0.0:
+                wf_shard_tax_per_run += (shards - 1) * setup_min
+            active_job_wall_mins.append(max(0.0, dur_s / 60.0))
+            inferred_job_executions += int(round(active_runs * shards))
             wf_billed_per_run += j_ceil_min
             m_mins = active_runs * j_ceil_min
             canon_k = _add_sku_min(sku_k, m_mins)
             wf_sku_mins[canon_k] = wf_sku_mins.get(canon_k, 0.0) + m_mins
+
+        wf_crit_wall = max(0.0, float(wf.get("critical_path_wall_min", 0.0)))
+        if wf_crit_wall <= 0.0 and active_job_wall_mins:
+            wf_crit_wall = max(active_job_wall_mins)
+
         per_workflow_breakdown[wf_name] = {
             "monthly_triggered_runs": monthly_runs,
             "monthly_active_runs": active_runs,
             "monthly_skipped_runs": skipped_runs,
             "billed_minutes_per_active_run": wf_billed_per_run,
+            "critical_path_wall_min": round(wf_crit_wall, 4),
+            "shard_setup_duplication_min_per_run": round(wf_shard_tax_per_run, 4),
             "monthly_billed_minutes": active_runs * wf_billed_per_run,
             "minutes_by_sku": wf_sku_mins,
         }
@@ -852,12 +1102,13 @@ def calculate_monthly_cost(
                 explicit_order.append(ck)
         order_list = explicit_order
 
-    # 2. Seats cost (Azure Basic plan includes first 5 seats free)
+    # 2. Seats cost (Azure Basic plan includes first 5 seats free; CircleCI Performance includes $15 base for 5 users)
     seat_rate_usd = float(plan_info.get("seat_usd_per_month", 0.0))
     included_seats = int(plan_info.get("included_seats", 5 if platform == "azure" else 0))
-    billable_seats = max(0, int(seats) - included_seats)
+    clamped_seats = max(0, int(seats))
+    billable_seats = max(0, clamped_seats - included_seats)
     seats_usd = billable_seats * seat_rate_usd
-    list_seats_usd = max(0, int(seats)) * seat_rate_usd
+    list_seats_usd = clamped_seats * seat_rate_usd
 
     # 3. Allowance pool and per-SKU compute cost
     included_allowance = float(
@@ -882,19 +1133,26 @@ def calculate_monthly_cost(
     total_overage_compute_units = 0.0
     private_compute_usd = 0.0
     list_price_compute_usd = 0.0
+    public_billed_compute_usd = 0.0
+    self_hosted_billed_minutes = 0.0
 
-    # Pre-compute total allowance-eligible minutes for 'blended' mode
-    total_eligible_blended = 0.0
+    def _sku_multiplier(row: dict[str, Any]) -> float:
+        if platform == "gitlab":
+            return float(row.get("cost_factor") or plan_info.get("allowance_os_multipliers", {}).get(row["os"], 1))
+        return float(row.get("allowance_multiplier") or plan_info.get("allowance_os_multipliers", {}).get(row["os"], 1))
+
+    # Pre-compute total allowance-eligible pool units (weighted by multiplier) for 'blended' mode
+    total_eligible_blended_pool = 0.0
     if allowance_mode == "blended":
         for ck in order_list:
             row = sku_map[ck]
             uses_allow = (ck in allowance_override_set) if allowance_override_set is not None else bool(row.get("uses_allowance", False))
             if uses_allow:
-                total_eligible_blended += aggregated.get(ck, 0.0)
+                total_eligible_blended_pool += aggregated.get(ck, 0.0) * _sku_multiplier(row)
 
     for ck in order_list:
         row = sku_map[ck]
-        billed_min = aggregated.get(ck, 0.0)
+        billed_min = max(0.0, float(aggregated.get(ck, 0.0)))
         cores = int(row.get("cores", 0))
         core_min = billed_min * cores
         total_billed_minutes += billed_min
@@ -902,26 +1160,27 @@ def calculate_monthly_cost(
 
         is_self_hosted = row["sku"] == "self_hosted"
         if is_self_hosted:
+            self_hosted_billed_minutes += billed_min
+        sku_unit = str(row.get("unit", "minute")).lower()
+        is_parallel_slot = sku_unit == "parallel_slot_month"
+
+        if is_self_hosted:
             rate_usd = float(row["usd"]) if include_self_hosted_announced else float(row.get("effective_usd", 0.0))
         elif ck in overrides:
             rate_usd = float(overrides[ck])
+            is_parallel_slot = False
         elif row["sku"] in overrides:
             rate_usd = float(overrides[row["sku"]])
+            is_parallel_slot = False
         else:
-            raw_unit_rate = float(row["usd"])
-            sku_unit = str(row.get("unit", "minute")).lower()
-            if sku_unit == "hour":
-                rate_usd = round(raw_unit_rate / 60.0, 10)
-            elif sku_unit == "second":
-                rate_usd = round(raw_unit_rate * 60.0, 10)
-            else:
-                rate_usd = round(raw_unit_rate, 10)
+            if sku_unit in NON_COMPUTE_SKU_UNITS:
+                raise ValueError(
+                    f"SKU {row['sku']!r} has non-compute unit={sku_unit!r} and cannot be billed as runner compute minutes"
+                )
+            rate_usd = _normalized_rate_per_min(row)
 
         uses_allow = (ck in allowance_override_set) if allowance_override_set is not None else bool(row.get("uses_allowance", False))
-        if platform == "gitlab":
-            multiplier = float(row.get("cost_factor") or plan_info.get("allowance_os_multipliers", {}).get(row["os"], 1))
-        else:
-            multiplier = float(row.get("allowance_multiplier") or plan_info.get("allowance_os_multipliers", {}).get(row["os"], 1))
+        multiplier = _sku_multiplier(row)
 
         if allowance_mode == "ordered":
             if uses_allow and allowance_remaining > 0.0 and billed_min > 0.0:
@@ -935,12 +1194,13 @@ def calculate_monthly_cost(
                 covered_min = 0.0
                 overage_min = billed_min
         elif allowance_mode == "blended":
-            if uses_allow and total_eligible_blended > 0.0 and billed_min > 0.0:
-                share = billed_min / total_eligible_blended
-                covered_min = min(billed_min, included_allowance * share)
-                pool_used = covered_min
+            if uses_allow and total_eligible_blended_pool > 0.0 and billed_min > 0.0:
+                pool_needed = billed_min * multiplier
+                share = pool_needed / total_eligible_blended_pool
+                pool_used = min(pool_needed, included_allowance * share)
+                covered_min = pool_used / multiplier
                 overage_min = max(0.0, billed_min - covered_min)
-                allowance_remaining = max(0.0, included_allowance - min(included_allowance, total_eligible_blended))
+                allowance_remaining = max(0.0, included_allowance - min(included_allowance, total_eligible_blended_pool))
             else:
                 pool_used = 0.0
                 covered_min = 0.0
@@ -948,9 +1208,22 @@ def calculate_monthly_cost(
         else:
             raise ValueError(f"unknown allowance_mode {allowance_mode!r} (expected 'ordered' or 'blended')")
 
-        sku_private_usd = overage_min * rate_usd
-        sku_list_usd = billed_min * rate_usd
-        sku_billed_usd = 0.0 if public_repo else sku_private_usd
+        if is_parallel_slot:
+            slot_price_usd = float(row["usd"])
+            slots_needed = 0 if overage_min <= 0.0 else max(1, math.ceil(billed_min / 7200.0))
+            list_slots = 0 if billed_min <= 0.0 else max(1, math.ceil(billed_min / 7200.0))
+            sku_private_usd = slots_needed * slot_price_usd
+            sku_list_usd = list_slots * slot_price_usd
+            rate_usd = round(slot_price_usd / 7200.0, 10)
+        else:
+            sku_private_usd = overage_min * rate_usd
+            sku_list_usd = billed_min * rate_usd
+
+        is_free_on_public_repo = bool(public_repo) and (
+            public_larger_runners_free
+            or (ck in STANDARD_OS_ORDER and bool(row.get("uses_allowance", False)))
+        )
+        sku_billed_usd = 0.0 if is_free_on_public_repo else sku_private_usd
 
         total_allowance_pool_consumed += pool_used
         total_allowance_covered_minutes += covered_min
@@ -959,6 +1232,7 @@ def calculate_monthly_cost(
             total_overage_compute_units += overage_min * multiplier
         private_compute_usd += sku_private_usd
         list_price_compute_usd += sku_list_usd
+        public_billed_compute_usd += sku_billed_usd
 
         sku_breakdown[ck] = {
             "sku": row["sku"],
@@ -989,14 +1263,27 @@ def calculate_monthly_cost(
         packs_needed = math.ceil(total_overage_compute_units / pack_qty)
         non_allow_usd = sum(v["private_usd"] for v in sku_breakdown.values() if not v["uses_allowance"])
         private_compute_usd = packs_needed * pack_usd + non_allow_usd
+        allowance_value_usd = (total_allowance_pool_consumed / pack_qty) * pack_usd
+        list_price_compute_usd = max(list_price_compute_usd, private_compute_usd + allowance_value_usd)
+        if not public_repo:
+            public_billed_compute_usd = private_compute_usd
 
-    sh_infra_usd = float(self_hosted_usd_per_month) if self_hosted_usd_per_month is not None else 0.0
+    sh_infra_usd = max(0.0, float(self_hosted_usd_per_month)) if self_hosted_usd_per_month is not None else 0.0
     private_compute_usd += sh_infra_usd
-    compute_usd = 0.0 if public_repo else private_compute_usd
+    list_price_compute_usd += sh_infra_usd
+    if public_repo:
+        compute_usd = (0.0 if public_larger_runners_free else public_billed_compute_usd) + sh_infra_usd
+    else:
+        compute_usd = private_compute_usd
 
-    # 4. Storage and Cache overages
+    # 4. Storage, Cache, Egress, and Docker Layer Caching (DLC) across all 7 providers
     included_storage_gb = float(plan_info.get("included_storage_gb", 0.0))
-    storage_over_gb = max(0.0, float(storage_gb) - included_storage_gb)
+    storage_over_gb = max(0.0, storage_gb - included_storage_gb)
+    included_cache_gb = float(plan_info.get("included_cache_gb_per_repo", rules_dict.get("included_cache_gb_per_repo", 0.0)))
+    cache_over_gb = max(0.0, cache_gb - included_cache_gb)
+    egress_overage_usd = 0.0
+    dlc_overage_usd = 0.0
+
     if platform == "github":
         storage_row = sku_map.get("actions_storage_gb_hour")
         gb_hour_rate = float(storage_row["usd"]) if storage_row else 0.0
@@ -1004,6 +1291,9 @@ def calculate_monthly_cost(
         storage_overage_monthly_list_usd = storage_over_gb * float(
             storage_row.get("usd_per_gb_month", gb_hour_rate * HOURS_PER_MONTH) if storage_row else 0.0
         )
+        cache_row = sku_map.get("actions_cache_gb_hour")
+        cache_gb_hour_rate = float(cache_row["usd"]) if cache_row else 0.0
+        cache_overage_usd = cache_over_gb * float(storage_hours_per_month) * cache_gb_hour_rate
     elif platform == "gitlab":
         storage_row = sku_map.get("storage_10gb_year")
         gb_month_rate = float(storage_row.get("usd_per_gb_month", 0.5)) if storage_row else 0.5
@@ -1013,30 +1303,85 @@ def calculate_monthly_cost(
             storage_overage_usd = math.ceil(storage_over_gb / pack_gb) * pack_month_usd
         else:
             storage_overage_usd = storage_over_gb * gb_month_rate
-        storage_overage_monthly_list_usd = storage_over_gb * gb_month_rate
+        storage_overage_monthly_list_usd = storage_overage_usd
+        cache_overage_usd = 0.0
+        if egress_gb > 0.0:
+            egress_overage_usd = (math.ceil(egress_gb / 100.0) * 10.0) if gitlab_pack_rounding else (egress_gb * 0.10)
+    elif platform == "circleci":
+        storage_row = sku_map.get("storage_gb_month")
+        storage_rate = float(storage_row["usd"]) if storage_row else 0.252
+        storage_overage_usd = storage_over_gb * storage_rate
+        storage_overage_monthly_list_usd = storage_overage_usd
+        cache_overage_usd = cache_over_gb * storage_rate
+        net_row = sku_map.get("network_egress_gb")
+        net_rate = float(net_row["usd"]) if net_row else 0.252
+        egress_overage_usd = egress_gb * net_rate
+        if dlc_enabled:
+            dlc_row = sku_map.get("docker_layer_caching")
+            dlc_rate = float(dlc_row["usd"]) if dlc_row else 0.12
+            eff_runs = dlc_job_runs if dlc_job_runs is not None else inferred_job_executions
+            dlc_overage_usd = max(0, int(eff_runs)) * dlc_rate
+    elif platform == "bitbucket":
+        storage_row = sku_map.get("lfs_storage_100gb_month")
+        pack_usd = float(storage_row["usd"]) if storage_row else 10.0
+        storage_overage_usd = (math.ceil(storage_over_gb / 100.0) * pack_usd) if storage_over_gb > 0.0 else 0.0
+        storage_overage_monthly_list_usd = storage_overage_usd
+        cache_overage_usd = 0.0
+    elif platform == "aws":
+        s3_row = sku_map.get("S3_Artifact_Cache_GB")
+        s3_rate = float(s3_row["usd"]) if s3_row else 0.023
+        storage_overage_usd = storage_over_gb * s3_rate
+        storage_overage_monthly_list_usd = storage_overage_usd
+        cache_overage_usd = cache_over_gb * s3_rate
+        nat_row = sku_map.get("NAT_Gateway_Data_Processed_GB")
+        nat_rate = float(nat_row["usd"]) if nat_row else 0.045
+        egress_overage_usd = egress_gb * nat_rate
+    elif platform == "gcp":
+        ar_row = sku_map.get("artifact_registry_gb")
+        ar_rate = float(ar_row["usd"]) if ar_row else 0.10
+        storage_overage_usd = storage_over_gb * ar_rate
+        storage_overage_monthly_list_usd = storage_overage_usd
+        gcs_row = sku_map.get("gcs_cache_gb")
+        gcs_rate = float(gcs_row["usd"]) if gcs_row else 0.020
+        cache_overage_usd = cache_over_gb * gcs_rate
+        egress_overage_usd = egress_gb * 0.045
+    elif platform == "azure":
+        art_row = sku_map.get("azure_artifacts_gib")
+        art_rate = float(art_row["usd"]) if art_row else 2.0
+        art_free = float(art_row.get("included_qty", 2.0)) if art_row else 2.0
+        eff_free = max(included_storage_gb, art_free)
+        storage_over_gb = max(0.0, storage_gb - eff_free)
+        storage_overage_usd = storage_over_gb * art_rate
+        storage_overage_monthly_list_usd = storage_overage_usd
+        cache_overage_usd = 0.0
     else:
         storage_overage_usd = 0.0
         storage_overage_monthly_list_usd = 0.0
-
-    included_cache_gb = float(plan_info.get("included_cache_gb_per_repo", data.get("rules", {}).get("included_cache_gb_per_repo", 0.0)))
-    cache_over_gb = max(0.0, float(cache_gb) - included_cache_gb)
-    if platform == "github":
-        cache_row = sku_map.get("actions_cache_gb_hour")
-        cache_gb_hour_rate = float(cache_row["usd"]) if cache_row else 0.0
-        cache_overage_usd = cache_over_gb * float(storage_hours_per_month) * cache_gb_hour_rate
-    else:
         cache_overage_usd = 0.0
 
-    total_usd = seats_usd + compute_usd + storage_overage_usd + cache_overage_usd
-    list_price_total_usd = list_seats_usd + list_price_compute_usd + storage_overage_usd + cache_overage_usd
+    hidden_tax_usd = storage_overage_usd + cache_overage_usd + egress_overage_usd + dlc_overage_usd
+    total_usd = seats_usd + compute_usd + hidden_tax_usd
+    list_price_total_usd = list_seats_usd + list_price_compute_usd + hidden_tax_usd
     within_allowance = (not public_repo) and (private_compute_usd == 0.0) and (total_billed_minutes > 0.0)
+
+    unpriced_self_hosted_warning = None
+    self_hosted_cloud_equivalent_usd = 0.0
+    if self_hosted_billed_minutes > 0.0 and self_hosted_usd_per_month is None and not include_self_hosted_announced:
+        std_linux_rate = float(sku_map["linux"]["usd"]) if "linux" in sku_map and str(sku_map["linux"].get("unit", "minute")) == "minute" else 0.006
+        self_hosted_cloud_equivalent_usd = round(self_hosted_billed_minutes * std_linux_rate, 2)
+        unpriced_self_hosted_warning = (
+            f"{self_hosted_billed_minutes:,.1f} self-hosted runner minutes detected with $0.00 metered software fee; "
+            f"pass self_hosted_usd_per_month or run_infracost_breakdown() for underlying cloud VM cost "
+            f"(standard cloud equivalent: ${self_hosted_cloud_equivalent_usd:,.2f}/mo)."
+        )
 
     return {
         "platform": platform,
         "plan": plan,
         "public_repo": bool(public_repo),
+        "public_larger_runners_free": bool(public_larger_runners_free),
         "allowance_mode": allowance_mode,
-        "seats": max(0, int(seats)),
+        "seats": clamped_seats,
         "seat_rate_usd": seat_rate_usd,
         "seats_usd": seats_usd,
         "included_allowance": included_allowance,
@@ -1051,16 +1396,24 @@ def calculate_monthly_cost(
         "compute_usd": compute_usd,
         "private_plan_compute_usd": private_compute_usd,
         "list_price_compute_usd": list_price_compute_usd,
-        "storage_gb": float(storage_gb),
+        "storage_gb": storage_gb,
         "included_storage_gb": included_storage_gb,
         "storage_over_gb": storage_over_gb,
         "storage_overage_usd": storage_overage_usd,
         "storage_overage_monthly_list_usd": storage_overage_monthly_list_usd,
-        "cache_gb": float(cache_gb),
+        "cache_gb": cache_gb,
         "included_cache_gb": included_cache_gb,
         "cache_over_gb": cache_over_gb,
         "cache_overage_usd": cache_overage_usd,
+        "egress_gb": egress_gb,
+        "egress_overage_usd": egress_overage_usd,
+        "dlc_enabled": bool(dlc_enabled),
+        "dlc_overage_usd": dlc_overage_usd,
+        "hidden_tax_usd": hidden_tax_usd,
         "self_hosted_usd": sh_infra_usd,
+        "self_hosted_billed_minutes": self_hosted_billed_minutes,
+        "self_hosted_cloud_equivalent_usd": self_hosted_cloud_equivalent_usd,
+        "unpriced_self_hosted_warning": unpriced_self_hosted_warning,
         "gross_consumed_usd": list_price_total_usd,
         "discount_allowance_usd": max(0.0, list_price_total_usd - total_usd),
         "net_billable_usd": total_usd,
@@ -1077,17 +1430,22 @@ def calculate_monthly_cost(
 
 
 def calculate_savings(
-    current_minutes_by_sku: dict[str, float | int | dict | list],
-    selected_minutes_by_sku: dict[str, float | int | dict | list],
+    current_minutes_by_sku: dict[str, float | int | dict | list] | None = None,
+    selected_minutes_by_sku: dict[str, float | int | dict | list] | None = None,
     *,
     platform: str = "github",
     plan: str = "team",
     seats: int = 0,
     public_repo: bool = False,
+    public_larger_runners_free: bool = True,
     storage_gb: float = 0.0,
     selected_storage_gb: float | None = None,
     cache_gb: float = 0.0,
     selected_cache_gb: float | None = None,
+    egress_gb: float = 0.0,
+    selected_egress_gb: float | None = None,
+    dlc_enabled: bool = False,
+    selected_dlc_enabled: bool | None = None,
     sku_order: Sequence[str] | None = None,
     allowance_mode: str = "ordered",
     include_self_hosted_announced: bool = False,
@@ -1097,6 +1455,10 @@ def calculate_savings(
     rate_overrides: dict[str, float] | None = None,
     included_minutes_override: float | None = None,
     allowance_skus_override: Iterable[str] | None = None,
+    current_jobs: Sequence[dict] | None = None,
+    selected_jobs: Sequence[dict] | None = None,
+    current_workflows: Sequence[dict] | None = None,
+    selected_workflows: Sequence[dict] | None = None,
     runs_per_month: float = 0.0,
     current_wall_min_per_run: float | None = None,
     selected_wall_min_per_run: float | None = None,
@@ -1111,6 +1473,7 @@ def calculate_savings(
         plan=plan,
         seats=seats,
         public_repo=public_repo,
+        public_larger_runners_free=public_larger_runners_free,
         sku_order=sku_order,
         allowance_mode=allowance_mode,
         include_self_hosted_announced=include_self_hosted_announced,
@@ -1125,18 +1488,29 @@ def calculate_savings(
         current_minutes_by_sku,
         storage_gb=storage_gb,
         cache_gb=cache_gb,
+        egress_gb=egress_gb,
+        dlc_enabled=dlc_enabled,
+        jobs=current_jobs,
+        workflows=current_workflows,
         **common_kw,
     )
     selected = calculate_monthly_cost(
         selected_minutes_by_sku,
         storage_gb=storage_gb if selected_storage_gb is None else selected_storage_gb,
         cache_gb=cache_gb if selected_cache_gb is None else selected_cache_gb,
+        egress_gb=egress_gb if selected_egress_gb is None else selected_egress_gb,
+        dlc_enabled=dlc_enabled if selected_dlc_enabled is None else selected_dlc_enabled,
+        jobs=selected_jobs,
+        workflows=selected_workflows,
         **common_kw,
     )
 
     saved_compute_usd = current["compute_usd"] - selected["compute_usd"]
     saved_total_usd = current["total_usd"] - selected["total_usd"]
     saved_list_compute_usd = current["list_price_compute_usd"] - selected["list_price_compute_usd"]
+    saved_gross_consumed_usd = current["gross_consumed_usd"] - selected["gross_consumed_usd"]
+    saved_discount_allowance_usd = current["discount_allowance_usd"] - selected["discount_allowance_usd"]
+    saved_net_billable_usd = current["net_billable_usd"] - selected["net_billable_usd"]
     saved_billed_minutes = current["total_billed_minutes"] - selected["total_billed_minutes"]
     saved_core_minutes = current["total_core_minutes"] - selected["total_core_minutes"]
 
@@ -1144,14 +1518,14 @@ def calculate_savings(
     crossed_allowance_boundary = (
         (not public_repo)
         and (current["compute_usd"] > 0.0)
-        and (selected["allowance_pool_consumed"] > 0.0)
+        and (selected["allowance_pool_consumed"] > 0.0 or selected["total_billed_minutes"] == 0.0)
         and (
             selected["compute_usd"] == 0.0
             or abs(saved_compute_usd - saved_list_compute_usd) > 1e-6
         )
     )
 
-    if public_repo:
+    if public_repo and current["compute_usd"] == 0.0:
         savings_note = PUBLIC_REPO_NOTE
     elif inside_allowance:
         savings_note = INSIDE_ALLOWANCE_NOTE
@@ -1164,12 +1538,20 @@ def calculate_savings(
     else:
         savings_note = f"${saved_compute_usd:.2f} compute saved"
 
+    # Auto-infer runs_per_month and critical-path wall minutes from workflows if not explicitly passed
+    eff_runs_per_month = float(runs_per_month)
+    if eff_runs_per_month <= 0.0 and current["per_workflow_breakdown"]:
+        eff_runs_per_month = sum(w["monthly_active_runs"] for w in current["per_workflow_breakdown"].values())
+
     # Developer wait: critical path per run (never sum of parallel job minutes) -> DORA lead time for changes
     if current_wall_seconds_per_run is not None:
         cur_wall_s = float(current_wall_seconds_per_run)
         cur_wall_m = cur_wall_s / 60.0
     elif current_wall_min_per_run is not None:
         cur_wall_m = float(current_wall_min_per_run)
+        cur_wall_s = cur_wall_m * 60.0
+    elif current["per_workflow_breakdown"]:
+        cur_wall_m = max((w.get("critical_path_wall_min", 0.0) for w in current["per_workflow_breakdown"].values()), default=0.0)
         cur_wall_s = cur_wall_m * 60.0
     else:
         cur_wall_s = 0.0
@@ -1181,13 +1563,16 @@ def calculate_savings(
     elif selected_wall_min_per_run is not None:
         sel_wall_m = float(selected_wall_min_per_run)
         sel_wall_s = sel_wall_m * 60.0
+    elif selected["per_workflow_breakdown"]:
+        sel_wall_m = max((w.get("critical_path_wall_min", 0.0) for w in selected["per_workflow_breakdown"].values()), default=0.0)
+        sel_wall_s = sel_wall_m * 60.0
     else:
         sel_wall_s = cur_wall_s
         sel_wall_m = cur_wall_m
 
     saved_wall_s_per_run = max(0.0, cur_wall_s - sel_wall_s)
     saved_wall_min_per_run = saved_wall_s_per_run / 60.0
-    saved_wait_hours_per_month = (float(runs_per_month) * saved_wall_min_per_run) / 60.0
+    saved_wait_hours_per_month = (eff_runs_per_month * saved_wall_min_per_run) / 60.0
 
     # Miss rate -> DORA change failure rate
     miss_rate = (float(misses) / float(defect_commits)) if defect_commits > 0 else 0.0
@@ -1201,6 +1586,9 @@ def calculate_savings(
         "saved_compute_usd": saved_compute_usd,
         "saved_total_usd": saved_total_usd,
         "saved_list_compute_usd": saved_list_compute_usd,
+        "saved_gross_consumed_usd": saved_gross_consumed_usd,
+        "saved_discount_allowance_usd": saved_discount_allowance_usd,
+        "saved_net_billable_usd": saved_net_billable_usd,
         "saved_billed_minutes": saved_billed_minutes,
         "total_core_minutes": current["total_core_minutes"],
         "selected_core_minutes": selected["total_core_minutes"],
@@ -1210,7 +1598,7 @@ def calculate_savings(
         "savings_note": savings_note,
         "wait_metrics": {
             "dora_metric": "lead_time_for_changes",
-            "runs_per_month": float(runs_per_month),
+            "runs_per_month": eff_runs_per_month,
             "current_wall_seconds_per_run": cur_wall_s,
             "selected_wall_seconds_per_run": sel_wall_s,
             "saved_wall_seconds_per_run": saved_wall_s_per_run,

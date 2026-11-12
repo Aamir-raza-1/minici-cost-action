@@ -25,11 +25,13 @@ from engine.pricing import (
     resolve_sku_row,
 )
 
-THIRD_PARTY_RUNNER_PREFIXES: tuple[str, str, str, str] = (
+THIRD_PARTY_RUNNER_PREFIXES: tuple[str, ...] = (
     "blacksmith-",
     "warpbuild-",
     "buildjet-",
+    "depot-",
     "namespace-",
+    "runs-on-",
 )
 
 THIRD_PARTY_RUNNER_RATES_USD_PER_MIN: dict[str, float] = {
@@ -41,10 +43,26 @@ THIRD_PARTY_RUNNER_RATES_USD_PER_MIN: dict[str, float] = {
     "warpbuild-2x": 0.004,
     "warpbuild-4x": 0.008,
     "warpbuild-8x": 0.016,
+    "warpbuild-16x": 0.032,
+    "warpbuild-32x": 0.064,
     "buildjet-2vcpu": 0.004,
     "buildjet-4vcpu": 0.008,
     "buildjet-8vcpu": 0.016,
+    "buildjet-16vcpu": 0.032,
+    "buildjet-32vcpu": 0.064,
 }
+
+
+def _parse_currency_float(val: Any, default: float | None = 0.0) -> float | None:
+    """Safely parse a numeric or currency string (`'$27.54'`, `'-$37.42'`, `'0'`, `0.0`) without falsy `0.0` bugs."""
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip().replace("$", "").replace(",", "")
+    if not s:
+        return default
+    return float(s)
 
 
 def classify_runner_label(labels: Sequence[str] | str) -> dict[str, Any]:
@@ -53,23 +71,31 @@ def classify_runner_label(labels: Sequence[str] | str) -> dict[str, Any]:
     normalized = [str(lbl).strip().lower() for lbl in label_list if str(lbl).strip()]
 
     for lbl in normalized:
-        for prefix in THIRD_PARTY_RUNNER_PREFIXES:
-            if lbl.startswith(prefix):
-                provider = prefix.rstrip("-")
-                rate = 0.008
-                for key, val in THIRD_PARTY_RUNNER_RATES_USD_PER_MIN.items():
-                    if lbl.startswith(key):
-                        rate = val
-                        break
-                return {
-                    "billing_target": "third_party_runner",
-                    "provider": provider,
-                    "sku": lbl,
-                    "rate_usd_per_min": rate,
-                    "intercepts_actions_cache": True,
-                }
+        if any(lbl.startswith(p) or p.rstrip("-") in lbl for p in THIRD_PARTY_RUNNER_PREFIXES):
+            provider = next(
+                (p.rstrip("-") for p in THIRD_PARTY_RUNNER_PREFIXES if lbl.startswith(p) or p.rstrip("-") in lbl),
+                "third_party",
+            )
+            row, meta = resolve_sku_row(lbl, platform="github")
+            rate = float(meta["rate_usd_per_min"])
+            for key, val in THIRD_PARTY_RUNNER_RATES_USD_PER_MIN.items():
+                if lbl.startswith(key):
+                    rate = val
+                    break
+            return {
+                "billing_target": "third_party_runner",
+                "provider": provider,
+                "sku": lbl,
+                "resolved_sku": meta["resolved_sku"],
+                "rate_usd_per_min": rate,
+                "intercepts_actions_cache": True,
+            }
 
-    if "self-hosted" in normalized:
+    if any(
+        tok in lbl
+        for lbl in normalized
+        for tok in ("self-hosted", "self_hosted", "arc-runner", "k8s-runner", "actuated")
+    ):
         return {
             "billing_target": "self_hosted",
             "provider": "self_hosted",
@@ -78,7 +104,7 @@ def classify_runner_label(labels: Sequence[str] | str) -> dict[str, Any]:
             "intercepts_actions_cache": False,
         }
 
-    # Default to 3-Stage GitHub-hosted SKU mapping via pricing.resolve_sku_row
+    # Default to 4-Stage GitHub-hosted SKU mapping via pricing.resolve_sku_row
     first_lbl = normalized[0] if normalized else "linux"
     row, meta = resolve_sku_row(first_lbl, platform="github")
     return {
@@ -108,7 +134,7 @@ def reconcile_github_usage_items(
     filtered = [
         item
         for item in usage_items
-        if product_filter is None or str(item.get("product", "")).lower() == product_filter.lower()
+        if product_filter is None or str(item.get("product", "")).strip().lower() == product_filter.lower()
     ]
 
     gross_total = 0.0
@@ -120,15 +146,29 @@ def reconcile_github_usage_items(
     dates_seen: list[str] = []
 
     for item in filtered:
-        sku_name = str(item.get("sku") or item.get("SKU") or "Unknown")
-        repo_name = str(item.get("repositoryName") or item.get("repository_name") or item.get("Repository") or "All other usage")
-        qty = float(item.get("quantity") or item.get("Quantity") or 0.0)
-        unit_type = str(item.get("unitType") or item.get("unit_type") or "Minutes")
-        price_per_unit = float(item.get("pricePerUnit") or item.get("price_per_unit") or 0.0)
-        gross = float(item.get("grossAmount") or item.get("gross_amount") or 0.0)
-        discount = float(item.get("discountAmount") or item.get("discount_amount") or 0.0)
-        net = float(item.get("netAmount") or item.get("net_amount") or max(0.0, gross - discount))
-        date_str = str(item.get("date") or item.get("Date") or "")
+        sku_name = str(item.get("sku") or item.get("SKU") or "Unknown").strip()
+        repo_name = str(
+            item.get("repositoryName") or item.get("repository_name") or item.get("Repository") or "All other usage"
+        ).strip()
+        qty = max(0.0, float(_parse_currency_float(item.get("quantity", item.get("Quantity")), 0.0) or 0.0))
+        unit_type = str(item.get("unitType") or item.get("unit_type") or "Minutes").strip()
+        price_per_unit = max(
+            0.0, float(_parse_currency_float(item.get("pricePerUnit", item.get("price_per_unit")), 0.0) or 0.0)
+        )
+        gross = max(
+            0.0, float(_parse_currency_float(item.get("grossAmount", item.get("gross_amount")), 0.0) or 0.0)
+        )
+        raw_disc = item.get("discountAmount") if "discountAmount" in item else item.get("discount_amount")
+        discount = abs(float(_parse_currency_float(raw_disc, 0.0) or 0.0))
+
+        raw_net = item.get("netAmount") if "netAmount" in item else item.get("net_amount")
+        parsed_net = _parse_currency_float(raw_net, default=None)
+        if parsed_net is not None:
+            net = max(0.0, float(parsed_net))
+        else:
+            net = max(0.0, gross - discount)
+
+        date_str = str(item.get("date") or item.get("Date") or "").strip()
         if date_str:
             dates_seen.append(date_str[:10])
 
@@ -136,7 +176,7 @@ def reconcile_github_usage_items(
         discount_total += discount
         net_total += net
 
-        if price_per_unit > 0:
+        if price_per_unit > 0.0 and qty > 0.0:
             observed_rates_by_sku.setdefault(sku_name, set()).add(round(price_per_unit, 8))
 
         sku_bucket = by_sku.setdefault(
@@ -254,7 +294,7 @@ def ingest_billing_csv(
     else:
         raw_text = str(csv_text_or_path)
 
-    reader = list(csv.DictReader(io.StringIO(raw_text.strip())))
+    reader = list(csv.DictReader(io.StringIO(raw_text.strip()), skipinitialspace=True))
     if not reader:
         raise ValueError("Billing CSV is empty")
 
@@ -266,25 +306,37 @@ def ingest_billing_csv(
         normalized_items = []
         for row in reader:
             lrow = {k.strip().lower(): v for k, v in row.items() if k is not None}
-            normalized_items.append(
-                {
-                    "date": lrow.get("date", ""),
-                    "product": lrow.get("product", "actions"),
-                    "sku": lrow.get("sku", "Actions Linux"),
-                    "quantity": float(str(lrow.get("quantity", "0")).replace("$", "").replace(",", "") or 0.0),
-                    "unitType": lrow.get("unittype") or lrow.get("unit_type") or "Minutes",
-                    "pricePerUnit": float(str(lrow.get("priceperunit") or lrow.get("price_per_unit") or "0").replace("$", "") or 0.0),
-                    "grossAmount": float(str(lrow.get("grossamount") or lrow.get("gross_amount") or "0").replace("$", "").replace(",", "") or 0.0),
-                    "discountAmount": float(str(lrow.get("discountamount") or lrow.get("discount_amount") or "0").replace("$", "").replace(",", "") or 0.0),
-                    "netAmount": float(str(lrow.get("netamount") or lrow.get("net_amount") or "0").replace("$", "").replace(",", "") or 0.0),
-                    "repositoryName": lrow.get("repositoryname") or lrow.get("repository_name") or lrow.get("repository") or "All other usage",
-                }
-            )
+            raw_disc = lrow.get("discountamount") if "discountamount" in lrow else lrow.get("discount_amount")
+            raw_net = lrow.get("netamount") if "netamount" in lrow else lrow.get("net_amount")
+            parsed_net = _parse_currency_float(raw_net, default=None)
+            item_dict: dict[str, Any] = {
+                "date": lrow.get("date", ""),
+                "product": lrow.get("product", "actions"),
+                "sku": lrow.get("sku", "Actions Linux"),
+                "quantity": float(_parse_currency_float(lrow.get("quantity"), 0.0) or 0.0),
+                "unitType": lrow.get("unittype") or lrow.get("unit_type") or "Minutes",
+                "pricePerUnit": float(
+                    _parse_currency_float(lrow.get("priceperunit", lrow.get("price_per_unit")), 0.0) or 0.0
+                ),
+                "grossAmount": float(
+                    _parse_currency_float(lrow.get("grossamount", lrow.get("gross_amount")), 0.0) or 0.0
+                ),
+                "discountAmount": abs(float(_parse_currency_float(raw_disc, 0.0) or 0.0)),
+                "repositoryName": (
+                    lrow.get("repositoryname")
+                    or lrow.get("repository_name")
+                    or lrow.get("repository")
+                    or "All other usage"
+                ),
+            }
+            if parsed_net is not None:
+                item_dict["netAmount"] = max(0.0, float(parsed_net))
+            normalized_items.append(item_dict)
         res = reconcile_github_usage_items(normalized_items, product_filter=None)
         res["tier"] = "billing_csv"
         return res
 
-    # Case B: UI Summary table by Repository (Repository, Gross amount)
+    # Case B: UI Summary table by Repository (Repository, Gross amount [, Discount amount, Net amount])
     if "repository" in lower_keys and any(k in lower_keys for k in ("gross amount", "gross_amount", "gross")):
         repo_key = lower_keys["repository"]
         gross_key = (
@@ -292,23 +344,54 @@ def ingest_billing_csv(
             or lower_keys.get("gross_amount")
             or lower_keys["gross"]
         )
+        disc_col_key = (
+            lower_keys.get("discount amount")
+            or lower_keys.get("discount_amount")
+            or lower_keys.get("discount")
+        )
+        net_col_key = (
+            lower_keys.get("net amount")
+            or lower_keys.get("net_amount")
+            or lower_keys.get("net")
+        )
         by_repo: dict[str, dict[str, float]] = {}
         gross_total = 0.0
+        csv_disc_total = 0.0
+        csv_net_total = 0.0
+        has_csv_disc = False
+        has_csv_net = False
+
         for row in reader:
-            rname = str(row[repo_key]).strip()
-            gval = float(str(row[gross_key]).replace("$", "").replace(",", "").strip() or 0.0)
+            rname = str(row.get(repo_key) or "All other usage").strip()
+            gval = max(0.0, float(_parse_currency_float(row.get(gross_key), 0.0) or 0.0))
             gross_total += gval
-            by_repo[rname] = {"gross_usd": round(gval, 2)}
+            prev_gross = by_repo.get(rname, {}).get("gross_usd", 0.0)
+            by_repo[rname] = {"gross_usd": round(prev_gross + gval, 2)}
+
+            if disc_col_key and row.get(disc_col_key) is not None and str(row.get(disc_col_key)).strip() != "":
+                has_csv_disc = True
+                csv_disc_total += abs(float(_parse_currency_float(row.get(disc_col_key), 0.0) or 0.0))
+            if net_col_key and row.get(net_col_key) is not None and str(row.get(net_col_key)).strip() != "":
+                has_csv_net = True
+                csv_net_total += max(0.0, float(_parse_currency_float(row.get(net_col_key), 0.0) or 0.0))
 
         for rname, rinfo in by_repo.items():
             rinfo["share_pct"] = round((rinfo["gross_usd"] / gross_total * 100.0) if gross_total > 0 else 0.0, 2)
 
-        disc_val = abs(float(discount_usd)) if discount_usd is not None else 0.0
-        net_val = (
-            float(net_usd)
-            if net_usd is not None
-            else round(max(0.0, gross_total - disc_val), 2)
-        )
+        if discount_usd is not None:
+            disc_val = abs(float(discount_usd))
+        elif has_csv_disc:
+            disc_val = csv_disc_total
+        else:
+            disc_val = 0.0
+
+        if net_usd is not None:
+            net_val = max(0.0, float(net_usd))
+        elif has_csv_net:
+            net_val = csv_net_total
+        else:
+            net_val = round(max(0.0, gross_total - disc_val), 2)
+
         return {
             "tier": "billing_csv",
             "gross_consumed_usd": round(gross_total, 2),
@@ -326,6 +409,7 @@ def estimate_from_repo_telemetry(
     *,
     plan: str = "free",
     public_repo: bool = False,
+    public_larger_runners_free: bool = True,
     daily_git_clones: float | None = None,
     baseline_daily_git_clones: float | None = None,
     active_cache_gb: float = 0.0,
@@ -336,14 +420,19 @@ def estimate_from_repo_telemetry(
     Enforces Lessons Learned 1, 2, 5, and 6:
       1. Groups strictly per workflow (`workflow_name`), never multiplying total repo runs
          by the primary CI workflow's duration.
-      2. Filters out skipped / 0-second gatekeeper runs before averaging workflow duration.
-      3. Separates GitHub-hosted SKUs from third-party microVM runners (`blacksmith-*`, etc.).
-      4. Computes sharding setup duplication tax, critical-path wall time, and clone-to-run ratio.
+      2. Filters out skipped / 0-second gatekeeper runs before averaging workflow duration,
+         and clamps `0 <= skipped_runs <= monthly_runs`.
+      3. Separates GitHub-hosted SKUs, third-party microVM runners (`blacksmith-*`, etc.),
+         and self-hosted runners (with explicit cloud-equivalent estimate and warning).
+      4. Computes sharding setup duplication tax, critical-path wall time (across active jobs only),
+         and clone-to-run ratio.
     """
     per_workflow_summary: dict[str, dict[str, Any]] = {}
     github_minutes_by_sku: dict[str, float] = {}
     third_party_minutes_by_sku: dict[str, float] = {}
+    self_hosted_minutes_by_sku: dict[str, float] = {}
     third_party_cost_usd = 0.0
+    self_hosted_cloud_equiv_usd = 0.0
     total_monthly_triggered_runs = 0.0
     total_monthly_active_runs = 0.0
     total_monthly_skipped_runs = 0.0
@@ -353,36 +442,48 @@ def estimate_from_repo_telemetry(
 
     for wf in workflows_telemetry:
         wf_name = str(wf.get("workflow_name") or wf.get("name") or "Unnamed Workflow")
-        monthly_runs = float(wf.get("monthly_runs", wf.get("daily_runs", 0.0) * 30.0))
-        skipped_runs = float(wf.get("monthly_skipped_runs", wf.get("skipped_runs_pct", 0.0) * monthly_runs))
+        raw_monthly = wf.get("monthly_runs", wf.get("daily_runs", 0.0) * 30.0)
+        monthly_runs = max(0.0, float(raw_monthly))
+        if "monthly_skipped_runs" in wf:
+            raw_skipped = float(wf.get("monthly_skipped_runs", 0.0))
+        else:
+            raw_skipped = float(wf.get("skipped_runs_pct", 0.0)) * monthly_runs
+        skipped_runs = min(monthly_runs, max(0.0, raw_skipped))
         active_runs = max(0.0, monthly_runs - skipped_runs)
 
         jobs = wf.get("jobs", [])
         wf_billed_min_per_active_run = 0.0
-        wf_critical_path_wall_min = float(wf.get("critical_path_wall_min", 0.0))
+        wf_critical_path_wall_min = max(0.0, float(wf.get("critical_path_wall_min", 0.0)))
         wf_shard_tax_min_per_run = 0.0
+        active_job_wall_mins: list[float] = []
 
         for job in jobs:
             if str(job.get("conclusion", "success")).lower() == "skipped":
                 continue
-            dur_s = float(
-                job.get(
-                    "duration_s",
-                    float(job.get("duration_min", 0.0)) * 60.0,
-                )
+            dur_s = max(
+                0.0,
+                float(
+                    job.get(
+                        "duration_s",
+                        job.get("duration_seconds", job.get("seconds", float(job.get("duration_min", 0.0)) * 60.0)),
+                    )
+                ),
             )
             if dur_s <= 1.0 and bool(job.get("is_gatekeeper_skip", False)):
                 continue
+            shards = max(0, int(job.get("shards", job.get("count", job.get("jobs", 1)))))
+            if shards <= 0:
+                continue
             job_ceil_min = ceil_job_minutes(dur_s)
-            shards = max(1, int(job.get("shards", job.get("count", 1))))
-            setup_min_per_shard = float(job.get("setup_min_per_shard", 0.0))
+            active_job_wall_mins.append(dur_s / 60.0)
+            setup_min_per_shard = max(0.0, float(job.get("setup_min_per_shard", 0.0)))
             if shards > 1 and setup_min_per_shard > 0.0:
                 wf_shard_tax_min_per_run += (shards - 1) * setup_min_per_shard
 
             total_job_ceil_min_per_run = shards * job_ceil_min
             wf_billed_min_per_active_run += total_job_ceil_min_per_run
 
-            runner_info = classify_runner_label(job.get("labels") or job.get("runs_on") or "ubuntu-latest")
+            runner_info = classify_runner_label(job.get("labels") or job.get("runs_on") or job.get("sku") or "ubuntu-latest")
             monthly_job_mins = active_runs * total_job_ceil_min_per_run
             if runner_info["intercepts_actions_cache"]:
                 intercepts_cache = True
@@ -394,15 +495,13 @@ def estimate_from_repo_telemetry(
                 sku_key = runner_info["sku"]
                 third_party_minutes_by_sku[sku_key] = third_party_minutes_by_sku.get(sku_key, 0.0) + monthly_job_mins
                 third_party_cost_usd += monthly_job_mins * float(runner_info["rate_usd_per_min"])
+            elif runner_info["billing_target"] == "self_hosted":
+                sku_key = runner_info["sku"]
+                self_hosted_minutes_by_sku[sku_key] = self_hosted_minutes_by_sku.get(sku_key, 0.0) + monthly_job_mins
+                self_hosted_cloud_equiv_usd += monthly_job_mins * 0.006
 
-        if wf_critical_path_wall_min <= 0.0 and jobs:
-            wf_critical_path_wall_min = max(
-                (
-                    float(j.get("duration_min", float(j.get("duration_s", 0.0)) / 60.0))
-                    for j in jobs
-                ),
-                default=0.0,
-            )
+        if wf_critical_path_wall_min <= 0.0 and active_job_wall_mins:
+            wf_critical_path_wall_min = max(active_job_wall_mins)
 
         wf_monthly_billed_mins = active_runs * wf_billed_min_per_active_run
         total_monthly_triggered_runs += monthly_runs
@@ -433,6 +532,7 @@ def estimate_from_repo_telemetry(
         platform="github",
         plan=plan,
         public_repo=public_repo,
+        public_larger_runners_free=public_larger_runners_free,
         storage_gb=storage_gb,
         cache_gb=active_cache_gb,
     )
@@ -453,6 +553,14 @@ def estimate_from_repo_telemetry(
         else None
     )
 
+    total_self_hosted_mins = sum(self_hosted_minutes_by_sku.values())
+    unpriced_sh_warning = (
+        f"{total_self_hosted_mins:,.1f} self-hosted runner minutes detected ($0.00 GitHub software fee; "
+        f"cloud equivalent reference: ${self_hosted_cloud_equiv_usd:,.2f}/mo)."
+        if total_self_hosted_mins > 0
+        else None
+    )
+
     return {
         "tier": "repo_telemetry",
         "gross_consumed_usd": round(gross_github_usd + third_party_cost_usd, 2),
@@ -468,6 +576,12 @@ def estimate_from_repo_telemetry(
             "net_billable_usd": round(third_party_cost_usd, 2),
             "minutes_by_sku": third_party_minutes_by_sku,
             "intercepts_actions_cache": intercepts_cache,
+        },
+        "self_hosted_runner_bill": {
+            "net_billable_usd": 0.0,
+            "cloud_equivalent_usd": round(self_hosted_cloud_equiv_usd, 2),
+            "minutes_by_sku": self_hosted_minutes_by_sku,
+            "unpriced_self_hosted_warning": unpriced_sh_warning,
         },
         "kpis": {
             "monthly_triggered_runs": round(total_monthly_triggered_runs, 1),

@@ -1,7 +1,7 @@
 {
   "target_path": "/Users/araza/personal/minici-cost-action",
-  "execution_time_us": 134,
-  "execution_time_ms": 0.134,
+  "execution_time_us": 155,
+  "execution_time_ms": 0.155,
   "detected_providers": ["github-actions"],
   "usage": {"tier":"auto","prs_per_week":25.0,"pushes_per_pr":4.0,"dev_hourly_rate_usd":65.00,"artifact_gb_per_run":0.25,"artifact_retention_days":30},
   "total_workflows": 1,
