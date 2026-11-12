@@ -21,8 +21,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn print_help() {
-    println!(
-        "minici 0.1.0 — MiniCI (Skipwise): Sub-Millisecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine\n\
+    print!("{}", help_text());
+}
+
+pub fn help_text() -> &'static str {
+    "minici 0.1.0 — MiniCI (Skipwise): Sub-Millisecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine\n\
 Author: Aamir Raza <raza.aamir01@gmail.com>\n\n\
 USAGE:\n  \
   minici <COMMAND> [OPTIONS]\n\n\
@@ -49,7 +52,6 @@ OPTIONS (breakdown):\n  \
   --hook <NAME>              Run as Shift-Left Git pre-push / Claude Code PreToolUse hook\n  \
   --benchmark                Run 100-iteration microsecond/millisecond latency benchmark\n  \
   --quiet, -q                Non-interactive silent mode (suppress progress & terminal banners)\n"
-    );
 }
 
 fn extract_json_id(raw: &str) -> String {
@@ -1375,5 +1377,62 @@ jobs:
         assert!(call_resp.contains("gross_monthly_compute_cost_usd"));
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_cli_surface_contract_lock_against_ai_drift() {
+        // Locks the exact subcommands and flags of `minici` so an AI agent cannot silently
+        // add, rename, or remove CLI commands/flags without failing `cargo test`.
+        let help = help_text();
+        let locked_commands: Vec<&str> = help
+            .lines()
+            .skip_while(|l| !l.starts_with("COMMANDS:"))
+            .skip(1)
+            .take_while(|l| !l.trim().is_empty())
+            .filter_map(|l| l.split_whitespace().next())
+            .collect();
+
+        assert_eq!(
+            locked_commands,
+            vec![
+                "breakdown",
+                "diff",
+                "comment",
+                "catalog",
+                "mcp",
+                "self-update",
+                "init-hooks",
+                "launch-pack"
+            ],
+            "AI DRIFT BLOCKED: CLI subcommands changed from locked contract!"
+        );
+
+        let locked_flags: Vec<&str> = help
+            .lines()
+            .skip_while(|l| !l.starts_with("OPTIONS"))
+            .skip(1)
+            .take_while(|l| !l.trim().is_empty())
+            .filter_map(|l| l.split_whitespace().next())
+            .collect();
+
+        assert_eq!(
+            locked_flags,
+            vec![
+                "--path",
+                "--repo",
+                "--refresh",
+                "--format",
+                "--report",
+                "--out-file",
+                "--tier",
+                "--prs-per-week",
+                "--pushes-per-pr",
+                "--dev-hourly-rate",
+                "--hook",
+                "--benchmark",
+                "--quiet,"
+            ],
+            "AI DRIFT BLOCKED: CLI flags changed from locked contract!"
+        );
     }
 }

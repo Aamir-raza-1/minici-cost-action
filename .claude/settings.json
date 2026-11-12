@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "minici diff --path . --compare-to HEAD"
+            "command": "bash scripts/qa_closed_loop.sh"
           }
         ]
       }

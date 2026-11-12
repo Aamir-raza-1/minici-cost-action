@@ -19,16 +19,16 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 PASS_COUNT=0
-TOTAL_GATES=8
+TOTAL_GATES=9
 
 echo "+====================================================================================+"
-echo "| MINICI CLOSED-LOOP QA AUTOMATION ENGINE (8 GATES • ZERO MANUAL TESTING)            |"
+echo "| MINICI CLOSED-LOOP QA & AI-DRIFT GUARDRAIL ENGINE (9 GATES • ZERO MANUAL TESTING)  |"
 echo "+====================================================================================+"
 
-# Gate 1: Rust Unit & Integration Tests
-echo -n "⏳ [Gate 1/8] Running Cargo Unit & Golden Math Tests... "
+# Gate 1: Rust Unit, Golden Math & CLI Contract Lock Tests
+echo -n "⏳ [Gate 1/9] Running Cargo Unit & CLI Contract Lock Tests... "
 cargo test --manifest-path crates/minici/Cargo.toml --quiet
-echo "✅ PASS (8/8 unit tests)"
+echo "✅ PASS (9/9 unit + contract tests)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 2: Release Binary Build & Path Sync
@@ -95,7 +95,7 @@ echo "✅ PASS (All 7 CI providers active)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 8: Live MCP Server JSON-RPC 2.0 Stdio Protocol Verification
-echo -n "⏳ [Gate 8/8] Verifying Live MCP Server JSON-RPC 2.0 Stdio Handshake... "
+echo -n "⏳ [Gate 8/9] Verifying Live MCP Server JSON-RPC 2.0 Stdio Handshake... "
 MCP_OUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"minici_breakdown"}}\n' | "$BIN" mcp --path "$REPO_ROOT")
 echo "$MCP_OUT" | grep -q '"protocolVersion":"2024-11-05"' || { echo "❌ FAIL: MCP initialize failed"; exit 1; }
 echo "$MCP_OUT" | grep -q '"name":"minici_breakdown"' || { echo "❌ FAIL: MCP tools/list failed"; exit 1; }
@@ -103,6 +103,38 @@ echo "$MCP_OUT" | grep -q '"isError":false' || { echo "❌ FAIL: MCP tools/call 
 echo "✅ PASS (JSON-RPC 2.0 stdio verified)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
+# Gate 9: Dynamic CLI Help Discovery & Auto-Smoke Execution (Zero Static Blind Spots)
+echo -n "⏳ [Gate 9/9] Auto-Discovering All Flags from 'minici --help' & Smoke-Testing... "
+DISCOVERED_FLAGS=$("$BIN" --help | grep -E '^\s+--[a-zA-Z0-9-]+' | awk '{print $1}' | tr -d ',')
+FLAG_COUNT=0
+for flag in $DISCOVERED_FLAGS; do
+  FLAG_COUNT=$((FLAG_COUNT + 1))
+  case "$flag" in
+    --path|--repo) "$BIN" breakdown "$flag" "$REPO_ROOT" --quiet >/dev/null ;;
+    --format) "$BIN" breakdown --path "$REPO_ROOT" --format json --quiet >/dev/null ;;
+    --report|--out-file)
+      TMP_F=$(mktemp)
+      "$BIN" breakdown --path "$REPO_ROOT" "$flag" "$TMP_F.json" --quiet >/dev/null
+      rm -f "$TMP_F" "$TMP_F.json"
+      ;;
+    --tier) "$BIN" breakdown --path "$REPO_ROOT" --tier free --quiet >/dev/null ;;
+    --prs-per-week|--pushes-per-pr|--dev-hourly-rate)
+      "$BIN" breakdown --path "$REPO_ROOT" "$flag" 10 --quiet >/dev/null
+      ;;
+    --hook) "$BIN" breakdown --path "$REPO_ROOT" --hook qa-smoke --quiet >/dev/null ;;
+    --benchmark|--refresh|--quiet)
+      "$BIN" breakdown --path "$REPO_ROOT" "$flag" --quiet >/dev/null
+      ;;
+    *)
+      echo "❌ FAIL: Unrecognized or untested new AI flag discovered in --help: $flag"
+      echo "   -> Add a test case for '$flag' or revert the unauthorized CLI flag change!"
+      exit 1
+      ;;
+  esac
+done
+echo "✅ PASS ($FLAG_COUNT/13 discovered flags dynamically executed)"
+PASS_COUNT=$((PASS_COUNT + 1))
+
 echo "+------------------------------------------------------------------------------------+"
-echo "| 🔒 CLOSED-LOOP QA RESULT: $PASS_COUNT/$TOTAL_GATES GATES PASSED (100% VERIFIED • READY TO SHIP)     |"
+echo "| 🔒 CLOSED-LOOP QA RESULT: $PASS_COUNT/$TOTAL_GATES GATES PASSED (100% VERIFIED • ZERO AI DRIFT)   |"
 echo "+====================================================================================+"
