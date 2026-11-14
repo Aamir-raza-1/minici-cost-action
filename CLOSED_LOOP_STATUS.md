@@ -23,7 +23,7 @@ You rightly pointed out two major blunders on the old website:
 2. It dumped walls of dense text instead of being clean and scannable like **`blacksmith.sh`**, **`infracost.io`**, and **`commandcode.ai`**.
 
 ### What We Fixed & Locked Permanently:
-* **Added `Law 0` to [`PRODUCT_CONSTITUTION.md`](file:///Users/araza/personal/minici-factory-qa/PRODUCT_CONSTITUTION.md#L9-L25):** Permanently forbids any agent from putting internal video-making skills, token-saving metrics, oracle scripts, or walls of text onto customer-facing pages (`web/index.html` or customer `README.md`).
+* **Added `Customer UI` to [`PRODUCT_CONSTITUTION.md`](file:///Users/araza/personal/minici-factory-qa/PRODUCT_CONSTITUTION.md#L9-L25):** Permanently forbids any agent from putting internal video-making skills, token-saving metrics, oracle scripts, or walls of text onto customer-facing pages (`web/index.html` or customer `README.md`).
 * **Redesigned [`web/index.html`](file:///Users/araza/personal/minici-cost-action/web/index.html) & Redeployed to https://minici-cost-action.raza-aamir01.workers.dev:**
   * **Hero:** 1 crisp headline + 1 copyable CLI command + the **real playable `<video controls>` MP4 player**.
   * **Interactive 7-Provider Calculator:** 3 simple sliders comparing **GitHub Actions**, **GitLab CI**, **CircleCI**, **Bitbucket**, **AWS CodeBuild**, **GCP Cloud Build**, **Azure DevOps**, and **Blacksmith / AWS Spot**.
@@ -52,7 +52,7 @@ Every single `.md` file you mentioned is intact, verified (`100% PASS`), and com
 
 | Playbook / Constitution File | Path in `minici-factory-qa` | Status |
 | :--- | :--- | :--- |
-| **`PRODUCT_CONSTITUTION.md`** | [`/Users/araza/personal/minici-factory-qa/PRODUCT_CONSTITUTION.md`](file:///Users/araza/personal/minici-factory-qa/PRODUCT_CONSTITUTION.md) | ✅ **Updated with `Law 0` (Website Anti-Blunder Rule)** |
+| **`PRODUCT_CONSTITUTION.md`** | [`/Users/araza/personal/minici-factory-qa/PRODUCT_CONSTITUTION.md`](file:///Users/araza/personal/minici-factory-qa/PRODUCT_CONSTITUTION.md) | ✅ **Updated with `Customer UI` (Website Anti-Blunder Rule)** |
 | **`START_AND_STOP_TODAY.md` & `_v1.md`** | [`START_AND_STOP_TODAY.md`](file:///Users/araza/personal/minici-factory-qa/START_AND_STOP_TODAY.md) / [`_v1.md`](file:///Users/araza/personal/minici-factory-qa/START_AND_STOP_TODAY_v1.md) | ✅ **100% Completed & Committed** |
 | **`LAUNCH_AND_STOP.md` & `_v1.md`** | [`LAUNCH_AND_STOP.md`](file:///Users/araza/personal/minici-factory-qa/LAUNCH_AND_STOP.md) / [`_v1.md`](file:///Users/araza/personal/minici-factory-qa/LAUNCH_AND_STOP_v1.md) | ✅ **100% Completed & Committed** |
 | **`SYNC_AND_VERIFY_LAUNCH_GATE.md` & `_v1.md`** | [`SYNC_AND_VERIFY_LAUNCH_GATE.md`](file:///Users/araza/personal/minici-factory-qa/SYNC_AND_VERIFY_LAUNCH_GATE.md) / [`_v1.md`](file:///Users/araza/personal/minici-factory-qa/SYNC_AND_VERIFY_LAUNCH_GATE_v1.md) | ✅ **6/6 Sync Gates Passed & Committed** |
