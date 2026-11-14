@@ -1,0 +1,22 @@
+name: MiniCI Cost & Sharding Action CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Rust Unit Tests
+        run: cargo test --manifest-path crates/minici/Cargo.toml
+      - name: Invoke MiniCI Cost Action (Self-Test)
+        uses: ./
+        with:
+          path: "."
+          tier: "paid"

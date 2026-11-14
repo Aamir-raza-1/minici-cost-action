@@ -3,3 +3,7 @@ target/
 .wrangler/
 node_modules/
 .DS_Store
+
+**/target/
+.minici/
+.minici_breakdown.md

@@ -26,24 +26,6 @@ inputs:
     description: "Developer hourly engineering rate (USD) for wait-time cost calculation"
     required: false
     default: "65"
-  post-pr-comment:
-    description: "Post or update sticky PR cost receipt comment when GITHUB_TOKEN is provided"
-    required: false
-    default: "true"
-
-outputs:
-  monthly-compute-usd:
-    description: "Projected gross monthly CI compute cost in USD"
-    value: ${{ steps.minici.outputs.monthly_compute_usd }}
-  free-quota-burn-pct:
-    description: "Percentage of monthly free-tier CI minutes consumed"
-    value: ${{ steps.minici.outputs.free_quota_burn_pct }}
-  monthly-dev-wait-usd:
-    description: "Projected monthly developer wait-time cost in USD"
-    value: ${{ steps.minici.outputs.monthly_dev_wait_usd }}
-  execution-time-us:
-    description: "MiniCI Rust engine execution time in microseconds"
-    value: ${{ steps.minici.outputs.execution_time_us }}
 
 runs:
   using: "composite"
@@ -52,17 +34,15 @@ runs:
       id: minici
       shell: bash
       run: |
-        set +e
-        BIN_PATH="${{ github.action_path }}/crates/minici/target/release/minici"
-        if [ ! -x "$BIN_PATH" ]; then
+        BIN_PATH="${{ github.action_path }}/target/release/minici"
+        if ! "$BIN_PATH" --version >/dev/null 2>&1; then
           cargo build --release --manifest-path "${{ github.action_path }}/crates/minici/Cargo.toml"
+          mkdir -p "${{ github.action_path }}/target/release"
+          cp "${{ github.action_path }}/crates/minici/target/release/minici" "$BIN_PATH"
         fi
-        "$BIN_PATH" breakdown \
-          --path "${{ inputs.path }}" \
-          --tier "${{ inputs.tier }}" \
-          --prs-per-week "${{ inputs.prs-per-week }}" \
-          --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
-          --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
-          --format markdown \
-          --out-file .minici_breakdown.md
-        exit 0
+        "$BIN_PATH" breakdown           --path "${{ inputs.path }}"           --tier "${{ inputs.tier }}"           --prs-per-week "${{ inputs.prs-per-week }}"           --pushes-per-pr "${{ inputs.pushes-per-pr }}"           --dev-hourly-rate "${{ inputs.dev-hourly-rate }}"           --format markdown           --out-file .minici_breakdown.md
+        cat .minici_breakdown.md
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          cat .minici_breakdown.md >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+        fi
