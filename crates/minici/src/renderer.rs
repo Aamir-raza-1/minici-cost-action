@@ -125,24 +125,27 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
     }
 
     let repo_info = detect_repo_identity(&r.target_path);
-    let customer_mode = std::env::var("MINICI_CUSTOMER_MODE")
-        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
-        .unwrap_or(true);
+    let mode_env = std::env::var("MINICI_CUSTOMER_MODE").unwrap_or_default();
+    let is_owner_mode = mode_env == "0" || mode_env.eq_ignore_ascii_case("false");
+    let is_explicit_customer_mode = mode_env == "1" || mode_env.eq_ignore_ascii_case("true");
+    let customer_mode = !is_owner_mode;
 
-    let view_badge = if customer_mode {
-        "CUSTOMER LAUNCH VIEW"
+    let view_suffix = if is_owner_mode {
+        " [OWNER / INTERNAL DEBUG VIEW]"
+    } else if is_explicit_customer_mode {
+        " [CUSTOMER LAUNCH VIEW]"
     } else {
-        "OWNER / INTERNAL DEBUG VIEW"
+        ""
     };
 
     let mut out = String::new();
     out.push_str(&format!(
-        "Project: {} ({} workflow(s), {} expanded jobs • {:.2} ms) [{}]\n\n",
+        "Project: {} ({} workflow(s), {} expanded jobs • {:.2} ms){}\n\n",
         repo_info,
         r.total_workflows,
         r.total_expanded_matrix_jobs,
         r.execution_time_ms,
-        view_badge
+        view_suffix
     ));
 
     out.push_str(&format!(
@@ -204,7 +207,12 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         "──────────",
         "─────────────"
     ));
-    let total_label = format!("OVERALL TOTAL ({:.0} runs/mo • {})", r.monthly_runs, r.effective_tier);
+    let tier_short = if r.effective_tier.starts_with("free") {
+        "free tier"
+    } else {
+        "paid tier"
+    };
+    let total_label = format!("OVERALL TOTAL ({:.0} runs/mo • {})", r.monthly_runs, tier_short);
     let total_label_trunc = if total_label.chars().count() > 42 {
         let t: String = total_label.chars().take(39).collect();
         format!("{}...", t)
