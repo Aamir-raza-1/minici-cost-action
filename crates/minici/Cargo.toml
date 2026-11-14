@@ -1,6 +1,6 @@
 [package]
 name = "minici"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "MiniCI (Skipwise): Millisecond/Microsecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine"
 license = "Apache-2.0"

@@ -626,11 +626,16 @@ fn analyze_github_job_block(
             raw_mins
         };
         let total_billed = billed_per_job * (matrix_count as f64);
+        let display_runner = if raw_runs_on.contains("${{") {
+            sku.sku_label.to_string()
+        } else {
+            raw_runs_on
+        };
         out_jobs.push(ExpandedJobCost {
             workflow_file: wf_rel.to_string(),
             job_id: job_id.to_string(),
             matrix_combination_count: matrix_count,
-            runner_label: raw_runs_on,
+            runner_label: display_runner,
             provider: sku.provider.to_string(),
             os: sku.os.to_string(),
             vcpus: sku.vcpus,
@@ -915,30 +920,6 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         }
     }
 
-    if jobs.is_empty() {
-        workflow_count = 1;
-        let sku = resolve_runner_sku("ubuntu-latest");
-        jobs.push(ExpandedJobCost {
-            workflow_file: ".github/workflows/ci.yml (inferred)".to_string(),
-            job_id: "test".to_string(),
-            matrix_combination_count: 1,
-            runner_label: "ubuntu-latest".to_string(),
-            provider: sku.provider.to_string(),
-            os: sku.os.to_string(),
-            vcpus: sku.vcpus,
-            est_raw_duration_mins_per_job: 4.0,
-            billed_mins_per_job: 4.0,
-            total_billed_mins_all_matrix: 4.0,
-            rate_per_min_usd: sku.rate_per_min_usd,
-            run_compute_cost_usd: 0.032,
-            blacksmith_run_cost_usd: 0.016,
-            self_hosted_spot_run_cost_usd: 0.0048,
-            has_concurrency_cancel: false,
-            has_sparse_or_shallow_clone: false,
-            uploads_artifacts: false,
-        });
-    }
-
     let mut providers: Vec<String> = jobs.iter().map(|j| j.provider.clone()).collect();
     providers.sort();
     providers.dedup();
@@ -955,10 +936,17 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         .fold(0.0_f64, f64::max);
     let billed_mins_per_run: f64 = jobs.iter().map(|j| j.total_billed_mins_all_matrix).sum();
 
-    let monthly_runs = (usage.prs_per_week * usage.pushes_per_pr * 4.33).round();
+    let monthly_runs = if workflow_count == 0 {
+        0.0
+    } else {
+        (usage.prs_per_week * usage.pushes_per_pr * 4.33).round()
+    };
     let monthly_billed_mins = (billed_mins_per_run * monthly_runs * 100.0).round() / 100.0;
 
-    let primary_sku = resolve_runner_sku(&jobs[0].runner_label);
+    let primary_sku = jobs
+        .first()
+        .map(|j| resolve_runner_sku(&j.runner_label))
+        .unwrap_or_else(|| resolve_runner_sku("ubuntu-latest"));
     let free_tier_included_mins = if primary_sku.free_tier_mins_per_month > 0.0 {
         primary_sku.free_tier_mins_per_month
     } else {
@@ -1025,7 +1013,9 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         ((dev_wait_cost_per_run_usd * monthly_runs) * 100.0).round() / 100.0;
 
     let any_artifacts = jobs.iter().any(|j| j.uploads_artifacts);
-    let active_gb = if any_artifacts {
+    let active_gb = if jobs.is_empty() {
+        0.0
+    } else if any_artifacts {
         usage.artifact_gb_per_run * (monthly_runs * (usage.artifact_retention_days as f64 / 30.0))
     } else {
         usage.artifact_gb_per_run * 10.0
@@ -1043,15 +1033,19 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         * 100.0)
         .round()
         / 100.0;
-    let monthly_self_hosted_spot_cost_usd = ((jobs
-        .iter()
-        .map(|j| j.self_hosted_spot_run_cost_usd)
-        .sum::<f64>()
-        * monthly_runs
-        + SELF_HOSTED_VPS_BASE_MONTHLY_USD)
-        * 100.0)
-        .round()
-        / 100.0;
+    let monthly_self_hosted_spot_cost_usd = if jobs.is_empty() {
+        0.0
+    } else {
+        ((jobs
+            .iter()
+            .map(|j| j.self_hosted_spot_run_cost_usd)
+            .sum::<f64>()
+            * monthly_runs
+            + SELF_HOSTED_VPS_BASE_MONTHLY_USD)
+            * 100.0)
+            .round()
+            / 100.0
+    };
 
     let elapsed_us = t0.elapsed().as_micros().max(1);
 

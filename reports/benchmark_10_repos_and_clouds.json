@@ -1,6 +1,6 @@
 {
-  "total_benchmark_suite_ms": 2.83,
-  "avg_ms_per_repo_calculation": 0.0145,
+  "total_benchmark_suite_ms": 3.384,
+  "avg_ms_per_repo_calculation": 0.0234,
   "top_10_world_repos": [
     {
       "repo": "microsoft/vscode",
@@ -34,7 +34,7 @@
           "resolved_sku": "windows_x64_8core"
         }
       },
-      "execution_time_ms": 0.0306
+      "execution_time_ms": 0.0459
     },
     {
       "repo": "rust-lang/rust",
@@ -62,7 +62,7 @@
           "resolved_sku": "linux_16"
         }
       },
-      "execution_time_ms": 0.0147
+      "execution_time_ms": 0.0181
     },
     {
       "repo": "astral-sh/uv",
@@ -89,7 +89,7 @@
           "rate_usd_per_min": 0.062
         }
       },
-      "execution_time_ms": 0.0143
+      "execution_time_ms": 0.0166
     },
     {
       "repo": "vercel/next.js",
@@ -116,7 +116,7 @@
           "resolved_sku": "linux_8"
         }
       },
-      "execution_time_ms": 0.0153
+      "execution_time_ms": 0.017
     },
     {
       "repo": "pytorch/pytorch",
@@ -143,7 +143,7 @@
           "resolved_sku": "linux_gpu_t4_4core"
         }
       },
-      "execution_time_ms": 0.0139
+      "execution_time_ms": 0.0667
     },
     {
       "repo": "facebook/react",
@@ -163,7 +163,7 @@
           "rate_usd_per_min": 0.006
         }
       },
-      "execution_time_ms": 0.0091
+      "execution_time_ms": 0.0129
     },
     {
       "repo": "fastapi/fastapi",
@@ -183,7 +183,7 @@
           "rate_usd_per_min": 0.006
         }
       },
-      "execution_time_ms": 0.0085
+      "execution_time_ms": 0.012
     },
     {
       "repo": "langchain-ai/langchain",
@@ -203,7 +203,7 @@
           "rate_usd_per_min": 0.006
         }
       },
-      "execution_time_ms": 0.0087
+      "execution_time_ms": 0.0093
     },
     {
       "repo": "grafana/grafana",
@@ -230,7 +230,7 @@
           "resolved_sku": "linux_8"
         }
       },
-      "execution_time_ms": 0.0139
+      "execution_time_ms": 0.0158
     },
     {
       "repo": "huggingface/transformers",
@@ -257,7 +257,7 @@
           "resolved_sku": "self_hosted"
         }
       },
-      "execution_time_ms": 0.0156
+      "execution_time_ms": 0.0201
     }
   ],
   "cloud_build_scenarios": [
@@ -269,7 +269,7 @@
       "gross_consumed_usd": 104.6,
       "discount_allowance_usd": 0.5,
       "net_billable_usd": 104.1,
-      "execution_time_ms": 0.018,
+      "execution_time_ms": 0.0208,
       "sku_breakdown": {
         "linux": {
           "billed_minutes": 1200.0,
@@ -309,7 +309,7 @@
       "gross_consumed_usd": 318.84,
       "discount_allowance_usd": 15.0,
       "net_billable_usd": 303.84,
-      "execution_time_ms": 0.0154,
+      "execution_time_ms": 0.0188,
       "sku_breakdown": {
         "linux": {
           "billed_minutes": 6500.0,
@@ -349,7 +349,7 @@
       "gross_consumed_usd": 80.0,
       "discount_allowance_usd": 30.0,
       "net_billable_usd": 50.0,
-      "execution_time_ms": 0.0073,
+      "execution_time_ms": 0.0085,
       "sku_breakdown": {
         "linux_4": {
           "billed_minutes": 10000.0,
