@@ -1,0 +1,72 @@
+{
+  "status": "ALL_10_QA_SESSIONS_PASSED",
+  "total_static_skus": 160,
+  "total_third_party_skus": 5,
+  "learned_registry_entries": 9,
+  "benchmark_scenarios_verified": 0,
+  "five_source_zero_delta": true,
+  "execution_time_ms": 50.04,
+  "ollama_audit": null,
+  "sessions": [
+    {
+      "session": 1,
+      "layer": "Layer 1 (Tier 1 Billing API)",
+      "focus": "2025 ($0.008) vs 2026 ($0.006) rate shifts, falsy 0.0 net guard, negative discount sign",
+      "verdict": "PASS"
+    },
+    {
+      "session": 2,
+      "layer": "Layer 1 (Tier 2 Billing CSV)",
+      "focus": "Duplicate repo row accumulation, negative discount strings, skipinitialspace CSV parsing",
+      "verdict": "PASS"
+    },
+    {
+      "session": 3,
+      "layer": "Layer 1 (Tier 3 Telemetry & Sharding)",
+      "focus": "Per-workflow grouping, skipped/gatekeeper filtering, shard setup duplication tax, clone spike",
+      "verdict": "PASS"
+    },
+    {
+      "session": 4,
+      "layer": "Layer 2 (Rounding Mechanics)",
+      "focus": "ceil_minute_per_job (GitHub/AWS EC2) vs exact_seconds (GCP/GitLab/CircleCI/Lambda) vs ceil_minute_per_step (Bitbucket)",
+      "verdict": "PASS"
+    },
+    {
+      "session": 5,
+      "layer": "Layer 3 (Catalog & Learned Registry)",
+      "focus": "160 static SKUs + 5 3rd-party SKUs + in-memory cached learned registry + safe compute fallback",
+      "verdict": "PASS"
+    },
+    {
+      "session": 6,
+      "layer": "Layer 3 (Wild Custom Runner Regex)",
+      "focus": "OS release number stripping (windows-2022, macos-14) and macOS -large vs -xlarge M2 Pro resolution",
+      "verdict": "PASS"
+    },
+    {
+      "session": 7,
+      "layer": "Layer 4 (Allowance Waterfall & Unit Gating)",
+      "focus": "Multiplier-weighted blended mode, Azure parallel slot step-function, and strict non-compute unit gating",
+      "verdict": "PASS"
+    },
+    {
+      "session": 8,
+      "layer": "Layer 4 (Storage, Cache, Egress & DLC Taxes)",
+      "focus": "All 7 providers compute storage, cache, egress, and CircleCI DLC overages natively in calculate_monthly_cost",
+      "verdict": "PASS"
+    },
+    {
+      "session": 9,
+      "layer": "Layer 5 (Savings & DORA Metrics)",
+      "focus": "3-tier savings deltas, crossed_allowance_boundary at 0 selected mins, DORA Lead Time & CFR",
+      "verdict": "PASS"
+    },
+    {
+      "session": 10,
+      "layer": "Adversarial Outliers (Outliers A, B, C)",
+      "focus": "Public repo Larger/GPU runner billing, unpriced self-hosted warning, negative & skipped>triggered clamping",
+      "verdict": "PASS"
+    }
+  ]
+}

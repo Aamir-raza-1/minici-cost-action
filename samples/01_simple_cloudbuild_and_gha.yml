@@ -1,0 +1,120 @@
+# ==============================================================================
+# QA WORKFLOW FILE #1: Simple Multi-Cloud & SaaS CI/CD Benchmark Workflow
+# ==============================================================================
+# Purpose:
+#   First simple baseline workflow file for interactive 5-way QA verification:
+#   1. Local Engine (`pricing/*.json` + `engine/pricing.py`)
+#   2. GCP Pricing Calculator / `Cyclenerd/gcosts` (`pricing.yml` / `pricelist.json`)
+#   3. Infracost v2.19.0 (`/opt/homebrew/bin/infracost`) & Cloud Retail APIs
+#   4. `cicdcalculator.com` & `cicdcost.com` FinOps Formula (Rounding + Hidden Taxes)
+#   5. Live Browser Verification Tabs (GCP Calculator, Official GCP/GitHub/AWS Docs)
+# ==============================================================================
+
+name: "QA-01-Simple-CI-Pipeline"
+
+# cicdcalculator.com & cicdcost.com Workload Attributes:
+workload_attributes:
+  commits_per_day: 25
+  workdays_per_month: 20
+  runs_per_month: 500             # 25 commits/day * 20 workdays
+  job_duration_seconds: 210       # 3.5 minutes! Tests 1-min ceiling (4.0m) vs exact-second (3.5m)
+  steps_per_job: 2                # Tests Bitbucket per-step ceiling
+  matrix_parallelism: 1
+  public_repo: false
+  is_fork_mr: false
+  active_seats: 8                 # Tests >5 user seat thresholds (CircleCI, Azure, GitLab)
+  vs_enterprise_seats: 0
+  artifact_gb_stored: 15.0        # Tests Artifact storage markup ($0.25/GB vs $0.023 S3)
+  artifact_retention_days: 30
+  cache_gb_active: 25.0           # Tests GitHub 10GB free cache + $0.07/GB-mo overage
+  nat_egress_gb_per_month: 50.0   # Tests Cloud NAT / Egress tax ($0.045/GB AWS/GCP, $0.252/GB CircleCI)
+  docker_layer_caching: true      # Tests CircleCI 200 credits/job-run DLC fee
+  purchase_option: "on_demand"    # Supports "on_demand" or "spot" (via Infracost)
+
+# Google Cloud Build steps (`cloudbuild.yaml` format)
+options:
+  machineType: "E2_HIGHCPU_8"     # GCP Cloud Build: $0.0156/min (exact_seconds)
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["build", "-t", "us-central1-docker.pkg.dev/my-proj/app:latest", "."]
+  - name: "python:3.12-slim"
+    entrypoint: "pytest"
+    args: ["-q"]
+
+# GitHub Actions jobs (`.github/workflows/ci.yml` format)
+jobs:
+  lint_slim:
+    runs-on: ubuntu-slim          # 1 vCPU, 4GB RAM -> $0.002/min (ceil_minute)
+    duration_seconds: 45          # 45s -> Billed as 1.0 min on GitHub ($0.002)
+  unit_test_standard:
+    runs-on: ubuntu-latest        # 2 vCPU, 7GB RAM -> $0.006/min (ceil_minute, uses 3,000m Team allowance)
+    duration_seconds: 210         # 3.5m -> Billed as 4.0 mins on GitHub
+  integration_4core:
+    runs-on: ubuntu-4core         # 4 vCPU, 16GB RAM -> $0.012/min (Larger runner, no free allowance)
+    duration_seconds: 210         # 3.5m -> Billed as 4.0 mins on GitHub
+
+# Cross-Provider Equivalent Targets for 7-Provider QA Matrix
+qa_targets:
+  - provider: "gcp"
+    plan: "team"
+    sku: "e2-standard-2"
+    label: "GCP Cloud Build Default Pool (e2-standard-2, 2 vCPU, 8GB)"
+    official_calculator_url: "https://cloud.google.com/products/calculator"
+    official_pricing_url: "https://cloud.google.com/build/pricing"
+    gcosts_github_url: "https://github.com/Cyclenerd/google-cloud-pricing-cost-calculator/blob/master/pricing.yml"
+  - provider: "gcp"
+    plan: "team"
+    sku: "e2-highcpu-8"
+    label: "GCP Cloud Build High-CPU (e2-highcpu-8, 8 vCPU, 8GB)"
+    official_calculator_url: "https://cloud.google.com/products/calculator"
+    official_pricing_url: "https://cloud.google.com/build/pricing"
+    gcosts_github_url: "https://github.com/Cyclenerd/google-cloud-pricing-cost-calculator/blob/master/pricing.yml"
+  - provider: "github"
+    plan: "team"
+    sku: "linux"
+    label: "GitHub Actions Standard Linux (ubuntu-latest, 2 vCPU, 7GB)"
+    official_calculator_url: "https://github.com/pricing/calculator"
+    official_pricing_url: "https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions"
+    gcosts_github_url: "https://cicdcalculator.com/"
+  - provider: "github"
+    plan: "team"
+    sku: "linux_x64_4core"
+    label: "GitHub Actions Larger Linux (ubuntu-4core, 4 vCPU, 16GB)"
+    official_calculator_url: "https://github.com/pricing/calculator"
+    official_pricing_url: "https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions"
+    gcosts_github_url: "https://cicdcost.com/"
+  - provider: "aws"
+    plan: "team"
+    sku: "BUILD_GENERAL1_MEDIUM"
+    label: "AWS CodeBuild General1 Medium (4 vCPU, 7GB)"
+    official_calculator_url: "https://calculator.aws/"
+    official_pricing_url: "https://aws.amazon.com/codebuild/pricing/"
+    gcosts_github_url: "https://www.infracost.io/docs/features/usage_based_resources/"
+  - provider: "gitlab"
+    plan: "premium"
+    sku: "linux_x64_medium"
+    label: "GitLab SaaS Linux Medium (saas-linux-medium-amd64, 4 vCPU, 2x factor)"
+    official_calculator_url: "https://about.gitlab.com/pricing/"
+    official_pricing_url: "https://docs.gitlab.com/ee/ci/pipelines/cicd_minutes.html"
+    gcosts_github_url: "https://cicdcost.com/"
+  - provider: "circleci"
+    plan: "performance"
+    sku: "linux_x64_large"
+    label: "CircleCI Docker Large (4 vCPU, 8GB, 20 credits/min)"
+    official_calculator_url: "https://circleci.com/pricing/"
+    official_pricing_url: "https://circleci.com/docs/credits/"
+    gcosts_github_url: "https://cicdcalculator.com/"
+  - provider: "bitbucket"
+    plan: "standard"
+    sku: "linux_2x"
+    label: "Bitbucket Pipelines 2x Step (4 vCPU, 8GB RAM, 2x multiplier)"
+    official_calculator_url: "https://www.atlassian.com/software/bitbucket/pricing"
+    official_pricing_url: "https://support.atlassian.com/bitbucket-cloud/docs/configure-bitbucket-pipelines-yml/"
+    gcosts_github_url: "https://cicdcost.com/"
+  - provider: "azure"
+    plan: "team"
+    sku: "ms_hosted_parallel_job"
+    label: "Azure DevOps MS-Hosted Parallel Job ($40/slot-mo, 1,800m free)"
+    official_calculator_url: "https://azure.microsoft.com/en-us/pricing/calculator/"
+    official_pricing_url: "https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/"
+    gcosts_github_url: "https://prices.azure.com/api/retail/prices?$filter=serviceName%20eq%20'Azure%20DevOps'"

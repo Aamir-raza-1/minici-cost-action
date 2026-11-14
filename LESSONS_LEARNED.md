@@ -115,3 +115,83 @@ To ensure our pricing and verification engine works out-of-the-box for **any** o
 | **Tier 1** | `official_api` | GitHub Enhanced Billing REST API (`/orgs/{org}/settings/billing/usage`) | User is Org Admin / Billing Manager (e.g., `Eazy-Ops`) | **100% Exact Invoice Reconciliation** (`Gross`, `Discount`, `Net`) |
 | **Tier 2** | `billing_csv` | User-uploaded GitHub/Cloud Billing CSV or UI Summary Table (`--billing-csv`) | Finance/Admin exports CSV or pastes billing table | **100% Exact Invoice + Full Per-Repo Attribution** |
 | **Tier 3** | `repo_telemetry` | Read-only Repo APIs (`/actions/runs`, `/actions/runs/{id}/jobs`, `/traffic/clones`, `/stats/commit_activity`, `/pulse`) | Developer has read-only repo access (`/settings/billing` returns `403/404`) | **Per-Workflow Ceil-Rounded Reconstruction** (filters skipped runs & classifies 3rd-party runners) |
+
+---
+
+## 8. Normalize Sign Conventions & Guard Against Falsy `0.0` in Billing APIs and CSV Exports (QA Sessions #1 & #2)
+
+### What Went Wrong
+1. GitHub's Billing UI and exported CSVs often format discount columns as negative strings (`"-$37.42"`, `"-0.37"`), while the REST API returns positive `discountAmount: 0.37`. Subtracting a negative discount (`gross - (-37.42)`) inverted the discount and double-charged the customer.
+2. Using Python's truthiness operator (`item.get("netAmount") or max(0.0, gross - discount)`) treated a legitimate `netAmount = 0.0` as falsy (`False`), falling through to `gross - discount` and failing whenever `discount` was negative or omitted.
+3. Summary CSV exports with multiple rows for the same repository (`Backend`) overwrote previous rows instead of accumulating, and zero-quantity placeholder rows (`quantity == 0`) polluted `historical_rate_shifts`.
+
+### Mandatory Engine Rule
+- Always normalize `discountAmount` with `abs(float(...))` so discounts represent positive dollar reductions.
+- Never use `or` fallback chains on numeric financial fields where `0.0` is a valid terminal value; check `if parsed_net is not None` explicitly.
+- Only record `pricePerUnit` in `observed_rates_by_sku` when `quantity > 0` and `pricePerUnit > 0`, and always accumulate duplicate repository rows (`+=`) in summary CSVs.
+
+---
+
+## 9. Enforce Identical Workflow Schema Semantics Across Tier 3 Telemetry and `calculate_monthly_cost(workflows=...)` (QA Session #3)
+
+### What Went Wrong
+[`estimate_from_repo_telemetry()`](file:///Users/araza/personal/cicd-pricing-engine/engine/billing_ingestor.py#L438) honored `shards`, `is_gatekeeper_skip`, `daily_runs`, and `skipped_runs_pct`, whereas [`calculate_monthly_cost(workflows=...)`](file:///Users/araza/personal/cicd-pricing-engine/engine/pricing.py#L818) initially read only `count`/`jobs` and `monthly_runs`/`monthly_skipped_runs`, causing the two entry points to diverge on sharded or gatekeeper-heavy workflows. Additionally, fallback `critical_path_wall_min` included skipped jobs when `critical_path_wall_min` was omitted.
+
+### Mandatory Engine Rule
+- Both [`estimate_from_repo_telemetry()`](file:///Users/araza/personal/cicd-pricing-engine/engine/billing_ingestor.py#L438) and [`calculate_monthly_cost(workflows=...)`](file:///Users/araza/personal/cicd-pricing-engine/engine/pricing.py#L818) must use the exact same job multiplier resolution (`shards` $\rightarrow$ `count` $\rightarrow$ `jobs`), gatekeeper skip filter (`dur_s <= 1.0 and is_gatekeeper_skip`), run clamping (`0 <= skipped_runs <= monthly_runs`), and active-job-only `critical_path_wall_min` fallback.
+
+---
+
+## 10. Propagate Provider & SKU Rounding Rules Into Every Job Duration Aggregator (QA Session #4)
+
+### What Went Wrong
+[`billed_minutes_for_jobs()`](file:///Users/araza/personal/cicd-pricing-engine/engine/pricing.py#L320) unconditionally applied `ceil_job_minutes()` (`ceil_minute_per_job`) even when called for `gitlab`, `circleci`, `gcp`, or AWS CodeBuild Lambda (`BUILD_LAMBDA_*`), which bill `exact_seconds`, or `bitbucket`, which bills `ceil_minute_per_step`. Furthermore, `0`-second jobs in `qa_verifier.py` were clamped to `max(1.0, duration_s)` (`1` billed minute instead of `0`).
+
+### Mandatory Engine Rule
+- Always resolve the target SKU's rounding mode (`exact_seconds`, `ceil_minute_per_step`, or `ceil_minute_per_job`) before aggregating job durations, and guard `duration_s <= 0 -> 0.0` prior to any `max(1.0, duration_s)` ceiling operation.
+
+---
+
+## 11. Strip OS Release Versions Before Extracting Runner Core Counts & Never Fall Back to Seat/Plan SKUs (QA Sessions #5 & #6)
+
+### What Went Wrong
+1. In Stage 2 heuristic regex parsing, bare OS version suffixes in `windows-2022`, `windows-2025`, `windows-11-arm64`, `macos-14`, and `macos-15` matched `(?:windows|macos)-(\d+)`, misparsing `2022` or `14` as CPU core counts (`windows_x64_96core` at `$0.552/min` — a **55.2x overcharge**!). Meanwhile, `macos-15-xlarge` and `macos-latest-xlarge` missed Apple Silicon M2 Pro (`macos_large_m2pro`, `$0.102/min`).
+2. For non-GitHub platforms (`circleci`, `azure`), unrecognized runner labels fell through to `next(iter(smap.values()))`, which was `plan_free` (`$0.00`) on CircleCI and `user_basic_plan` (`$6.00/user_month` seat SKU!) on Azure.
+
+### Mandatory Engine Rule
+- Strip canonical OS release tokens (`ubuntu-(?:latest|(?:18|2\d)\.?\d{2})`, `windows-(?:latest|20\d{2}|1[01])`, `macos-(?:latest|1[1-9]|2\d)`) **before** running bare `-(\d+)` core-count regex extraction.
+- Explicitly map macOS `-xlarge` to `macos_large_m2pro` (`12-core M2 Pro`, `$0.102/min`) and `-large` to `macos_12core_intel` (`12-core Intel`, `$0.077/min`).
+- Stage 4 default fallback must always select a compute SKU (`smap.get("linux")`), never a subscription/seat/storage SKU, and `save_learned_sku_entry()` must cache in memory and guard disk writes with `try/except OSError`.
+
+---
+
+## 12. Weight `blended` Allowance Mode by OS Multipliers & Gate Non-Time SKU Units (QA Session #7)
+
+### What Went Wrong
+1. `allowance_mode="blended"` prorated `included_allowance` using raw unweighted minutes (`billed_min`) instead of multiplier-weighted pool units (`billed_min * multiplier`), ignoring GitHub's `2x` Windows and `10x` macOS multipliers and GitLab's `cost_factor`.
+2. Passing `{"linux": 2000}` on `platform="azure"` resolved to `ms_hosted_parallel_job` (`unit="parallel_slot_month"`, `usd=40.0`) and multiplied `$40.00` by `200 overage minutes` (`$8,000.00` instead of `1 slot * $40.00 = $40.00`).
+
+### Mandatory Engine Rule
+- Every `allowance_mode` (`ordered` and `blended`) must operate strictly in **allowance pool units** (`pool_needed = billed_min * multiplier`, `covered_min = pool_used / multiplier`) so that `sum(pool_used) <= included_allowance`.
+- Handle `unit == "parallel_slot_month"` via Azure's slot step-function (`0` slots when `overage_min <= 0`, else `max(1, ceil(billed_min / 7200)) * $40`), and raise a `ValueError` if non-compute SKUs (`gb_month`, `user_month`, `pipeline_month`, etc.) are passed into `minutes_by_sku`.
+
+---
+
+## 13. Compute Storage, Cache, Egress, and DLC Hidden Taxes Across All 7 Providers (QA Session #8)
+
+### What Went Wrong
+[`calculate_monthly_cost()`](file:///Users/araza/personal/cicd-pricing-engine/engine/pricing.py#L744) initially computed storage and cache overages only for `github` and `gitlab`, returning `$0.00` for `circleci`, `bitbucket`, `aws`, `gcp`, and `azure` and omitting `egress_gb` and `dlc_enabled` (which were only implemented in `qa_verifier.py`).
+
+### Mandatory Engine Rule
+- [`calculate_monthly_cost()`](file:///Users/araza/personal/cicd-pricing-engine/engine/pricing.py#L744) is the single source of truth and must compute `storage_overage_usd`, `cache_overage_usd`, `egress_overage_usd`, `dlc_overage_usd`, and `hidden_tax_usd` across all 7 providers directly from the catalog SKUs.
+
+---
+
+## 14. Expose 3-Tier Savings Deltas, Workflow-Level DORA Wait Inference, and Outlier Guards (QA Sessions #9 & #10)
+
+### Mandatory Engine Rules
+1. **3-Tier Savings Deltas:** [`calculate_savings()`](file:///Users/araza/personal/cicd-pricing-engine/engine/pricing.py#L1120) must output `saved_gross_consumed_usd`, `saved_discount_allowance_usd`, and `saved_net_billable_usd`, accept `current_workflows` / `selected_workflows`, and detect `crossed_allowance_boundary` even when `selected` drops to `0` minutes.
+2. **Public Repo Larger Runner Billing Flag (`public_larger_runners_free`):** Standard GitHub-hosted runners (`linux`, `windows`, `macos` with `uses_allowance=True`) are always free on public repositories, whereas Larger/GPU/3rd-party runners (`uses_allowance=False`) are billed on un-sponsored public repos when `public_larger_runners_free=False`.
+3. **Unpriced Self-Hosted Runner Warning:** Whenever `self_hosted` minutes $> 0$ and `self_hosted_usd_per_month` is not provided, emit `unpriced_self_hosted_warning` and `self_hosted_cloud_equivalent_usd` so `$0.00` software fees are never mistaken for zero infrastructure cost.
+4. **Hard Non-Negativity & Reconciliation Invariants:** Clamp all negative inputs (`duration_s`, `count`, `shards`, `seats`, `storage_gb`, `cache_gb`, `egress_gb`, `skipped_runs`) at `0`, cap `skipped_runs <= monthly_runs`, and guarantee `round(gross_consumed_usd - discount_allowance_usd, 2) == round(net_billable_usd, 2)` on every receipt.
+

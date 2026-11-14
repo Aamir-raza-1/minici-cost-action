@@ -162,8 +162,8 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         sku_label: "windows-latest",
         os: "Windows",
         arch: "x86_64",
-        vcpus: 2,
-        ram_gb: 7.0,
+        vcpus: 4,
+        ram_gb: 16.0,
         rate_per_min_usd: 0.016,
         ceil_to_whole_minute: true,
         free_tier_mins_per_month: 2000.0,
@@ -710,12 +710,14 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             EMBEDDED_SKU_CATALOG[13].clone()
         } else if lower.contains("2xlarge") {
             let mut s = EMBEDDED_SKU_CATALOG[12].clone();
+            s.sku_label = "saas-linux-2xlarge-amd64";
             s.vcpus = 32;
             s.ram_gb = 128.0;
             s.rate_per_min_usd = 0.160;
             s
         } else if lower.contains("xlarge") {
             let mut s = EMBEDDED_SKU_CATALOG[12].clone();
+            s.sku_label = "saas-linux-xlarge-amd64";
             s.vcpus = 16;
             s.ram_gb = 64.0;
             s.rate_per_min_usd = 0.080;
@@ -734,10 +736,12 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             EMBEDDED_SKU_CATALOG[14].clone()
         };
         if lower.contains("2xlarge") {
+            s.sku_label = "docker-2xlarge";
             s.vcpus = 16;
             s.ram_gb = 32.0;
             s.rate_per_min_usd = 0.048;
         } else if lower.contains("xlarge") {
+            s.sku_label = "docker-xlarge";
             s.vcpus = 8;
             s.ram_gb = 16.0;
             s.rate_per_min_usd = 0.024;
@@ -746,30 +750,35 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
     } else if lower.contains("bitbucket") {
         if lower.contains("32x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
+            s.sku_label = "bitbucket-32x";
             s.vcpus = 64;
             s.ram_gb = 128.0;
             s.rate_per_min_usd = 0.320;
             s
         } else if lower.contains("24x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
+            s.sku_label = "bitbucket-24x";
             s.vcpus = 48;
             s.ram_gb = 96.0;
             s.rate_per_min_usd = 0.240;
             s
         } else if lower.contains("16x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
+            s.sku_label = "bitbucket-16x";
             s.vcpus = 32;
             s.ram_gb = 64.0;
             s.rate_per_min_usd = 0.160;
             s
         } else if lower.contains("8x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
+            s.sku_label = "bitbucket-8x";
             s.vcpus = 16;
             s.ram_gb = 32.0;
             s.rate_per_min_usd = 0.080;
             s
         } else if lower.contains("4x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
+            s.sku_label = "bitbucket-4x";
             s.vcpus = 8;
             s.ram_gb = 16.0;
             s.rate_per_min_usd = 0.040;
@@ -795,38 +804,60 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
                 EMBEDDED_SKU_CATALOG[18].clone()
             };
             if lower.contains("2xlarge") {
+                s.sku_label = "BUILD_GENERAL1_2XLARGE";
                 s.vcpus = 72;
                 s.ram_gb = 145.0;
                 s.rate_per_min_usd = 0.160;
             } else if lower.contains("xlarge") {
+                s.sku_label = "BUILD_GENERAL1_XLARGE";
                 s.vcpus = 36;
                 s.ram_gb = 72.0;
                 s.rate_per_min_usd = 0.080;
             } else if lower.contains("large") {
+                s.sku_label = "BUILD_GENERAL1_LARGE";
                 s.vcpus = 8;
                 s.ram_gb = 15.0;
                 s.rate_per_min_usd = 0.020;
             }
             s
         }
-    } else if lower.contains("blacksmith") || lower.contains("buildjet") || lower.contains("warpbuild") {
+    } else if lower.contains("blacksmith")
+        || lower.contains("buildjet")
+        || lower.contains("warpbuild")
+        || lower.contains("depot")
+        || lower.contains("runs-on")
+        || lower.contains("namespace")
+    {
         let mut s = EMBEDDED_SKU_CATALOG[20].clone();
-        if lower.contains("32vcpu") || lower.contains("32-core") {
+        if lower.contains("64vcpu") || lower.contains("64-core") || lower.contains("64core") {
+            s.sku_label = "blacksmith-64vcpu";
+            s.vcpus = 64;
+            s.ram_gb = 256.0;
+            s.rate_per_min_usd = 0.128;
+        } else if lower.contains("32vcpu") || lower.contains("32-core") || lower.contains("32core") {
+            s.sku_label = "blacksmith-32vcpu";
             s.vcpus = 32;
             s.ram_gb = 128.0;
             s.rate_per_min_usd = 0.064;
-        } else if lower.contains("16vcpu") || lower.contains("16-core") {
+        } else if lower.contains("16vcpu") || lower.contains("16-core") || lower.contains("16core") {
+            s.sku_label = "blacksmith-16vcpu";
             s.vcpus = 16;
             s.ram_gb = 64.0;
             s.rate_per_min_usd = 0.032;
-        } else if lower.contains("8vcpu") || lower.contains("8-core") {
+        } else if lower.contains("8vcpu") || lower.contains("8-core") || lower.contains("8core") {
+            s.sku_label = "blacksmith-8vcpu";
             s.vcpus = 8;
             s.ram_gb = 32.0;
             s.rate_per_min_usd = 0.016;
-        } else if lower.contains("4vcpu") || lower.contains("4-core") {
+        } else if lower.contains("4vcpu") || lower.contains("4-core") || lower.contains("4core") {
+            s.sku_label = "blacksmith-4vcpu";
             s.vcpus = 4;
             s.ram_gb = 16.0;
             s.rate_per_min_usd = 0.008;
+        } else if lower.contains("2vcpu") || lower.contains("2-core") || lower.contains("2core") {
+            s.vcpus = 2;
+            s.ram_gb = 8.0;
+            s.rate_per_min_usd = 0.004;
         }
         s.blacksmith_equiv_rate_usd = s.rate_per_min_usd;
         s
@@ -845,27 +876,37 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         s.ram_gb = 30.0;
         s.rate_per_min_usd = 0.160;
         s
-    } else if lower.contains("macos-large") {
+    } else if lower.contains("macos-large") || lower.contains("macos-14-large") || lower.contains("macos-15-large") {
         EMBEDDED_SKU_CATALOG[9].clone()
     } else if lower.contains("macos") || lower.contains("darwin") || lower.contains("xcode") {
         EMBEDDED_SKU_CATALOG[8].clone()
     } else if lower.contains("windows") || lower.contains("win") {
         let mut s = EMBEDDED_SKU_CATALOG[7].clone();
+        if lower.contains("arm") {
+            s.sku_label = "windows-11-arm";
+            s.arch = "arm64";
+            s.rate_per_min_usd = 0.010;
+        }
         if lower.contains("64-core") || lower.contains("64core") {
+            s.sku_label = "windows-64core";
             s.vcpus = 64;
-            s.rate_per_min_usd = 0.512;
+            s.rate_per_min_usd = if s.arch == "arm64" { 0.320 } else { 0.512 };
         } else if lower.contains("32-core") || lower.contains("32core") {
+            s.sku_label = "windows-32core";
             s.vcpus = 32;
-            s.rate_per_min_usd = 0.256;
+            s.rate_per_min_usd = if s.arch == "arm64" { 0.160 } else { 0.256 };
         } else if lower.contains("16-core") || lower.contains("16core") {
+            s.sku_label = "windows-16core";
             s.vcpus = 16;
-            s.rate_per_min_usd = 0.128;
+            s.rate_per_min_usd = if s.arch == "arm64" { 0.080 } else { 0.128 };
         } else if lower.contains("8-core") || lower.contains("8core") {
+            s.sku_label = "windows-8core";
             s.vcpus = 8;
-            s.rate_per_min_usd = 0.064;
+            s.rate_per_min_usd = if s.arch == "arm64" { 0.040 } else { 0.064 };
         } else if lower.contains("4-core") || lower.contains("4core") {
+            s.sku_label = "windows-4core";
             s.vcpus = 4;
-            s.rate_per_min_usd = 0.032;
+            s.rate_per_min_usd = if s.arch == "arm64" { 0.020 } else { 0.032 };
         }
         s
     } else if lower.contains("64-core") || lower.contains("64core") {
@@ -940,5 +981,27 @@ mod tests {
         let mac_xl = resolve_runner_sku("macos-15-xlarge");
         assert_eq!(mac_xl.vcpus, 12);
         assert!((mac_xl.rate_per_min_usd - 0.160).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_wild_runner_labels_and_3rd_party_microvms() {
+        let win22 = resolve_runner_sku("windows-2022");
+        assert_eq!(win22.vcpus, 4);
+        assert_eq!(win22.os, "Windows");
+
+        let win25 = resolve_runner_sku("windows-2025");
+        assert_eq!(win25.vcpus, 4);
+
+        let win_arm = resolve_runner_sku("windows-11-arm64");
+        assert_eq!(win_arm.arch, "arm64");
+        assert!((win_arm.rate_per_min_usd - 0.010).abs() < 1e-6);
+
+        let depot = resolve_runner_sku("depot-ubuntu-24.04-16vcpu");
+        assert_eq!(depot.vcpus, 16);
+        assert!((depot.rate_per_min_usd - 0.032).abs() < 1e-6);
+
+        let runson = resolve_runner_sku("runs-on-8vcpu-linux-x64");
+        assert_eq!(runson.vcpus, 8);
+        assert!((runson.rate_per_min_usd - 0.016).abs() < 1e-6);
     }
 }
