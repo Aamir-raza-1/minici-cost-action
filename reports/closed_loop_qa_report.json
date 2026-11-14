@@ -5,7 +5,7 @@
   "learned_registry_entries": 9,
   "benchmark_scenarios_verified": 0,
   "five_source_zero_delta": true,
-  "execution_time_ms": 50.04,
+  "execution_time_ms": 102.2,
   "ollama_audit": null,
   "sessions": [
     {

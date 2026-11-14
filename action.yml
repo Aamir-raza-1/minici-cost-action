@@ -40,9 +40,23 @@ runs:
           mkdir -p "${{ github.action_path }}/target/release"
           cp "${{ github.action_path }}/crates/minici/target/release/minici" "$BIN_PATH"
         fi
-        "$BIN_PATH" breakdown           --path "${{ inputs.path }}"           --tier "${{ inputs.tier }}"           --prs-per-week "${{ inputs.prs-per-week }}"           --pushes-per-pr "${{ inputs.pushes-per-pr }}"           --dev-hourly-rate "${{ inputs.dev-hourly-rate }}"           --format markdown           --out-file .minici_breakdown.md
-        cat .minici_breakdown.md
-        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        "$BIN_PATH" breakdown \
+          --path "${{ inputs.path }}" \
+          --tier "${{ inputs.tier }}" \
+          --prs-per-week "${{ inputs.prs-per-week }}" \
+          --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
+          --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+          --format table
+        "$BIN_PATH" breakdown \
+          --path "${{ inputs.path }}" \
+          --tier "${{ inputs.tier }}" \
+          --prs-per-week "${{ inputs.prs-per-week }}" \
+          --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
+          --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+          --format markdown \
+          --out-file .minici_breakdown.md \
+          --quiet
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f .minici_breakdown.md ]; then
           cat .minici_breakdown.md >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
         fi

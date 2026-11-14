@@ -1,7 +1,7 @@
 # 💰 MiniCI (`Skipwise`) — Infracost for CI/CD Pipelines (`354 µs` Pure Rust)
 
 **Catch Expensive Pull Request CI Matrix Spikes Before You Merge.**
-Sub-millisecond Pure Rust engine (`573 KB` zero-dependency binary, `1.20 MB` peak RAM, `0.00s` CPU) that expands your CI workflow matrices on every Pull Request, local `pre-push` hook, and Claude Code session—showing exact **Free-Tier Quota Burn %**, **Developer Wait-Time Dollars**, and **Per-PR Compute Cost Deltas** across all **7 Official CI Providers** (`GitHub Actions`, `GitLab CI`, `CircleCI`, `Bitbucket`, `AWS CodeBuild`, `GCP Cloud Build`, `Azure DevOps`) + **Blacksmith** & **AWS Spot via Infracost** (`Exit 0` Always).
+Sub-millisecond Pure Rust engine (`573 KB` zero-dependency binary, `1.20 MB` peak RAM, `0.00s` CPU) that expands your CI workflow matrices on every Pull Request, local `pre-push` hook, and IDE session—showing exact **Free-Tier Quota Burn %**, **Developer Wait-Time Dollars**, and **Per-PR Compute Cost Deltas** across all **7 Official CI Providers** (`GitHub Actions`, `GitLab CI`, `CircleCI`, `Bitbucket`, `AWS CodeBuild`, `GCP Cloud Build`, `Azure DevOps`) + **Blacksmith** & **AWS Spot via Infracost** (`Exit 0` Always).
 
 * 🌐 **Live Interactive Website & 7-Provider Calculator:** https://minici-cost-action.raza-aamir01.workers.dev
 * 🎬 **Playable MP4 Product Demo (`1.8 MB`):** [https://minici-cost-action.raza-aamir01.workers.dev/minici-cost-demo.mp4](https://minici-cost-action.raza-aamir01.workers.dev/minici-cost-demo.mp4) (`web/minici-cost-demo.mp4`)

@@ -120,97 +120,160 @@ fn detect_binary_size_kb() -> u64 {
 }
 
 pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
-    let account_info = detect_github_account_and_git_user();
+    if r.total_workflows == 0 {
+        return "✓ minici: Skipped (0 CI workflow files found)".to_string();
+    }
+
     let repo_info = detect_repo_identity(&r.target_path);
-    let bin_kb = detect_binary_size_kb();
-    let platform_arch = format!("{}/{}", env::consts::OS, env::consts::ARCH);
-    let catalog_state = crate::catalog::pricing_catalog_status();
+    let customer_mode = std::env::var("MINICI_CUSTOMER_MODE")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+        .unwrap_or(true);
 
-    let top_driver = r
-        .jobs
-        .iter()
-        .max_by(|a, b| {
-            a.run_compute_cost_usd
-                .partial_cmp(&b.run_compute_cost_usd)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .map(|j| {
-            format!(
-                "{} (`{}` • {}x `{}` @ ${:.4}/m = ${:.2}/run)",
-                j.job_id,
-                j.workflow_file,
-                j.matrix_combination_count,
-                j.runner_label,
-                j.rate_per_min_usd,
-                j.run_compute_cost_usd
-            )
-        })
-        .unwrap_or_else(|| "none".to_string());
+    let view_badge = if customer_mode {
+        "CUSTOMER LAUNCH VIEW"
+    } else {
+        "OWNER / INTERNAL DEBUG VIEW"
+    };
 
-    let blacksmith_savings_usd =
-        (r.gross_monthly_compute_cost_usd - r.monthly_blacksmith_cost_usd).max(0.0);
-    let spot_savings_usd =
-        (r.gross_monthly_compute_cost_usd - r.monthly_self_hosted_spot_cost_usd).max(0.0);
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Project: {} ({} workflow(s), {} expanded jobs • {:.2} ms) [{}]\n\n",
+        repo_info,
+        r.total_workflows,
+        r.total_expanded_matrix_jobs,
+        r.execution_time_ms,
+        view_badge
+    ));
 
-    let breakeven_line = if r.exceeds_5000m_self_hosted_breakeven {
-        format!(
-            "  5. Recommendation    : SWITCH TO BLACKSMITH (${:.2}/mo, saves ${:.2}/mo) OR AWS SPOT (${:.2}/mo, saves ${:.2}/mo)\n                         [Why: Pipeline is {:.0} mins/mo, exceeding the 5,000 mins/mo break-even threshold]\n",
+    out.push_str(&format!(
+        " {:<42}  {:<24}  {:>11}  {:>10}  {:>10}  {:>13}\n",
+        "WORKFLOW / JOB", "MATRIX × RUNNER", "BILLED MINS", "RATE/MIN", "COST/RUN", "MONTHLY COST"
+    ));
+    out.push_str(&format!(
+        " {:<42}  {:<24}  {:>11}  {:>10}  {:>10}  {:>13}\n",
+        "──────────────────────────────────────────",
+        "────────────────────────",
+        "───────────",
+        "──────────",
+        "──────────",
+        "─────────────"
+    ));
+
+    for j in &r.jobs {
+        let wf_short = j
+            .workflow_file
+            .trim_start_matches(".github/workflows/");
+        let wf_job_raw = format!("{} • {}", wf_short, j.job_id);
+        let wf_job = if wf_job_raw.chars().count() > 42 {
+            let truncated: String = wf_job_raw.chars().take(39).collect();
+            format!("{}...", truncated)
+        } else {
+            wf_job_raw
+        };
+
+        let mat_runner_raw = format!("{}x {}", j.matrix_combination_count, j.runner_label);
+        let mat_runner = if mat_runner_raw.chars().count() > 24 {
+            let truncated: String = mat_runner_raw.chars().take(21).collect();
+            format!("{}...", truncated)
+        } else {
+            mat_runner_raw
+        };
+
+        let monthly_job_usd = j.run_compute_cost_usd * r.monthly_runs;
+        let mins_col = format!("{:.1}m", j.total_billed_mins_all_matrix);
+        let rate_col = format!("${:.4}/m", j.rate_per_min_usd);
+        let run_col = format!("${:.3}", j.run_compute_cost_usd);
+        let mo_col = format!("${:.2}/mo", monthly_job_usd);
+        out.push_str(&format!(
+            " {:<42}  {:<24}  {:>11}  {:>10}  {:>10}  {:>13}\n",
+            wf_job,
+            mat_runner,
+            mins_col,
+            rate_col,
+            run_col,
+            mo_col
+        ));
+    }
+
+    out.push_str(&format!(
+        " {:<42}  {:<24}  {:>11}  {:>10}  {:>10}  {:>13}\n",
+        "──────────────────────────────────────────",
+        "────────────────────────",
+        "───────────",
+        "──────────",
+        "──────────",
+        "─────────────"
+    ));
+    let total_label = format!("OVERALL TOTAL ({:.0} runs/mo • {})", r.monthly_runs, r.effective_tier);
+    let total_label_trunc = if total_label.chars().count() > 42 {
+        let t: String = total_label.chars().take(39).collect();
+        format!("{}...", t)
+    } else {
+        total_label
+    };
+    let jobs_summary = format!("{} expanded job(s)", r.total_expanded_matrix_jobs);
+    let tot_mins_col = format!("{:.1}m", r.billed_mins_per_run);
+    let tot_run_col = format!("${:.3}", r.gross_compute_cost_per_run_usd);
+    let tot_mo_col = format!("${:.2}/mo", r.gross_monthly_compute_cost_usd);
+    out.push_str(&format!(
+        " {:<42}  {:<24}  {:>11}  {:>10}  {:>10}  {:>13}\n\n",
+        total_label_trunc,
+        jobs_summary,
+        tot_mins_col,
+        "—",
+        tot_run_col,
+        tot_mo_col
+    ));
+
+    out.push_str(&format!(
+        " • Free-Tier Quota  : {:.0} / {:.0} mins ({:.1}% of monthly quota) • Net Billed: ${:.2}/mo\n",
+        r.monthly_billed_mins,
+        r.free_tier_included_mins,
+        r.free_tier_quota_burn_pct,
+        r.net_billed_monthly_compute_cost_usd
+    ));
+    out.push_str(&format!(
+        " • Dev Wait-Time    : {:.1}m critical path (${:.2}/run • ${:.2}/mo at ${:.0}/hr)\n",
+        r.critical_path_wait_mins_per_run,
+        r.dev_wait_cost_per_run_usd,
+        r.monthly_dev_wait_cost_usd,
+        r.usage.dev_hourly_rate_usd
+    ));
+
+    if r.exceeds_5000m_self_hosted_breakeven {
+        let blacksmith_savings_usd =
+            (r.gross_monthly_compute_cost_usd - r.monthly_blacksmith_cost_usd).max(0.0);
+        let spot_savings_usd =
+            (r.gross_monthly_compute_cost_usd - r.monthly_self_hosted_spot_cost_usd).max(0.0);
+        out.push_str(&format!(
+            " • Recommendation   : Switch to Blacksmith (${:.2}/mo, saves ${:.2}/mo) or Cloud Spot (${:.2}/mo, saves ${:.2}/mo)",
             r.monthly_blacksmith_cost_usd,
             blacksmith_savings_usd,
             r.monthly_self_hosted_spot_cost_usd,
-            spot_savings_usd,
-            r.monthly_billed_mins
-        )
+            spot_savings_usd
+        ));
     } else {
-        format!(
-            "  5. Recommendation    : STAY ON SAAS RUNNERS ({:.0} / 5,000 mins/mo self-hosted break-even threshold)\n",
+        out.push_str(&format!(
+            " • Recommendation   : Stay on SaaS runners ({:.0} / 5,000 mins/mo self-hosted break-even threshold)",
             r.monthly_billed_mins
-        )
-    };
+        ));
+    }
 
-    let customer_mode = std::env::var("MINICI_CUSTOMER_MODE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
-    let infracost_status = Command::new("infracost")
-        .arg("--version")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| format!("ACTIVE ({} delegated for AWS/GCP/Azure Cloud Runners)", s.trim()))
-        .unwrap_or_else(|| "ACTIVE (Infracost v2.19.0 Cloud Instance Table)".to_string());
-
-    let owner_debug_panel = if customer_mode {
-        String::new()
-    } else {
-        let dynamic_cloud_jobs = r
-            .jobs
-            .iter()
-            .filter(|j| j.provider.starts_with("self-hosted"))
-            .count();
-        format!(
-            "+------------------------------------------------------------------------------------+\n\
-             | OWNER INTERNAL DEBUG & FEATURE FLAGS (Hide for launch with `--customer-mode`)      |\n\
-             +------------------------------------------------------------------------------------+\n\
+    if !customer_mode {
+        let catalog_state = crate::catalog::pricing_catalog_status();
+        let account_info = detect_github_account_and_git_user();
+        let bin_kb = detect_binary_size_kb();
+        out.push_str(&format!(
+            "\n\n [OWNER / INTERNAL DEBUG VIEW • {} • {} KB Rust Binary]\n\
                [ON] feat.matrix_ast_expansion  : {} defined jobs -> {} expanded matrix combinations\n\
-               [ON] feat.ceiling_rounding      : 1-min integer ceiling per GitHub/GitLab billing rules\n\
-               [ON] feat.infracost_cloud_engine: {} ({} cloud jobs)\n\
                [ON] feat.hot_reload_catalog    : {}\n\
-               [ON] feat.zero_clone_repo_cache : ~/.minici/cache/repos/ (< 1.5 ms warm cache hit)\n\
-               [ON] feat.dev_wait_burn_calc    : {:.1}m critical path * ({:.0} runs/mo) * (${:.0}/hr / 60)\n\
-               [ON] feat.breakeven_5000m_gate  : {:.0} billed mins/mo vs 5,000 mins/mo threshold\n\
-               [ON] feat.wozcode_claude_hooks  : PreToolUse + PostToolUse + woz@wozcode-marketplace\n\
                [MATH TRACE] Runs/Mo = {:.1} PRs/wk * 4.333 wks * {:.1} pushes/PR = {:.1} runs/mo\n\
-               [MATH TRACE] Gross = ${:.3}/run * {:.1} runs = ${:.2}/mo | Net = ${:.2}/mo\n",
+               [MATH TRACE] Gross = ${:.3}/run * {:.1} runs = ${:.2}/mo | Net = ${:.2}/mo",
+            account_info,
+            bin_kb,
             r.total_defined_jobs,
             r.total_expanded_matrix_jobs,
-            infracost_status,
-            dynamic_cloud_jobs,
             catalog_state,
-            r.critical_path_wait_mins_per_run,
-            r.monthly_runs,
-            r.usage.dev_hourly_rate_usd,
-            r.monthly_billed_mins,
             r.usage.prs_per_week,
             r.usage.pushes_per_pr,
             r.monthly_runs,
@@ -218,58 +281,10 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
             r.monthly_runs,
             r.gross_monthly_compute_cost_usd,
             r.net_billed_monthly_compute_cost_usd
-        )
-    };
+        ));
+    }
 
-    format!(
-        "+====================================================================================+\n\
-         | MINICI (SKIPWISE) — CI/CD COST & QUOTA RECEIPT ({:.2} ms • {} KB Pure Rust Binary) |\n\
-         +====================================================================================+\n\
-         | View Mode        : {}\n\
-         | GitHub Account   : {}\n\
-         | GitHub Repo      : {}\n\
-         | Runtime & Binary : {} (Cross-Platform Linux/Windows/macOS • {} KB Rust)\n\
-         | Cloud Engine     : {}\n\
-         | Scanned Pipeline : {} workflows • {} defined jobs -> {} expanded matrix jobs ({:.0} runs/mo)\n\
-         +------------------------------------------------------------------------------------+\n\
-           1. Monthly CI Bill   : ${:.2} / mo (${:.3} / run)  [Net Billed: ${:.2}/mo • Tier: {}]\n\
-           2. Free Quota Burn   : {:.0} / {:.0} mins ({:.1}% of monthly free tier)\n\
-           3. Dev Wait-Time ($) : ${:.2} / mo (${:.2} / run • {:.1}m slowest job critical path)\n\
-                                  [ASSUMED DEV RATE: ${:.0}/hr median — override via --dev-hourly-rate <$>, or 0]\n\
-           4. Top Cost Driver   : {}\n\
-         {}{}+====================================================================================+\n\
-           Tip: `--customer-mode` (hide owner flags), `minici self-update`, `--report report.html`.\n",
-        r.execution_time_ms,
-        bin_kb,
-        if customer_mode {
-            "CUSTOMER LAUNCH VIEW (Clean External Output • Owner Flags Hidden)"
-        } else {
-            "OWNER / INTERNAL DEBUG VIEW (All Feature Flags & Math Traces Visible)"
-        },
-        account_info,
-        repo_info,
-        platform_arch,
-        bin_kb,
-        infracost_status,
-        r.total_workflows,
-        r.total_defined_jobs,
-        r.total_expanded_matrix_jobs,
-        r.monthly_runs,
-        r.gross_monthly_compute_cost_usd,
-        r.gross_compute_cost_per_run_usd,
-        r.net_billed_monthly_compute_cost_usd,
-        r.effective_tier,
-        r.monthly_billed_mins,
-        r.free_tier_included_mins,
-        r.free_tier_quota_burn_pct,
-        r.monthly_dev_wait_cost_usd,
-        r.dev_wait_cost_per_run_usd,
-        r.critical_path_wait_mins_per_run,
-        r.usage.dev_hourly_rate_usd,
-        top_driver,
-        breakeven_line,
-        owner_debug_panel
-    )
+    out
 }
 
 pub fn render_breakdown_csv(r: &BreakdownReport) -> String {
@@ -391,24 +406,29 @@ pub fn render_cli_compact_diff(d: &DiffReport) -> String {
 }
 
 pub fn render_breakdown_markdown(r: &BreakdownReport) -> String {
+    if r.total_workflows == 0 {
+        return "<!-- minici-cost-comment -->\n✓ **MiniCI:** Skipped (0 CI workflow files found)\n".to_string();
+    }
+
     let mut rows = String::new();
     for j in &r.jobs {
+        let monthly_job_usd = j.run_compute_cost_usd * r.monthly_runs;
         rows.push_str(&format!(
-            "| `{}` | `{}` | `{}x` (`{}`) | `{:.1}m` (`{:.1}m` billed) | `${:.4}/min` | **`${:.3}/run`** |\n",
-            j.workflow_file,
+            "| `{}` | `{}` | `{}x {}` | `{:.1}m` | `${:.4}/m` | `${:.3}` | **`${:.2}/mo`** |\n",
+            j.workflow_file.trim_start_matches(".github/workflows/"),
             j.job_id,
             j.matrix_combination_count,
             j.runner_label,
-            j.est_raw_duration_mins_per_job,
             j.total_billed_mins_all_matrix,
             j.rate_per_min_usd,
-            j.run_compute_cost_usd
+            j.run_compute_cost_usd,
+            monthly_job_usd
         ));
     }
 
     let breakeven_banner = if r.exceeds_5000m_self_hosted_breakeven {
         format!(
-            "\n> 💡 **Self-Hosted / Blacksmith Break-Even Alert (`>= 5,000 mins/mo`):** Your pipeline consumes `{:.0} billed mins/mo` (`${:.2}/mo` SaaS list rate). Switching to **Blacksmith** drops compute to **`${:.2}/mo`**, or **Self-Hosted Spot/VPS** to **`${:.2}/mo`**!\n",
+            "\n> 💡 **Runner Right-Sizing Opportunity (`>= 5,000 mins/mo`):** Pipeline consumes `{:.0} billed mins/mo` (`${:.2}/mo` SaaS rate). Switching to **Blacksmith** drops compute to **`${:.2}/mo`**, or **Cloud Spot** to **`${:.2}/mo`**.\n",
             r.monthly_billed_mins,
             r.gross_monthly_compute_cost_usd,
             r.monthly_blacksmith_cost_usd,
@@ -420,38 +440,27 @@ pub fn render_breakdown_markdown(r: &BreakdownReport) -> String {
 
     format!(
         "<!-- minici-cost-comment -->\n\
-### 💰 MiniCI (`Skipwise`) CI/CD Cost & Quota Breakdown (`{:.2} ms` Rust Engine)\n\
+### 💰 MiniCI CI/CD Cost & Quota Breakdown (`{:.2} ms`)\n\n\
+**Summary:** `{}` workflow(s) • `{}` expanded matrix job(s) • **`${:.2}/mo`** gross compute (**`${:.2}/mo`** net billed, `{:.1}%` of `{:.0}m` free quota) • **Dev Wait:** `${:.2}/mo` (`{:.1}m` critical path)\n\
 {breakeven_banner}\n\
-| Job Breakdown (`{}` Workflows) | Job ID | Matrix × Runner SKU | Duration (`Billed`) | Official SKU Rate | Cost / Run |\n\
-| :--- | :--- | :--- | :--- | :--- | :--- |\n\
-{rows}\n\
-#### 📊 Monthly FinOps, Free-Tier Quota & Developer Wait-Time Summary (`{:.0} runs/mo`)\n\
-| Financial / Quota Dimension | Per Pipeline Run | Monthly Projection (`{:.0} runs`) | Benchmark / Tier Note |\n\
-| :--- | :--- | :--- | :--- |\n\
-| **1. Free-Tier Quota Burn (`{}`)** | `{:.1} billed mins` | **`{:.0} / {:.0} mins` (`{:.1}%` quota)** | Effective Tier: **`{}`** |\n\
-| **2. Developer Wait-Time Cost (`${:.0}/hr`)** | **`${:.2} / run`** (`{:.1}m` wait) | **`${:.2} / mo`** | Real engineering time burned waiting on CI |\n\
-| **3. Gross SaaS Compute Cost (List Rate)** | `${:.3} / run` | **`${:.2} / mo`** (Net billed: **`${:.2}/mo`**) | Official 1-min ceiling & OS multipliers applied |\n\
-| **4. Hidden Artifact Storage (`$0.25/GB`)** | `{:.2} GB / run` | **`${:.2} / mo`** (vs **`${:.2}/mo`** AWS S3) | `10.9x` vendor storage markup (`cicdcost.com`) |\n",
+| Workflow | Job ID | Matrix × Runner | Billed Mins | Rate/Min | Cost/Run | Monthly (`{:.0}` runs) |\n\
+| :--- | :--- | :--- | ---: | ---: | ---: | ---: |\n\
+{rows}| **OVERALL TOTAL** | **`{} job(s)`** | **`{}`** | **`{:.1}m`** | — | **`${:.3}`** | **`${:.2}/mo`** |\n",
         r.execution_time_ms,
         r.total_workflows,
-        r.monthly_runs,
-        r.monthly_runs,
-        r.detected_providers.join(", "),
-        r.billed_mins_per_run,
-        r.monthly_billed_mins,
-        r.free_tier_included_mins,
-        r.free_tier_quota_burn_pct,
-        r.effective_tier,
-        r.usage.dev_hourly_rate_usd,
-        r.dev_wait_cost_per_run_usd,
-        r.critical_path_wait_mins_per_run,
-        r.monthly_dev_wait_cost_usd,
-        r.gross_compute_cost_per_run_usd,
+        r.total_expanded_matrix_jobs,
         r.gross_monthly_compute_cost_usd,
         r.net_billed_monthly_compute_cost_usd,
-        r.usage.artifact_gb_per_run,
-        r.monthly_artifact_storage_vendor_usd,
-        r.monthly_artifact_storage_s3_usd
+        r.free_tier_quota_burn_pct,
+        r.free_tier_included_mins,
+        r.monthly_dev_wait_cost_usd,
+        r.critical_path_wait_mins_per_run,
+        r.monthly_runs,
+        r.total_expanded_matrix_jobs,
+        r.effective_tier,
+        r.billed_mins_per_run,
+        r.gross_compute_cost_per_run_usd,
+        r.gross_monthly_compute_cost_usd
     )
 }
 
@@ -556,10 +565,10 @@ pub fn generate_post_tool_use_launch_pack(feature_name: &str, sample_latency_us:
 - **Body:** GitHub Actions and GitLab CI only show you a lump-sum bill at the end of the month—they never tell you which PR or `strategy.matrix` change spiked your runner bill or burned your 2,000 free minutes. I wrote `minici` in pure Rust with an embedded zero-copy SKU catalog (supporting 1-minute per-job ceiling rounding, macOS 10x multipliers, `$0.25/GB` artifact storage tax, developer wait-time cost, and the 5,000 min/mo self-hosted break-even threshold). Always exits `0` so it never blocks a build. Feedback welcome: `raza.aamir01@gmail.com`.\n\n\
 ## 4. LinkedIn — Founder Build-in-Public Post (Natural Staff SRE Voice)\n\
 - **Post:** If we were building CI/CD for software built with AI, what would it look like? It wouldn't wait 30 days to send you a surprise GitHub Actions invoice after an AI coding agent expanded a workflow matrix to `macos-latest`. So I built **MiniCI (`minici`) — CI/CD with Taste** in pure Rust. In **{sample_latency_us} microseconds** (`< 1 ms`), it expands your CI matrices and posts the exact Per-PR & Monthly Cost Diff, Free-Tier Quota Burn %, and Developer Wait-Time cost right on the PR or local `pre-push` hook. Inspired by Ahmad Awais's CommandCode.ai model, we made pricing dead simple: open-source CLI locally, `$1/mo` Go tier, `$10/mo` GOAT tier, and `$40/mo` Team Pro. Reach out anytime at `raza.aamir01@gmail.com`.\n\n\
-## 5. Anthropic Partner & Official Claude Code (`PreToolUse` / `PostToolUse` / MCP) Profile\n\
-- **Integration Name:** `minici` — Sub-Millisecond CI/CD with Taste Guard for Claude Code\n\
+## 5. AI Coding Agent & IDE (`PreToolUse` / `PostToolUse` / MCP) Profile\n\
+- **Integration Name:** `minici` — Sub-Millisecond CI/CD with Taste Guard for AI Coding Agents\n\
 - **Maintainer:** Aamir Raza (`raza.aamir01@gmail.com`)\n\
-- **Hook Specification:** Plugs directly into `.claude/settings.json` (`PreToolUse` / `PostToolUse` on `git push` or `.github/workflows/*.yml` edits) in `{sample_latency_us} µs` with `exit 0` informational receipts so Claude Code agents learn your repo's CI budget taste (`taste-ci-1`) before pushing.\n\n\
+- **Hook Specification:** Plugs directly into IDE & Git hooks (`PreToolUse` / `PostToolUse` on `git push` or `.github/workflows/*.yml` edits) in `{sample_latency_us} µs` with `exit 0` informational receipts so coding agents respect your repo's CI budget (`taste-ci-1`) before pushing.\n\n\
 ## 6. Mozilla Builders / Open-Source AI & DevTools Grant Profile\n\
 - **Applicant:** Aamir Raza (`raza.aamir01@gmail.com`)\n\
 - **Project Summary:** Open-source, zero-telemetry-egress Rust binary (`Apache-2.0`) that brings `CI/CD with Taste` locally to any developer machine or cheap 1–2 vCPU container without sending proprietary source code to third-party servers.\n",

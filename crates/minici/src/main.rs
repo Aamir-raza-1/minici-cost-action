@@ -25,7 +25,7 @@ fn print_help() {
 }
 
 pub fn help_text() -> &'static str {
-    "minici 0.1.0 — MiniCI (Skipwise): Sub-Millisecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine\n\
+    "minici 0.2.0 — MiniCI (Skipwise): Sub-Millisecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine\n\
 Author: Aamir Raza <raza.aamir01@gmail.com>\n\n\
 USAGE:\n  \
   minici <COMMAND> [OPTIONS]\n\n\
@@ -34,9 +34,9 @@ COMMANDS:\n  \
   diff         Compare base vs PR workflows/branches/repos to isolate Pull Request CI cost & time deltas\n  \
   comment      Render or post sticky Pull Request / Merge Request / Slack CI Cost comment\n  \
   catalog      Inspect, sync, or override the Multi-Vendor + Infracost Cloud Pricing SKU Catalog\n  \
-  mcp          Start JSON-RPC 2.0 stdio MCP server for Claude Code, Antigravity, Cursor & VS Code\n  \
+  mcp          Start JSON-RPC 2.0 stdio MCP server for Antigravity, Cursor, Windsurf & VS Code\n  \
   self-update  Sync live pricing catalog, verify 0 drift, and self-upgrade binary (--install-dir <DIR>)\n  \
-  init-hooks   Install Claude Code + Wozcode (PreToolUse/PostToolUse), Agent MCP (.mcp.json) & GitHub Action\n  \
+  init-hooks   Install Shift-Left PreToolUse/PostToolUse hooks, Agent MCP (.mcp.json) & GitHub Action\n  \
   launch-pack  Generate automatic PostToolUse 6-Channel Launch & Partner Profile Pack\n\n\
 OPTIONS (breakdown):\n  \
   --path <PATH_OR_URL>       Local repo path OR public GitHub URL (e.g. https://github.com/owner/repo) [default: .]\n  \
@@ -49,7 +49,7 @@ OPTIONS (breakdown):\n  \
   --prs-per-week <NUM>       Pull requests per week [default: 25]\n  \
   --pushes-per-pr <NUM>      Pushes per pull request [default: 4]\n  \
   --dev-hourly-rate <USD>    Assumed developer hourly rate in USD (pass 0 to disable) [default: 65]\n  \
-  --hook <NAME>              Run as Shift-Left Git pre-push / Claude Code PreToolUse hook\n  \
+  --hook <NAME>              Run as Shift-Left Git pre-push / IDE PreToolUse hook\n  \
   --benchmark                Run 100-iteration microsecond/millisecond latency benchmark\n  \
   --quiet, -q                Non-interactive silent mode (suppress progress & terminal banners)\n"
 }
@@ -79,7 +79,7 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
 
     match method.as_str() {
         "initialize" => Some(format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"minici\",\"version\":\"0.1.0\"}}}}}}",
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"minici\",\"version\":\"0.2.0\"}}}}}}",
             id
         )),
         "notifications/initialized" | "initialized" => None,
@@ -426,7 +426,7 @@ fn main() {
         return;
     }
     if args[0] == "--version" || args[0] == "-V" {
-        println!("minici 0.1.0");
+        println!("minici 0.2.0");
         return;
     }
 
@@ -922,7 +922,7 @@ fn main() {
             };
 
             if !quiet {
-                println!("⏳ [3/4] Checking Infracost CLI & Wozcode Claude Token-Savings Engine...");
+                println!("⏳ [3/4] Checking Infracost CLI & Cloud Pricing Engine...");
             }
             let infracost_ver = Command::new("infracost")
                 .arg("--version")
@@ -972,13 +972,9 @@ fn main() {
                 }
                 i += 1;
             }
-            let claude_dir = target.join(".claude");
-            let _ = fs::create_dir_all(&claude_dir);
-            let claude_settings = r#"{
-  "enabledPlugins": {
-    "woz@wozcode-marketplace": true
-  },
-  "agent": "woz:code",
+            let hooks_dir = target.join(".minici");
+            let _ = fs::create_dir_all(&hooks_dir);
+            let hooks_settings = r#"{
   "hooks": {
     "PreToolUse": [
       {
@@ -986,7 +982,7 @@ fn main() {
         "hooks": [
           {
             "type": "command",
-            "command": "minici breakdown --path . --hook claude-pre-tool-use"
+            "command": "minici breakdown --path . --hook pre-tool-use"
           }
         ]
       }
@@ -1005,15 +1001,15 @@ fn main() {
   }
 }
 "#;
-            let claude_file = claude_dir.join("settings.json");
-            let _ = fs::write(&claude_file, claude_settings);
+            let hooks_file = hooks_dir.join("hooks.json");
+            let _ = fs::write(&hooks_file, hooks_settings);
 
             let mcp_json = r#"{
   "mcpServers": {
     "minici": {
       "command": "minici",
       "args": ["mcp"],
-      "description": "Sub-millisecond CI/CD Cost, Matrix & Quota Guardrail for Claude, Cursor, Antigravity & Windsurf"
+      "description": "Sub-millisecond CI/CD Cost, Matrix & Quota Guardrail for Antigravity, Cursor, Windsurf & VS Code"
     }
   }
 }
@@ -1048,10 +1044,10 @@ jobs:
             let _ = fs::write(&gh_action_file, gh_action_yml);
 
             println!("+====================================================================================+");
-            println!("| MINICI SHIFT-LEFT AGENT, CLAUDE CODE & GITHUB ACTION HOOKS INSTALLED              |");
+            println!("| MINICI SHIFT-LEFT AGENT, IDE & GITHUB ACTION HOOKS INSTALLED                       |");
             println!("+====================================================================================+");
-            println!("  1. Claude Code CLI Hooks : {} (PreToolUse + PostToolUse active)", claude_file.display());
-            println!("  2. Universal Agent MCP   : {} (Claude Desktop, Cursor, Antigravity, Windsurf)", mcp_file.display());
+            println!("  1. Shift-Left CLI Hooks  : {} (PreToolUse + PostToolUse active)", hooks_file.display());
+            println!("  2. Universal Agent MCP   : {} (Antigravity, Cursor, Windsurf, VS Code)", mcp_file.display());
             println!("  3. GitHub Action Workflow: {} (PR sticky cost comment active)", gh_action_file.display());
             println!("+====================================================================================+");
         }
@@ -1434,5 +1430,21 @@ jobs:
             ],
             "AI DRIFT BLOCKED: CLI flags changed from locked contract!"
         );
+    }
+
+    #[test]
+    fn test_zero_workflow_files_fast_skip_without_fake_inferred_job() {
+        let empty_dir = std::env::temp_dir().join("minici_zero_workflows_test");
+        let _ = fs::remove_dir_all(&empty_dir);
+        fs::create_dir_all(&empty_dir).unwrap();
+
+        let rep = analyze_path(&empty_dir, None);
+        assert_eq!(rep.total_workflows, 0);
+        assert_eq!(rep.total_expanded_matrix_jobs, 0);
+        assert_eq!(rep.gross_monthly_compute_cost_usd, 0.0);
+        let tbl = render_cli_compact_summary(&rep);
+        assert_eq!(tbl, "✓ minici: Skipped (0 CI workflow files found)");
+
+        let _ = fs::remove_dir_all(&empty_dir);
     }
 }
