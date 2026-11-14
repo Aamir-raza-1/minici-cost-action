@@ -308,6 +308,24 @@ fn load_usage_config(root: &Path, override_cfg: Option<UsageConfig>) -> UsageCon
     cfg
 }
 
+fn extract_os_from_flow_map(s: &str) -> Option<String> {
+    let inner = s.trim().strip_prefix('{')?.strip_suffix('}')?;
+    for part in inner.split(',') {
+        let kv = part.trim();
+        if let Some(val) = kv
+            .strip_prefix("os:")
+            .or_else(|| kv.strip_prefix("runner:"))
+            .or_else(|| kv.strip_prefix("runs-on:"))
+        {
+            let clean = val.trim().trim_matches('"').trim_matches('\'');
+            if !clean.is_empty() {
+                return Some(clean.to_string());
+            }
+        }
+    }
+    None
+}
+
 fn parse_inline_yaml_list(val: &str) -> Vec<String> {
     let trimmed = val.trim();
     if let Some(start) = trimmed.find('[') {
@@ -416,10 +434,17 @@ fn analyze_github_job_block(
                     if current_matrix_axis == "include" {
                         if ind <= axis_indent + 4 {
                             include_items += 1;
-                            if let Some(os_val) = item_val.strip_prefix("os:") {
+                            if item_val.starts_with('{') {
+                                let clean_os = extract_os_from_flow_map(item_val)
+                                    .unwrap_or_else(|| "ubuntu-latest".to_string());
+                                axis_counts.push(("__include_os__".to_string(), vec![clean_os]));
+                            } else if let Some(os_val) = item_val.strip_prefix("os:") {
                                 let clean_os = os_val.trim().trim_matches('"').trim_matches('\'');
                                 if !clean_os.is_empty() {
-                                    axis_counts.push(("__include_os__".to_string(), vec![clean_os.to_string()]));
+                                    axis_counts.push((
+                                        "__include_os__".to_string(),
+                                        vec![clean_os.to_string()],
+                                    ));
                                 }
                             }
                         }
@@ -428,7 +453,9 @@ fn analyze_github_job_block(
                             exclude_items += 1;
                         }
                     } else if let Some(last) = axis_counts.last_mut() {
-                        if last.0 == current_matrix_axis && !item_val.contains(':') {
+                        if last.0 == current_matrix_axis
+                            && (!item_val.contains(':') || item_val.starts_with('{'))
+                        {
                             last.1.push(item_val.to_string());
                         }
                     }
@@ -507,6 +534,17 @@ fn analyze_github_job_block(
             product_count = product_count.saturating_mul(items.len());
             if axis_name == "os" || axis_name == "runner" || axis_name == "runs-on" {
                 matrix_os_list = items.clone();
+            } else if items
+                .iter()
+                .any(|it| it.starts_with('{') && extract_os_from_flow_map(it).is_some())
+            {
+                matrix_os_list = items
+                    .iter()
+                    .map(|it| {
+                        extract_os_from_flow_map(it)
+                            .unwrap_or_else(|| "ubuntu-latest".to_string())
+                    })
+                    .collect();
             }
         }
     }
@@ -521,15 +559,15 @@ fn analyze_github_job_block(
     .max(1);
 
     if !matrix_os_list.is_empty() && raw_runs_on.contains("${{") {
-        if non_empty_axes == 0 && include_items > 0 {
-            let mut os_buckets: Vec<(String, usize)> = Vec::new();
-            for os_l in &matrix_os_list {
-                if let Some(found) = os_buckets.iter_mut().find(|x| x.0 == *os_l) {
-                    found.1 += 1;
-                } else {
-                    os_buckets.push((os_l.clone(), 1));
-                }
+        let mut os_buckets: Vec<(String, usize)> = Vec::new();
+        for os_l in &matrix_os_list {
+            if let Some(found) = os_buckets.iter_mut().find(|x| x.0 == *os_l) {
+                found.1 += 1;
+            } else {
+                os_buckets.push((os_l.clone(), 1));
             }
+        }
+        if non_empty_axes == 0 && include_items > 0 {
             for (os_label, per_os_jobs) in os_buckets {
                 let sku = resolve_runner_sku(&os_label);
                 let billed_per_job = if sku.ceil_to_whole_minute {
@@ -571,14 +609,18 @@ fn analyze_github_job_block(
             }
             return;
         }
-        let base_per_os = (product_count / matrix_os_list.len()).max(1);
-        for (idx, os_label) in matrix_os_list.iter().enumerate() {
+        let total_os_items = matrix_os_list.len().max(1);
+        let raw_bucket_jobs: Vec<usize> = os_buckets
+            .iter()
+            .map(|(_, c)| ((product_count * *c) / total_os_items).max(1))
+            .collect();
+        let others_sum: usize = raw_bucket_jobs.iter().skip(1).sum();
+        for (idx, (os_label, _)) in os_buckets.iter().enumerate() {
             // Distribute any net include/exclude delta cleanly onto the first OS bucket so total jobs == matrix_count
             let per_os_jobs = if idx == 0 {
-                let others = base_per_os * (matrix_os_list.len().saturating_sub(1));
-                matrix_count.saturating_sub(others).max(1)
+                matrix_count.saturating_sub(others_sum).max(1)
             } else {
-                base_per_os
+                raw_bucket_jobs[idx]
             };
             let sku = resolve_runner_sku(os_label);
             let billed_per_job = if sku.ceil_to_whole_minute {
