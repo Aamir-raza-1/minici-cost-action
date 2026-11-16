@@ -1389,9 +1389,17 @@ struct WorkflowHygieneSignals {
     cached_workflow_files: Vec<String>,
 }
 
+fn is_pr_or_push_event_name(token: &str) -> bool {
+    matches!(
+        token,
+        "push" | "pull_request" | "pull_request_target" | "merge_group"
+    )
+}
+
 fn workflow_triggers_on_pr_or_push(raw_low: &str) -> bool {
     let mut has_on = false;
     let mut in_on = false;
+    let mut event_indent: Option<usize> = None;
     for line in raw_low.lines() {
         let clean = strip_comment(line);
         let trimmed = clean.trim();
@@ -1407,22 +1415,34 @@ fn workflow_triggers_on_pr_or_push(raw_low: &str) -> bool {
             {
                 has_on = true;
                 in_on = true;
+                event_indent = None;
                 if let Some(rhs) = trimmed.splitn(2, ':').nth(1) {
-                    let r = rhs.trim();
-                    if r.contains("push") || r.contains("pull_request") {
-                        return true;
+                    for tok in rhs.split(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-') {
+                        if is_pr_or_push_event_name(tok) {
+                            return true;
+                        }
                     }
                 }
             } else {
                 in_on = false;
             }
-        } else if in_on
-            && (trimmed.starts_with("push")
-                || trimmed.starts_with("pull_request")
-                || trimmed.starts_with("- push")
-                || trimmed.starts_with("- pull_request"))
-        {
-            return true;
+        } else if in_on {
+            let ev_ind = *event_indent.get_or_insert(ind);
+            if ind == ev_ind {
+                let candidate = trimmed
+                    .strip_prefix('-')
+                    .map(|s| s.trim())
+                    .unwrap_or(trimmed);
+                let event_key = candidate
+                    .split(':')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'');
+                if is_pr_or_push_event_name(event_key) {
+                    return true;
+                }
+            }
         }
     }
     !has_on
@@ -1596,11 +1616,13 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             || low.contains("cancel-in-progress: !contains")
             || low.contains("interruptible: true")
             || low.contains("auto-cancel");
-        if has_cancel {
-            sig.workflows_with_concurrency_cancel += 1;
-        } else if triggers_pr_or_push {
-            sig.workflows_missing_concurrency_cancel += 1;
-            sig.uncancelled_workflow_files.push(wf_name.clone());
+        if triggers_pr_or_push {
+            if has_cancel {
+                sig.workflows_with_concurrency_cancel += 1;
+            } else {
+                sig.workflows_missing_concurrency_cancel += 1;
+                sig.uncancelled_workflow_files.push(wf_name.clone());
+            }
         }
 
         let has_paths = low.contains("paths:")
@@ -1609,11 +1631,13 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             || low.contains("tj-actions/changed-files")
             || low.contains("rules:changes")
             || low.contains("changes:");
-        if has_paths {
-            sig.workflows_with_path_filters += 1;
-        } else if triggers_pr_or_push {
-            sig.workflows_missing_path_filters += 1;
-            sig.unfiltered_workflow_files.push(wf_name.clone());
+        if triggers_pr_or_push {
+            if has_paths {
+                sig.workflows_with_path_filters += 1;
+            } else {
+                sig.workflows_missing_path_filters += 1;
+                sig.unfiltered_workflow_files.push(wf_name.clone());
+            }
         }
     }
 
