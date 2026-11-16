@@ -270,11 +270,11 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         String::new()
     };
     out.push_str(&format!(
-        " • Dev Wait-Time    : {:.1}m critical path (${:.2}/run • ${:.2}/mo at ${:.0}/hr){}\n",
+        " • Dev Wait-Time    : {:.1}m critical path (${:.2}/run • ${:.2}/mo gross | ${:.2}/mo at 40% context-switch loss){}\n",
         r.critical_path_wait_mins_per_run,
         r.dev_wait_cost_per_run_usd,
         r.monthly_dev_wait_cost_usd,
-        r.usage.dev_hourly_rate_usd,
+        cc.monthly_productive_payroll_loss_usd,
         concurrency_suffix
     ));
 
@@ -294,6 +294,40 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
             cc.monthly_vendor_storage_configured_usd,
             cc.steady_state_stored_gb_configured,
             retention_hint
+        ));
+    }
+
+    let mut hygiene_parts = Vec::new();
+    if cc.jobs_missing_cache > 0 && cc.monthly_unrealized_cache_savings_usd >= 1.0 {
+        hygiene_parts.push(format!(
+            "Cache {}/{} jobs (caching {} uncached saves ~${:.2}/mo)",
+            cc.jobs_with_cache,
+            cc.peak_concurrent_jobs_per_run,
+            cc.jobs_missing_cache,
+            cc.monthly_unrealized_cache_savings_usd
+        ));
+    } else if cc.jobs_with_cache > 0 {
+        hygiene_parts.push(format!(
+            "Cache {}/{} jobs ({:.0}% est hit rate)",
+            cc.jobs_with_cache, cc.peak_concurrent_jobs_per_run, cc.estimated_cache_hit_rate_pct
+        ));
+    }
+    if cc.workflows_missing_concurrency_cancel > 0 && cc.monthly_superseded_run_waste_usd >= 1.0 {
+        hygiene_parts.push(format!(
+            "Cancel-in-progress missing on {} wf (~${:.2}/mo superseded waste)",
+            cc.workflows_missing_concurrency_cancel, cc.monthly_superseded_run_waste_usd
+        ));
+    }
+    if cc.workflows_missing_path_filters > 0 && cc.monthly_unfiltered_check_savings_usd >= 1.0 {
+        hygiene_parts.push(format!(
+            "Path filters missing on {} wf (~${:.2}/mo selective savings)",
+            cc.workflows_missing_path_filters, cc.monthly_unfiltered_check_savings_usd
+        ));
+    }
+    if !hygiene_parts.is_empty() {
+        out.push_str(&format!(
+            " • Pipeline Hygiene : {}\n",
+            hygiene_parts.join(" • ")
         ));
     }
 
@@ -548,6 +582,32 @@ fn render_applicable_summary_notes_markdown(r: &BreakdownReport) -> String {
             cc.hosted_concurrent_jobs_per_run,
             cc.vendor_free_concurrent_cap,
             cc.parallelism_tier_upgrade_tax_monthly_usd
+        ));
+    }
+    if cc.jobs_missing_cache > 0 && cc.monthly_unrealized_cache_savings_usd >= 1.0 {
+        notes.push(format!(
+            "- **Build Cache Opportunity:** `{}/{}` jobs cached; caching remaining `{}` job(s) saves **`~${:.2}/mo`** (`{:.0}-{:.0}%` typical for `{}`)",
+            cc.jobs_with_cache,
+            cc.peak_concurrent_jobs_per_run,
+            cc.jobs_missing_cache,
+            cc.monthly_unrealized_cache_savings_usd,
+            cc.realistic_saving_pct_min,
+            cc.realistic_saving_pct_max,
+            cc.stack_cache_profile
+        ));
+    }
+    if cc.workflows_missing_concurrency_cancel > 0 && cc.monthly_superseded_run_waste_usd >= 1.0 {
+        notes.push(format!(
+            "- **Superseded Push Runs:** `{}` workflow(s) lack `cancel-in-progress: true` (`~${:.2}/mo` wasted on obsolete pushes)",
+            cc.workflows_missing_concurrency_cancel,
+            cc.monthly_superseded_run_waste_usd
+        ));
+    }
+    if cc.workflows_missing_path_filters > 0 && cc.monthly_unfiltered_check_savings_usd >= 1.0 {
+        notes.push(format!(
+            "- **Selective PR Checks:** `{}` workflow(s) run on all pushes without `paths:` filters (`~${:.2}/mo` savings with path filtering)",
+            cc.workflows_missing_path_filters,
+            cc.monthly_unfiltered_check_savings_usd
         ));
     }
     notes.push(format!("- **Recommendation:** {}", build_contextual_recommendation(r)));

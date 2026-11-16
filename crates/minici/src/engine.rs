@@ -14,11 +14,12 @@
 
 use crate::catalog::{
     infracost_aws_nat_gateway_rate_usd, infracost_ec2_runner_profile, resolve_runner_sku,
-    vendor_os_free_tier_multiplier, ARTIFACT_STORAGE_S3_INTELLIGENT_USD_PER_GB_MO,
-    ARTIFACT_STORAGE_S3_USD_PER_GB_MO, ARTIFACT_STORAGE_VENDOR_USD_PER_GB_MO,
-    AWS_CROSS_AZ_USD_PER_GB, AWS_CROSS_REGION_USD_PER_GB, AWS_INTERNET_EGRESS_USD_PER_GB,
-    AWS_VPC_ENDPOINT_USD_PER_GB, SELF_HOSTED_BREAKEVEN_MINS_PER_MONTH,
-    SELF_HOSTED_C5_4XLARGE_SPOT_BREAKEVEN_MINS, SELF_HOSTED_VPS_BASE_MONTHLY_USD,
+    stack_cache_savings_profile, vendor_cache_mechanics, vendor_os_free_tier_multiplier,
+    ARTIFACT_STORAGE_S3_INTELLIGENT_USD_PER_GB_MO, ARTIFACT_STORAGE_S3_USD_PER_GB_MO,
+    ARTIFACT_STORAGE_VENDOR_USD_PER_GB_MO, AWS_CROSS_AZ_USD_PER_GB, AWS_CROSS_REGION_USD_PER_GB,
+    AWS_INTERNET_EGRESS_USD_PER_GB, AWS_VPC_ENDPOINT_USD_PER_GB,
+    SELF_HOSTED_BREAKEVEN_MINS_PER_MONTH, SELF_HOSTED_C5_4XLARGE_SPOT_BREAKEVEN_MINS,
+    SELF_HOSTED_VPS_BASE_MONTHLY_USD,
 };
 use std::fs;
 use std::path::Path;
@@ -181,7 +182,7 @@ pub struct CostComponentsBreakdown {
     pub monthly_datadog_90d_log_shipping_usd: f64,
     pub monthly_splunk_30d_log_shipping_usd: f64,
     pub monthly_infracost_loki_s3_usd: f64,
-    // 6. Cross-Region Egress Cost — Infracost NAT Gateway/VPC Endpoint Delegated (https://cicdcost.com/cross-region-egress-cost)
+    // 6. Cross-Region Egress Cost
     pub infracost_cloud_region: String,
     pub est_transfer_gb_per_run: f64,
     pub monthly_transfer_gb: f64,
@@ -192,12 +193,60 @@ pub struct CostComponentsBreakdown {
     pub monthly_infracost_private_subnet_nat_worst_case_usd: f64,
     pub monthly_infracost_cross_region_registry_usd: f64,
     pub monthly_infracost_vpc_endpoint_cache_optimized_usd: f64,
+    // 7. Developer Wait Time Cost (Payroll & Context-Switch Loss)
+    pub productivity_loss_factor: f64,
+    pub blended_fully_loaded_hourly_usd: f64,
+    pub monthly_wait_hours: f64,
+    pub monthly_productive_payroll_loss_usd: f64,
+    pub monthly_blended_100hr_productive_loss_usd: f64,
+    pub wait_to_compute_cost_ratio: f64,
+    pub lead_time_feedback_tier: String,
+    // 8. Failed Build Rerun Cost (Flake Rerun Compute + Investigation Payroll)
+    pub estimated_flake_rate_pct: f64,
+    pub has_job_level_auto_retry: bool,
+    pub monthly_flaky_reruns: f64,
+    pub monthly_rerun_compute_cost_usd: f64,
+    pub avg_investigation_mins_per_flake: f64,
+    pub monthly_flake_investigation_hours: f64,
+    pub monthly_flake_investigation_payroll_usd: f64,
+    pub monthly_total_immediate_flake_cost_usd: f64,
+    pub monthly_savings_at_1pct_target_usd: f64,
+    // 9. Build Cache Savings (Per-Stack Realistic Savings & Cache Hit-Rate KPI)
+    pub stack_cache_profile: String,
+    pub realistic_saving_pct_min: f64,
+    pub realistic_saving_pct_max: f64,
+    pub jobs_with_cache: usize,
+    pub jobs_missing_cache: usize,
+    pub has_restore_keys_fallback: bool,
+    pub has_docker_buildkit_cache: bool,
+    pub estimated_cache_hit_rate_pct: f64,
+    pub vendor_cache_size_limit: String,
+    pub vendor_cache_eviction_policy: String,
+    pub monthly_uncached_compute_usd: f64,
+    pub monthly_unrealized_cache_savings_usd: f64,
+    // 10. Flaky Test CI/CD Tax (Immediate + Deferred Velocity Drag & Deflake ROI)
+    pub deferred_velocity_drag_multiplier: f64,
+    pub monthly_deferred_velocity_drag_usd: f64,
+    pub monthly_combined_flake_tax_usd: f64,
+    pub deflake_project_est_cost_usd: f64,
+    pub deflake_payback_weeks: f64,
+    // 11. Branch Protection Cost (Required-Check Multiplication, Concurrency Cancel & Path Filters)
+    pub required_checks_count: usize,
+    pub monthly_required_check_executions: usize,
+    pub workflows_with_concurrency_cancel: usize,
+    pub workflows_missing_concurrency_cancel: usize,
+    pub workflows_with_path_filters: usize,
+    pub workflows_missing_path_filters: usize,
+    pub has_affected_only_graph_tool: bool,
+    pub slow_blocking_checks_over_10m: usize,
+    pub monthly_superseded_run_waste_usd: f64,
+    pub monthly_unfiltered_check_savings_usd: f64,
 }
 
 impl CostComponentsBreakdown {
     pub fn to_json(&self) -> String {
         format!(
-            "{{\n    \"build_minutes_cost\": {{\"rounding_tax_mins_per_run\":{:.2},\"monthly_rounding_tax_usd\":{:.2},\"linux_mins_per_run\":{:.2},\"windows_mins_per_run\":{:.2},\"macos_mins_per_run\":{:.2},\"os_weighted_free_tier_mins_per_run\":{:.2},\"monthly_os_weighted_free_tier_mins\":{:.2},\"monthly_flake_retry_10pct_overhead_usd\":{:.2}}},\n    \"runner_cost\": {{\"infracost_delegated\":true,\"infracost_iac_files_detected\":{},\"infracost_resources\":[\"aws_instance\",\"aws_ebs_volume\",\"google_compute_instance\",\"azurerm_linux_virtual_machine\"],\"hosted_effective_hourly_rate_usd\":{:.2},\"infracost_recommended_ec2_instance\":\"{}\",\"infracost_ec2_on_demand_hourly_usd\":{:.4},\"infracost_ec2_on_demand_monthly_usd\":{:.2},\"infracost_ec2_spot_hourly_usd\":{:.3},\"infracost_ec2_surrounding_overhead_monthly_usd\":{:.2},\"macos_self_hosted_mac_mini_monthly_usd\":{:.2},\"self_hosted_breakeven_mins_t3_medium\":{:.0},\"self_hosted_breakeven_mins_c5_4xlarge_spot\":{:.0}}},\n    \"artifact_storage_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_s3_bucket\",\"aws_ecr_repository\"],\"jobs_uploading_artifacts\":{},\"default_retention_days\":{},\"configured_retention_days\":{},\"steady_state_stored_gb_configured\":{:.2},\"monthly_vendor_storage_configured_usd\":{:.2},\"monthly_infracost_s3_configured_usd\":{:.2},\"steady_state_stored_gb_90d\":{:.2},\"steady_state_stored_gb_14d\":{:.2},\"monthly_vendor_storage_90d_usd\":{:.2},\"monthly_vendor_storage_14d_usd\":{:.2},\"monthly_infracost_s3_standard_90d_usd\":{:.2},\"monthly_infracost_s3_intelligent_14d_usd\":{:.2}}},\n    \"parallelism_cost\": {{\"peak_concurrent_jobs_per_run\":{},\"hosted_concurrent_jobs_per_run\":{},\"macos_concurrent_jobs_per_run\":{},\"self_hosted_or_microvm_jobs_per_run\":{},\"vendor_free_concurrent_cap\":{},\"vendor_team_concurrent_cap\":{},\"parallelism_tier_upgrade_tax_monthly_usd\":{:.2}}},\n    \"log_retention_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_cloudwatch_log_group\",\"aws_s3_bucket\"],\"detected_log_language_profile\":\"{}\",\"est_log_mb_per_run\":{:.2},\"monthly_log_volume_gb\":{:.2},\"vendor_default_log_retention_days\":{},\"monthly_vendor_default_log_cost_usd\":{:.2},\"monthly_datadog_30d_log_shipping_usd\":{:.2},\"monthly_datadog_90d_log_shipping_usd\":{:.2},\"monthly_splunk_30d_log_shipping_usd\":{:.2},\"monthly_infracost_loki_s3_usd\":{:.2}}},\n    \"cross_region_egress_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_nat_gateway\",\"aws_vpc_endpoint\",\"google_compute_router_nat\",\"azurerm_nat_gateway\"],\"infracost_cloud_region\":\"{}\",\"est_transfer_gb_per_run\":{:.2},\"monthly_transfer_gb\":{:.2},\"infracost_aws_internet_egress_per_gb_usd\":{:.3},\"infracost_aws_nat_gateway_per_gb_usd\":{:.3},\"infracost_aws_cross_az_per_gb_usd\":{:.3},\"infracost_aws_cross_region_per_gb_usd\":{:.3},\"monthly_infracost_private_subnet_nat_worst_case_usd\":{:.2},\"monthly_infracost_cross_region_registry_usd\":{:.2},\"monthly_infracost_vpc_endpoint_cache_optimized_usd\":{:.2}}}\n  }}",
+            "{{\n    \"build_minutes_cost\": {{\"rounding_tax_mins_per_run\":{:.2},\"monthly_rounding_tax_usd\":{:.2},\"linux_mins_per_run\":{:.2},\"windows_mins_per_run\":{:.2},\"macos_mins_per_run\":{:.2},\"os_weighted_free_tier_mins_per_run\":{:.2},\"monthly_os_weighted_free_tier_mins\":{:.2},\"monthly_flake_retry_10pct_overhead_usd\":{:.2}}},\n    \"runner_cost\": {{\"infracost_delegated\":true,\"infracost_iac_files_detected\":{},\"infracost_resources\":[\"aws_instance\",\"aws_ebs_volume\",\"google_compute_instance\",\"azurerm_linux_virtual_machine\"],\"hosted_effective_hourly_rate_usd\":{:.2},\"infracost_recommended_ec2_instance\":\"{}\",\"infracost_ec2_on_demand_hourly_usd\":{:.4},\"infracost_ec2_on_demand_monthly_usd\":{:.2},\"infracost_ec2_spot_hourly_usd\":{:.3},\"infracost_ec2_surrounding_overhead_monthly_usd\":{:.2},\"macos_self_hosted_mac_mini_monthly_usd\":{:.2},\"self_hosted_breakeven_mins_t3_medium\":{:.0},\"self_hosted_breakeven_mins_c5_4xlarge_spot\":{:.0}}},\n    \"artifact_storage_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_s3_bucket\",\"aws_ecr_repository\"],\"jobs_uploading_artifacts\":{},\"default_retention_days\":{},\"configured_retention_days\":{},\"steady_state_stored_gb_configured\":{:.2},\"monthly_vendor_storage_configured_usd\":{:.2},\"monthly_infracost_s3_configured_usd\":{:.2},\"steady_state_stored_gb_90d\":{:.2},\"steady_state_stored_gb_14d\":{:.2},\"monthly_vendor_storage_90d_usd\":{:.2},\"monthly_vendor_storage_14d_usd\":{:.2},\"monthly_infracost_s3_standard_90d_usd\":{:.2},\"monthly_infracost_s3_intelligent_14d_usd\":{:.2}}},\n    \"parallelism_cost\": {{\"peak_concurrent_jobs_per_run\":{},\"hosted_concurrent_jobs_per_run\":{},\"macos_concurrent_jobs_per_run\":{},\"self_hosted_or_microvm_jobs_per_run\":{},\"vendor_free_concurrent_cap\":{},\"vendor_team_concurrent_cap\":{},\"parallelism_tier_upgrade_tax_monthly_usd\":{:.2}}},\n    \"log_retention_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_cloudwatch_log_group\",\"aws_s3_bucket\"],\"detected_log_language_profile\":\"{}\",\"est_log_mb_per_run\":{:.2},\"monthly_log_volume_gb\":{:.2},\"vendor_default_log_retention_days\":{},\"monthly_vendor_default_log_cost_usd\":{:.2},\"monthly_datadog_30d_log_shipping_usd\":{:.2},\"monthly_datadog_90d_log_shipping_usd\":{:.2},\"monthly_splunk_30d_log_shipping_usd\":{:.2},\"monthly_infracost_loki_s3_usd\":{:.2}}},\n    \"cross_region_egress_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_nat_gateway\",\"aws_vpc_endpoint\",\"google_compute_router_nat\",\"azurerm_nat_gateway\"],\"infracost_cloud_region\":\"{}\",\"est_transfer_gb_per_run\":{:.2},\"monthly_transfer_gb\":{:.2},\"infracost_aws_internet_egress_per_gb_usd\":{:.3},\"infracost_aws_nat_gateway_per_gb_usd\":{:.3},\"infracost_aws_cross_az_per_gb_usd\":{:.3},\"infracost_aws_cross_region_per_gb_usd\":{:.3},\"monthly_infracost_private_subnet_nat_worst_case_usd\":{:.2},\"monthly_infracost_cross_region_registry_usd\":{:.2},\"monthly_infracost_vpc_endpoint_cache_optimized_usd\":{:.2}}},\n    \"developer_wait_time_cost\": {{\"productivity_loss_factor\":{:.2},\"blended_fully_loaded_hourly_usd\":{:.2},\"monthly_wait_hours\":{:.2},\"monthly_productive_payroll_loss_usd\":{:.2},\"monthly_blended_100hr_productive_loss_usd\":{:.2},\"wait_to_compute_cost_ratio\":{:.2},\"lead_time_feedback_tier\":\"{}\"}},\n    \"failed_build_rerun_cost\": {{\"estimated_flake_rate_pct\":{:.1},\"has_job_level_auto_retry\":{},\"monthly_flaky_reruns\":{:.2},\"monthly_rerun_compute_cost_usd\":{:.2},\"avg_investigation_mins_per_flake\":{:.1},\"monthly_flake_investigation_hours\":{:.2},\"monthly_flake_investigation_payroll_usd\":{:.2},\"monthly_total_immediate_flake_cost_usd\":{:.2},\"monthly_savings_at_1pct_target_usd\":{:.2}}},\n    \"build_cache_savings\": {{\"stack_cache_profile\":\"{}\",\"realistic_saving_pct_min\":{:.1},\"realistic_saving_pct_max\":{:.1},\"jobs_with_cache\":{},\"jobs_missing_cache\":{},\"has_restore_keys_fallback\":{},\"has_docker_buildkit_cache\":{},\"estimated_cache_hit_rate_pct\":{:.1},\"vendor_cache_size_limit\":\"{}\",\"vendor_cache_eviction_policy\":\"{}\",\"monthly_uncached_compute_usd\":{:.2},\"monthly_unrealized_cache_savings_usd\":{:.2}}},\n    \"flaky_test_ci_cd_tax\": {{\"monthly_immediate_flake_cost_usd\":{:.2},\"deferred_velocity_drag_multiplier\":{:.1},\"monthly_deferred_velocity_drag_usd\":{:.2},\"monthly_combined_flake_tax_usd\":{:.2},\"deflake_project_est_cost_usd\":{:.2},\"deflake_payback_weeks\":{:.2}}},\n    \"branch_protection_cost\": {{\"required_checks_count\":{},\"monthly_required_check_executions\":{},\"workflows_with_concurrency_cancel\":{},\"workflows_missing_concurrency_cancel\":{},\"workflows_with_path_filters\":{},\"workflows_missing_path_filters\":{},\"has_affected_only_graph_tool\":{},\"slow_blocking_checks_over_10m\":{},\"monthly_superseded_run_waste_usd\":{:.2},\"monthly_unfiltered_check_savings_usd\":{:.2}}}\n  }}",
             self.rounding_tax_mins_per_run,
             self.monthly_rounding_tax_usd,
             self.linux_mins_per_run,
@@ -253,7 +302,51 @@ impl CostComponentsBreakdown {
             self.infracost_aws_cross_region_per_gb_usd,
             self.monthly_infracost_private_subnet_nat_worst_case_usd,
             self.monthly_infracost_cross_region_registry_usd,
-            self.monthly_infracost_vpc_endpoint_cache_optimized_usd
+            self.monthly_infracost_vpc_endpoint_cache_optimized_usd,
+            self.productivity_loss_factor,
+            self.blended_fully_loaded_hourly_usd,
+            self.monthly_wait_hours,
+            self.monthly_productive_payroll_loss_usd,
+            self.monthly_blended_100hr_productive_loss_usd,
+            self.wait_to_compute_cost_ratio,
+            json_escape(&self.lead_time_feedback_tier),
+            self.estimated_flake_rate_pct,
+            self.has_job_level_auto_retry,
+            self.monthly_flaky_reruns,
+            self.monthly_rerun_compute_cost_usd,
+            self.avg_investigation_mins_per_flake,
+            self.monthly_flake_investigation_hours,
+            self.monthly_flake_investigation_payroll_usd,
+            self.monthly_total_immediate_flake_cost_usd,
+            self.monthly_savings_at_1pct_target_usd,
+            json_escape(&self.stack_cache_profile),
+            self.realistic_saving_pct_min,
+            self.realistic_saving_pct_max,
+            self.jobs_with_cache,
+            self.jobs_missing_cache,
+            self.has_restore_keys_fallback,
+            self.has_docker_buildkit_cache,
+            self.estimated_cache_hit_rate_pct,
+            json_escape(&self.vendor_cache_size_limit),
+            json_escape(&self.vendor_cache_eviction_policy),
+            self.monthly_uncached_compute_usd,
+            self.monthly_unrealized_cache_savings_usd,
+            self.monthly_total_immediate_flake_cost_usd,
+            self.deferred_velocity_drag_multiplier,
+            self.monthly_deferred_velocity_drag_usd,
+            self.monthly_combined_flake_tax_usd,
+            self.deflake_project_est_cost_usd,
+            self.deflake_payback_weeks,
+            self.required_checks_count,
+            self.monthly_required_check_executions,
+            self.workflows_with_concurrency_cancel,
+            self.workflows_missing_concurrency_cancel,
+            self.workflows_with_path_filters,
+            self.workflows_missing_path_filters,
+            self.has_affected_only_graph_tool,
+            self.slow_blocking_checks_over_10m,
+            self.monthly_superseded_run_waste_usd,
+            self.monthly_unfiltered_check_savings_usd
         )
     }
 }
@@ -1234,6 +1327,161 @@ fn detect_language_and_iac_signals(
     (profile, mb_per_job, has_iac)
 }
 
+#[derive(Debug, Clone, Default)]
+struct WorkflowHygieneSignals {
+    uses_pnpm: bool,
+    uses_poetry: bool,
+    has_restore_keys_fallback: bool,
+    has_docker_buildkit_cache: bool,
+    has_browser_or_e2e_tests: bool,
+    has_job_level_auto_retry: bool,
+    has_affected_only_graph_tool: bool,
+    workflows_with_concurrency_cancel: usize,
+    workflows_missing_concurrency_cancel: usize,
+    workflows_with_path_filters: usize,
+    workflows_missing_path_filters: usize,
+    unfiltered_workflow_files: Vec<String>,
+    uncancelled_workflow_files: Vec<String>,
+    cached_workflow_files: Vec<String>,
+}
+
+fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
+    let mut sig = WorkflowHygieneSignals::default();
+    let base_dir = if target.is_file() {
+        target.parent().unwrap_or(Path::new("."))
+    } else {
+        target
+    };
+    if base_dir.join("pnpm-lock.yaml").exists() {
+        sig.uses_pnpm = true;
+    }
+    if base_dir.join("poetry.lock").exists() || base_dir.join("uv.lock").exists() {
+        sig.uses_poetry = true;
+    }
+
+    let mut wf_files: Vec<(String, String)> = Vec::new();
+    if target.is_file() {
+        if let Ok(raw) = fs::read_to_string(target) {
+            let fname = target
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("workflow.yml")
+                .to_string();
+            wf_files.push((fname, raw.to_ascii_lowercase()));
+        }
+    } else {
+        let gh_dir = base_dir.join(".github").join("workflows");
+        if let Ok(entries) = fs::read_dir(&gh_dir) {
+            let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+            paths.sort();
+            for p in paths {
+                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
+                if ext == "yml" || ext == "yaml" {
+                    if let Ok(raw) = fs::read_to_string(&p) {
+                        let rel = format!(
+                            ".github/workflows/{}",
+                            p.file_name().and_then(|s| s.to_str()).unwrap_or("ci.yml")
+                        );
+                        wf_files.push((rel, raw.to_ascii_lowercase()));
+                    }
+                }
+            }
+        }
+        for alt in [
+            ".gitlab-ci.yml",
+            ".circleci/config.yml",
+            "bitbucket-pipelines.yml",
+            "buildspec.yml",
+        ] {
+            let p = base_dir.join(alt);
+            if p.exists() {
+                if let Ok(raw) = fs::read_to_string(&p) {
+                    wf_files.push((alt.to_string(), raw.to_ascii_lowercase()));
+                }
+            }
+        }
+    }
+
+    for (wf_name, low) in &wf_files {
+        if low.contains("pnpm") {
+            sig.uses_pnpm = true;
+        }
+        if low.contains("poetry ") || low.contains("astral-sh/setup-uv") {
+            sig.uses_poetry = true;
+        }
+        if low.contains("restore-keys") || low.contains("restore_cache") {
+            sig.has_restore_keys_fallback = true;
+        }
+        if low.contains("cache-to")
+            || low.contains("type=registry")
+            || low.contains("type=gha")
+            || low.contains("buildx")
+        {
+            sig.has_docker_buildkit_cache = true;
+        }
+        if low.contains("playwright")
+            || low.contains("cypress")
+            || low.contains("selenium")
+            || low.contains("webdriver")
+            || low.contains("puppeteer")
+            || low.contains("e2e")
+        {
+            sig.has_browser_or_e2e_tests = true;
+        }
+        if low.contains("continue-on-error: true")
+            || low.contains("nick-fields/retry")
+            || low.contains("wretry")
+            || low.contains("max_retries")
+            || low.contains("retry:")
+        {
+            sig.has_job_level_auto_retry = true;
+        }
+        if low.contains("nx affected")
+            || low.contains("turbo run")
+            || low.contains("bazel test")
+            || low.contains("pants test")
+        {
+            sig.has_affected_only_graph_tool = true;
+        }
+
+        let has_cache = low.contains("actions/cache")
+            || low.contains("rust-cache")
+            || low.contains("cache:")
+            || low.contains("save_cache")
+            || low.contains("restore_cache")
+            || low.contains("setup-gradle");
+        if has_cache {
+            sig.cached_workflow_files.push(wf_name.clone());
+        }
+
+        let has_cancel = low.contains("cancel-in-progress: true")
+            || low.contains("cancel-in-progress:true")
+            || low.contains("interruptible: true")
+            || low.contains("auto-cancel");
+        if has_cancel {
+            sig.workflows_with_concurrency_cancel += 1;
+        } else {
+            sig.workflows_missing_concurrency_cancel += 1;
+            sig.uncancelled_workflow_files.push(wf_name.clone());
+        }
+
+        let has_paths = low.contains("paths:")
+            || low.contains("paths-ignore:")
+            || low.contains("dorny/paths-filter")
+            || low.contains("tj-actions/changed-files")
+            || low.contains("rules:changes")
+            || low.contains("changes:");
+        if has_paths {
+            sig.workflows_with_path_filters += 1;
+        } else {
+            sig.workflows_missing_path_filters += 1;
+            sig.unfiltered_workflow_files.push(wf_name.clone());
+        }
+    }
+
+    sig
+}
+
 pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> BreakdownReport {
     let t0 = Instant::now();
     let usage = load_usage_config(target, usage_override);
@@ -1689,6 +1937,172 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     let monthly_infracost_vpc_endpoint_cache_optimized_usd =
         ((monthly_transfer_gb * 0.30 * AWS_VPC_ENDPOINT_USD_PER_GB) * 100.0).round() / 100.0;
 
+    // 7. Developer Wait Time Cost (DORA-Anchored 40% Productivity-Loss Factor & Salary Anchors)
+    let productivity_loss_factor = 0.40_f64;
+    let blended_fully_loaded_hourly_usd = 100.0_f64;
+    let monthly_wait_hours =
+        (((critical_path_wait_mins_per_run * monthly_runs) / 60.0) * 100.0).round() / 100.0;
+    let monthly_productive_payroll_loss_usd =
+        ((monthly_wait_hours * usage.dev_hourly_rate_usd * productivity_loss_factor) * 100.0)
+            .round()
+            / 100.0;
+    let monthly_blended_100hr_productive_loss_usd =
+        ((monthly_wait_hours * blended_fully_loaded_hourly_usd * productivity_loss_factor) * 100.0)
+            .round()
+            / 100.0;
+    let wait_to_compute_cost_ratio = if gross_monthly_compute_cost_usd > 0.0 {
+        ((monthly_productive_payroll_loss_usd / gross_monthly_compute_cost_usd) * 100.0).round()
+            / 100.0
+    } else {
+        0.0
+    };
+    let lead_time_feedback_tier = if critical_path_wait_mins_per_run <= 0.0 {
+        "none (0m)".to_string()
+    } else if critical_path_wait_mins_per_run < 5.0 {
+        "best-in-class (<5m)".to_string()
+    } else if critical_path_wait_mins_per_run <= 10.0 {
+        "tight-feedback (5-10m)".to_string()
+    } else if critical_path_wait_mins_per_run <= 30.0 {
+        "moderate-drag (10-30m)".to_string()
+    } else {
+        "severe-context-switch-drag (>30m)".to_string()
+    };
+
+    // 8. Failed Build Rerun Cost (Flaky Test Rerun Compute + 8-Min Developer Investigation Payroll)
+    let hygiene = detect_workflow_hygiene_signals(target);
+    let estimated_flake_rate_pct = if jobs.is_empty() {
+        0.0
+    } else if hygiene.has_browser_or_e2e_tests || hygiene.has_job_level_auto_retry {
+        10.0
+    } else {
+        5.0
+    };
+    // 10% flake rate causes ~1/(1-0.10) - 1 = 11.11% extra rerun executions due to retry compounding
+    let flake_rate_frac = estimated_flake_rate_pct / 100.0;
+    let rerun_amplification = if flake_rate_frac > 0.0 && flake_rate_frac < 0.9 {
+        flake_rate_frac / (1.0 - flake_rate_frac)
+    } else {
+        0.0
+    };
+    let monthly_flaky_reruns = ((monthly_runs * flake_rate_frac) * 100.0).round() / 100.0;
+    let monthly_rerun_compute_cost_usd =
+        ((gross_monthly_compute_cost_usd * rerun_amplification) * 100.0).round() / 100.0;
+    let avg_investigation_mins_per_flake = 8.0_f64;
+    let monthly_flake_investigation_hours =
+        (((monthly_flaky_reruns * avg_investigation_mins_per_flake) / 60.0) * 100.0).round()
+            / 100.0;
+    let monthly_flake_investigation_payroll_usd =
+        ((monthly_flake_investigation_hours * usage.dev_hourly_rate_usd) * 100.0).round() / 100.0;
+    let monthly_total_immediate_flake_cost_usd =
+        ((monthly_rerun_compute_cost_usd + monthly_flake_investigation_payroll_usd) * 100.0)
+            .round()
+            / 100.0;
+    let monthly_savings_at_1pct_target_usd = if estimated_flake_rate_pct > 1.0 {
+        ((monthly_total_immediate_flake_cost_usd
+            * ((estimated_flake_rate_pct - 1.0) / estimated_flake_rate_pct))
+            * 100.0)
+            .round()
+            / 100.0
+    } else {
+        0.0
+    };
+
+    // 9. Build Cache Savings (Per-Stack Realistic Savings & Cache Hit-Rate KPI)
+    let (stack_cache_label, realistic_saving_pct_min, realistic_saving_pct_max, cache_mid_ratio) =
+        stack_cache_savings_profile(
+            &detected_log_language_profile,
+            hygiene.uses_pnpm,
+            hygiene.uses_poetry,
+        );
+    let mut jobs_with_cache = 0_usize;
+    let mut jobs_missing_cache = 0_usize;
+    let mut uncached_run_cost_usd = 0.0_f64;
+    for j in &jobs {
+        if hygiene
+            .cached_workflow_files
+            .iter()
+            .any(|wf| wf == &j.workflow_file)
+        {
+            jobs_with_cache += j.matrix_combination_count;
+        } else {
+            jobs_missing_cache += j.matrix_combination_count;
+            uncached_run_cost_usd += j.run_compute_cost_usd;
+        }
+    }
+    let estimated_cache_hit_rate_pct = if jobs_with_cache == 0 {
+        0.0
+    } else if hygiene.has_restore_keys_fallback {
+        85.0
+    } else {
+        75.0
+    };
+    let primary_provider = providers
+        .first()
+        .map(|s| s.as_str())
+        .unwrap_or("github-actions");
+    let (vendor_cache_limit, vendor_cache_eviction) = vendor_cache_mechanics(primary_provider);
+    let monthly_uncached_compute_usd =
+        ((uncached_run_cost_usd * monthly_runs) * 100.0).round() / 100.0;
+    let monthly_unrealized_cache_savings_usd =
+        ((monthly_uncached_compute_usd * cache_mid_ratio) * 100.0).round() / 100.0;
+
+    // 10. Flaky Test CI/CD Tax (Immediate + 2x Conservative Deferred Velocity Drag & Deflake ROI)
+    let deferred_velocity_drag_multiplier = 2.0_f64;
+    let monthly_deferred_velocity_drag_usd =
+        ((monthly_total_immediate_flake_cost_usd * deferred_velocity_drag_multiplier) * 100.0)
+            .round()
+            / 100.0;
+    let monthly_combined_flake_tax_usd =
+        ((monthly_total_immediate_flake_cost_usd + monthly_deferred_velocity_drag_usd) * 100.0)
+            .round()
+            / 100.0;
+    let deflake_project_est_cost_usd = if jobs.is_empty() { 0.0 } else { 4000.0 };
+    let deflake_payback_weeks = if monthly_savings_at_1pct_target_usd > 0.0 {
+        (((deflake_project_est_cost_usd / (monthly_savings_at_1pct_target_usd / 4.333)) * 100.0)
+            .round()
+            / 100.0)
+            .min(52.0)
+    } else {
+        0.0
+    };
+
+    // 11. Branch Protection Cost (Required-Check Multiplication, Concurrency Cancel & Path Filters)
+    let required_checks_count = total_expanded_matrix_jobs;
+    let monthly_required_check_executions =
+        ((required_checks_count as f64) * monthly_runs).round() as usize;
+    let slow_blocking_checks_over_10m = jobs
+        .iter()
+        .filter(|j| j.est_raw_duration_mins_per_job > 10.0)
+        .map(|j| j.matrix_combination_count)
+        .sum();
+    let mut uncancelled_run_cost_usd = 0.0_f64;
+    let mut unfiltered_run_cost_usd = 0.0_f64;
+    for j in &jobs {
+        if hygiene
+            .uncancelled_workflow_files
+            .iter()
+            .any(|wf| wf == &j.workflow_file)
+        {
+            uncancelled_run_cost_usd += j.run_compute_cost_usd;
+        }
+        if hygiene
+            .unfiltered_workflow_files
+            .iter()
+            .any(|wf| wf == &j.workflow_file)
+        {
+            unfiltered_run_cost_usd += j.run_compute_cost_usd;
+        }
+    }
+    // Cancelling superseded runs saves 10-25% (15% midpoint) on workflows without cancel-in-progress
+    let monthly_superseded_run_waste_usd =
+        ((uncancelled_run_cost_usd * monthly_runs * 0.15) * 100.0).round() / 100.0;
+    // Path filtering saves 30-50% (40% midpoint) on multi-workflow PR checks missing path filters
+    let monthly_unfiltered_check_savings_usd = if workflow_count > 1 || total_expanded_matrix_jobs > 3 {
+        ((unfiltered_run_cost_usd * monthly_runs * 0.40) * 100.0).round() / 100.0
+    } else {
+        0.0
+    };
+
     let cost_components = CostComponentsBreakdown {
         rounding_tax_mins_per_run,
         monthly_rounding_tax_usd,
@@ -1747,6 +2161,49 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         monthly_infracost_private_subnet_nat_worst_case_usd,
         monthly_infracost_cross_region_registry_usd,
         monthly_infracost_vpc_endpoint_cache_optimized_usd,
+        productivity_loss_factor,
+        blended_fully_loaded_hourly_usd,
+        monthly_wait_hours,
+        monthly_productive_payroll_loss_usd,
+        monthly_blended_100hr_productive_loss_usd,
+        wait_to_compute_cost_ratio,
+        lead_time_feedback_tier,
+        estimated_flake_rate_pct,
+        has_job_level_auto_retry: hygiene.has_job_level_auto_retry,
+        monthly_flaky_reruns,
+        monthly_rerun_compute_cost_usd,
+        avg_investigation_mins_per_flake,
+        monthly_flake_investigation_hours,
+        monthly_flake_investigation_payroll_usd,
+        monthly_total_immediate_flake_cost_usd,
+        monthly_savings_at_1pct_target_usd,
+        stack_cache_profile: stack_cache_label.to_string(),
+        realistic_saving_pct_min,
+        realistic_saving_pct_max,
+        jobs_with_cache,
+        jobs_missing_cache,
+        has_restore_keys_fallback: hygiene.has_restore_keys_fallback,
+        has_docker_buildkit_cache: hygiene.has_docker_buildkit_cache,
+        estimated_cache_hit_rate_pct,
+        vendor_cache_size_limit: vendor_cache_limit.to_string(),
+        vendor_cache_eviction_policy: vendor_cache_eviction.to_string(),
+        monthly_uncached_compute_usd,
+        monthly_unrealized_cache_savings_usd,
+        deferred_velocity_drag_multiplier,
+        monthly_deferred_velocity_drag_usd,
+        monthly_combined_flake_tax_usd,
+        deflake_project_est_cost_usd,
+        deflake_payback_weeks,
+        required_checks_count,
+        monthly_required_check_executions,
+        workflows_with_concurrency_cancel: hygiene.workflows_with_concurrency_cancel,
+        workflows_missing_concurrency_cancel: hygiene.workflows_missing_concurrency_cancel,
+        workflows_with_path_filters: hygiene.workflows_with_path_filters,
+        workflows_missing_path_filters: hygiene.workflows_missing_path_filters,
+        has_affected_only_graph_tool: hygiene.has_affected_only_graph_tool,
+        slow_blocking_checks_over_10m,
+        monthly_superseded_run_waste_usd,
+        monthly_unfiltered_check_savings_usd,
     };
 
     let elapsed_us = t0.elapsed().as_micros().max(1);

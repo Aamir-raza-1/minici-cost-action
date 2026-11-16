@@ -1496,7 +1496,20 @@ jobs:
         assert!(js.contains("\"parallelism_cost\":"));
         assert!(js.contains("\"log_retention_cost\":"));
         assert!(js.contains("\"cross_region_egress_cost\":"));
+        assert!(js.contains("\"developer_wait_time_cost\":"));
+        assert!(js.contains("\"failed_build_rerun_cost\":"));
+        assert!(js.contains("\"build_cache_savings\":"));
+        assert!(js.contains("\"flaky_test_ci_cd_tax\":"));
+        assert!(js.contains("\"branch_protection_cost\":"));
         assert!(js.contains("\"infracost_delegated\":true"));
+        assert_eq!(rep.cost_components.productivity_loss_factor, 0.40);
+        assert!(rep.cost_components.monthly_productive_payroll_loss_usd > 0.0);
+        assert!(rep.cost_components.monthly_flake_investigation_payroll_usd > rep.cost_components.monthly_rerun_compute_cost_usd);
+        assert!(rep.cost_components.monthly_combined_flake_tax_usd > rep.cost_components.monthly_total_immediate_flake_cost_usd);
+        assert_eq!(rep.cost_components.jobs_missing_cache, 1);
+        assert!(rep.cost_components.monthly_unrealized_cache_savings_usd > 0.0);
+        assert_eq!(rep.cost_components.workflows_missing_concurrency_cancel, 1);
+        assert_eq!(rep.cost_components.workflows_missing_path_filters, 1);
         // Edge Case 1: YAML `retention-days: 7` parsed into job & cost_components
         assert_eq!(rep.jobs[0].artifact_retention_days, Some(7));
         assert_eq!(rep.cost_components.configured_retention_days, 7);

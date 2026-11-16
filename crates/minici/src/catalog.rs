@@ -98,7 +98,7 @@ pub fn infracost_ec2_runner_profile(
     }
 }
 
-/// Per-vendor OS free-tier minute multiplier per https://cicdcost.com/build-minutes-cost.
+/// Per-vendor OS free-tier minute multiplier.
 pub fn vendor_os_free_tier_multiplier(provider: &str, os: &str) -> f64 {
     let os_lower = os.to_ascii_lowercase();
     if provider == "github-actions" {
@@ -117,6 +117,50 @@ pub fn vendor_os_free_tier_multiplier(provider: &str, os: &str) -> f64 {
         }
     } else {
         1.0
+    }
+}
+
+/// Per-stack realistic steady-state build cache savings profile:
+/// `(stack_cache_label, min_saving_pct, max_saving_pct, midpoint_saving_ratio)`.
+pub fn stack_cache_savings_profile(
+    language_profile: &str,
+    uses_pnpm: bool,
+    uses_poetry: bool,
+) -> (&'static str, f64, f64, f64) {
+    let low = language_profile.to_ascii_lowercase();
+    if low.contains("rust") {
+        ("Rust / Cargo (180-1200s cold -> 30-120s cached)", 40.0, 70.0, 0.55)
+    } else if low.contains("gradle") || low.contains("android") {
+        ("Java / Gradle (150-450s cold -> 20-60s cached)", 30.0, 50.0, 0.40)
+    } else if low.contains("maven") {
+        ("Java / Maven (120-400s cold -> 15-40s cached)", 30.0, 50.0, 0.40)
+    } else if low.contains("ios") || low.contains("xcode") {
+        ("iOS / Xcode DerivedData (150-450s cold -> 20-60s cached)", 30.0, 50.0, 0.40)
+    } else if low.contains(".net") || low.contains("dotnet") {
+        (".NET / NuGet (60-240s cold -> 10-30s cached)", 20.0, 35.0, 0.275)
+    } else if low.contains("python") {
+        if uses_poetry {
+            ("Python / Poetry (90-300s cold -> 10-25s cached)", 25.0, 40.0, 0.325)
+        } else {
+            ("Python / pip (45-150s cold -> 5-15s cached)", 15.0, 25.0, 0.20)
+        }
+    } else if low.contains("go ") || low.starts_with("go/") {
+        ("Go / go mod (30-90s cold -> 3-10s cached)", 10.0, 20.0, 0.15)
+    } else if uses_pnpm {
+        ("Node / pnpm (30-90s cold -> 2-6s cached)", 10.0, 20.0, 0.15)
+    } else {
+        ("Node / npm (60-180s cold -> 3-10s cached)", 15.0, 30.0, 0.225)
+    }
+}
+
+/// Per-vendor cache storage size limit and eviction rule.
+pub fn vendor_cache_mechanics(provider: &str) -> (&'static str, &'static str) {
+    match provider {
+        "github-actions" => ("10 GB / repo", "LRU after 7 days unused"),
+        "circleci" => ("15 GB / project (Free)", "15 days unused"),
+        "gitlab-ci" => ("BYO S3 storage limit", "Configurable"),
+        "aws-codebuild" => ("BYO S3 / local cache", "Configurable"),
+        _ => ("BYO S3 / artifact mounts", "Configurable"),
     }
 }
 
