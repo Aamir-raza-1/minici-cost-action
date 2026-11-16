@@ -1503,6 +1503,26 @@ fn is_pr_or_push_event_name(token: &str) -> bool {
     )
 }
 
+fn contains_standalone_token(haystack: &str, token: &str) -> bool {
+    let h_bytes = haystack.as_bytes();
+    let t_bytes = token.as_bytes();
+    if t_bytes.is_empty() || h_bytes.len() < t_bytes.len() {
+        return false;
+    }
+    let mut pos = 0;
+    while let Some(rel_idx) = haystack[pos..].find(token) {
+        let start = pos + rel_idx;
+        let end = start + t_bytes.len();
+        let before_ok = start == 0 || !h_bytes[start - 1].is_ascii_alphanumeric();
+        let after_ok = end == h_bytes.len() || !h_bytes[end].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            return true;
+        }
+        pos = start + 1;
+    }
+    false
+}
+
 fn workflow_triggers_on_pr_or_push(raw_low: &str) -> bool {
     let mut has_on = false;
     let mut in_on = false;
@@ -1787,34 +1807,64 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
         }
         if low.contains("nx affected")
             || low.contains("turbo run")
+            || low.contains("turborepo")
+            || low.contains("turbopack")
             || low.contains("bazel test")
             || low.contains("pants test")
+            || low.contains("compute affected packages")
+            || low.contains("check_diff.py")
         {
             sig.has_affected_only_graph_tool = true;
             if sig.detected_monorepo_tool.is_empty() {
-                if low.contains("nx ") {
+                if low.contains("nx ") || low.contains("nx affected") {
                     sig.detected_monorepo_tool = "nx".to_string();
-                } else if low.contains("turbo ") {
+                } else if low.contains("turbo ")
+                    || low.contains("turborepo")
+                    || low.contains("turbopack")
+                {
                     sig.detected_monorepo_tool = "turborepo".to_string();
                 } else if low.contains("bazel ") {
                     sig.detected_monorepo_tool = "bazel".to_string();
                 } else if low.contains("pants ") {
                     sig.detected_monorepo_tool = "pants".to_string();
+                } else if low.contains("compute affected packages") || low.contains("check_diff.py")
+                {
+                    sig.detected_monorepo_tool = "custom-affected-graph".to_string();
                 }
             }
         }
 
-        // Discover workspace/service units from workflow `working-directory:` or `paths:` prefixes
+        // Discover workspace/service units from workflow `working-directory:`, `tf_root:`, or `paths:` prefixes
+        let is_third_party_compat_wf = wf_name.contains("third-party");
         for line in &active_lines {
             let t = line.trim();
-            if let Some(rest) = t.strip_prefix("working-directory:") {
-                let wd = rest
-                    .trim()
-                    .trim_matches(|c| c == '"' || c == '\'' || c == '.' || c == '/');
-                if !wd.is_empty() && !wd.contains("${{") {
-                    let top = wd.split('/').take(2).collect::<Vec<_>>().join("/");
-                    if !top.is_empty() && !discovered_units.contains(&top) {
-                        discovered_units.push(top);
+            if let Some(rest) = t
+                .strip_prefix("working-directory:")
+                .or_else(|| t.strip_prefix("tf_root:"))
+            {
+                if !is_third_party_compat_wf {
+                    let wd = rest
+                        .trim()
+                        .trim_matches(|c| c == '"' || c == '\'' || c == '.' || c == '/');
+                    if !wd.is_empty() && !wd.contains("${{") && !wd.starts_with('$') {
+                        let first_seg = wd.split('/').next().unwrap_or("");
+                        if !matches!(
+                            first_seg,
+                            ".github"
+                                | "tmp"
+                                | "tests"
+                                | "test"
+                                | "e2e"
+                                | "docs"
+                                | "scripts"
+                                | "benchmarks"
+                                | "examples"
+                        ) {
+                            let top = wd.split('/').take(2).collect::<Vec<_>>().join("/");
+                            if !top.is_empty() && !discovered_units.contains(&top) {
+                                discovered_units.push(top);
+                            }
+                        }
                     }
                 }
             } else if t.starts_with("- '") || t.starts_with("- \"") || t.starts_with("- ") {
@@ -1837,6 +1887,30 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
                     "worker/",
                     "infra/",
                     "terraform/",
+                    "aws/",
+                    "gcp/",
+                    "azure/",
+                    "shared/",
+                    "datastream/",
+                    "server/",
+                    "mobile/",
+                    "cli/",
+                    "sdk/",
+                    "sdks/",
+                    "machine-learning/",
+                    "open-api/",
+                    "native/",
+                    "i18n/",
+                    "docker/",
+                    "helm/",
+                    "k8s/",
+                    "charts/",
+                    "cmd/",
+                    "pkg/",
+                    "internal/",
+                    "components/",
+                    "functions/",
+                    "workers/",
                 ] {
                     if item.starts_with(prefix) {
                         let seg = item
@@ -1860,19 +1934,29 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
                     .unwrap_or("")
                     .trim()
                     .trim_matches(|c| c == '"' || c == '\'');
-                if u.contains("/.github/workflows/") || u.starts_with("./.github/workflows/") {
+                let u_ref = u.split_whitespace().next().unwrap_or(u);
+                if u_ref.contains("/.github/workflows/")
+                    || u_ref.starts_with("./.github/workflows/")
+                    || u_ref.starts_with("$/.github/workflows/")
+                {
                     sig.reusable_workflow_calls_count += 1;
                 }
-                if u.ends_with("@main")
-                    || u.ends_with("@master")
-                    || u.ends_with("@head")
-                    || u.ends_with("@latest")
+                if u_ref.ends_with("@main")
+                    || u_ref.ends_with("@master")
+                    || u_ref.ends_with("@head")
+                    || u_ref.ends_with("@latest")
+                    || u_ref.ends_with("@develop")
+                    || u_ref.ends_with("@dev")
+                    || u_ref.ends_with("@trunk")
                 {
                     sig.unpinned_template_refs_count += 1;
                 }
             }
         }
-        if low.contains("workflow_call") || low.contains("include:") || low.contains("orbs:") {
+        if low.contains("workflow_call")
+            || low.contains("orbs:")
+            || (wf_name.contains("gitlab") && low.contains("include:"))
+        {
             sig.reusable_workflow_calls_count += 1;
         }
         if low.contains("repository_dispatch")
@@ -1928,7 +2012,7 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             add_control(&mut sig.detected_compliance_controls, "sbom-slsa-provenance");
         }
 
-        // Cloud regions detection
+        // Cloud regions detection with standalone word-boundary check
         for region in [
             "us-east-1",
             "us-east-2",
@@ -1938,16 +2022,33 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             "eu-west-2",
             "eu-central-1",
             "ap-southeast-1",
+            "ap-southeast-2",
             "ap-northeast-1",
+            "ap-south-1",
             "us-central1",
             "us-east1",
+            "us-east4",
+            "us-west1",
+            "us-west2",
             "europe-west1",
             "europe-west2",
+            "europe-west3",
+            "europe-west4",
             "asia-east1",
+            "asia-northeast1",
+            "asia-southeast1",
             "eastus",
+            "eastus2",
+            "westus",
+            "westus2",
+            "centralus",
             "westeurope",
+            "northeurope",
+            "uksouth",
         ] {
-            if low.contains(region) && !sig.detected_cloud_regions.iter().any(|r| r == region) {
+            if contains_standalone_token(&low, region)
+                && !sig.detected_cloud_regions.iter().any(|r| r == region)
+            {
                 sig.detected_cloud_regions.push(region.to_string());
             }
         }
@@ -1985,6 +2086,56 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             } else {
                 sig.workflows_missing_path_filters += 1;
                 sig.unfiltered_workflow_files.push(wf_name.clone());
+            }
+        }
+    }
+
+    // Fallback unit discovery for workflow-only monorepo snapshots where disk folders aren't checked out
+    let has_path_filter_action = wf_files
+        .iter()
+        .any(|(_, r)| r.contains("dornypaths-filter") || r.contains("dorny/paths-filter"));
+    if discovered_units.len() < 2
+        && (sig.has_affected_only_graph_tool
+            || sig.workflows_with_path_filters >= 3
+            || has_path_filter_action)
+    {
+        for (wf_name, raw_low) in &wf_files {
+            let stem = wf_name
+                .rsplit('/')
+                .next()
+                .unwrap_or(wf_name.as_str())
+                .trim_end_matches(".yml")
+                .trim_end_matches(".yaml");
+            for app_prefix in [
+                "studio",
+                "docs",
+                "marketing",
+                "www",
+                "ui",
+                "cli",
+                "backend",
+                "frontend",
+                "turbopack",
+            ] {
+                if stem.starts_with(app_prefix) && !discovered_units.iter().any(|u| u == app_prefix)
+                {
+                    discovered_units.push(app_prefix.to_string());
+                }
+            }
+            for scoped_tok in [
+                "unit-tests-backend",
+                "unit-tests-cli",
+                "unit-tests-frontend",
+                "unit-tests-nodes",
+                "build-next",
+                "build-native",
+                "test-cargo",
+                "test-next-swc",
+            ] {
+                if raw_low.contains(scoped_tok) && !discovered_units.iter().any(|u| u == scoped_tok)
+                {
+                    discovered_units.push(scoped_tok.to_string());
+                }
             }
         }
     }
@@ -2265,6 +2416,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     let mut yaml_configured_retention_days: Option<u32> = None;
     let mut macos_concurrent_jobs_per_run = 0_usize;
     let mut self_hosted_or_microvm_jobs_per_run = 0_usize;
+    let mut true_self_hosted_jobs_per_run = 0_usize;
 
     for j in &jobs {
         if j.vcpus > max_vcpus {
@@ -2300,6 +2452,9 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             || resolve_runner_sku(&j.runner_label).arch == "arm64"
         {
             has_arm_jobs = true;
+        }
+        if j.provider.starts_with("self-hosted") || rl_low.contains("self-hosted") {
+            true_self_hosted_jobs_per_run += j.matrix_combination_count;
         }
         if j.provider.starts_with("self-hosted")
             || j.provider == "blacksmith"
@@ -2643,12 +2798,12 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         "startup-pre-seed (1-5 devs)".to_string()
     } else if monthly_billed_mins <= 25000.0 && gross_monthly_compute_cost_usd <= 500.0 {
         "startup-seed-series-a (6-15 devs)".to_string()
-    } else if monthly_billed_mins <= 150000.0 && gross_monthly_compute_cost_usd <= 12000.0 {
+    } else if gross_monthly_compute_cost_usd <= 12000.0 && implied_active_devs < 200 {
         "scaleup (25-100 devs)".to_string()
     } else {
         "enterprise (250+ devs)".to_string()
     };
-    let premature_self_hosting_trap = self_hosted_or_microvm_jobs_per_run > 0
+    let premature_self_hosting_trap = true_self_hosted_jobs_per_run > 0
         && monthly_billed_mins > 0.0
         && monthly_billed_mins < 25000.0
         && gross_monthly_compute_cost_usd < 500.0
@@ -2657,8 +2812,11 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     let mut pr_non_linux_run_cost_usd = 0.0_f64;
     if premature_multi_os_pr_matrix_trap {
         for j in &jobs {
-            let os_low = j.runner_label.to_ascii_lowercase();
-            if os_low.contains("windows") || os_low.contains("macos") {
+            let os_low = j.os.to_ascii_lowercase();
+            if (os_low.contains("win") || os_low.contains("mac"))
+                && !j.provider.starts_with("self-hosted")
+                && !j.runner_label.to_ascii_lowercase().contains("self-hosted")
+            {
                 pr_non_linux_run_cost_usd += j.run_compute_cost_usd;
             }
         }
@@ -2673,7 +2831,10 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         ((pr_non_linux_run_cost_usd * monthly_runs * shift_ratio) * 100.0).round() / 100.0;
     let mut monthly_macos_hosted_usd = 0.0_f64;
     for j in &jobs {
-        if j.runner_label.to_ascii_lowercase().contains("macos") {
+        if j.os.eq_ignore_ascii_case("macos")
+            && !j.provider.starts_with("self-hosted")
+            && !j.runner_label.to_ascii_lowercase().contains("self-hosted")
+        {
             monthly_macos_hosted_usd += j.run_compute_cost_usd * monthly_runs;
         }
     }
@@ -2760,6 +2921,17 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     };
     let recommended_affected_tool = if detected_workspace_units_count >= 50 {
         "bazel".to_string()
+    } else if infracost_iac_files_detected
+        && jobs
+            .iter()
+            .filter(|j| {
+                j.workflow_file.contains("terragrunt") || j.workflow_file.contains("terraform")
+            })
+            .count()
+            * 2
+            >= jobs.len().max(1)
+    {
+        "terragrunt-run-all-or-atlantis".to_string()
     } else if detected_log_language_profile.contains("Node")
         || detected_log_language_profile.contains("TypeScript")
         || hygiene.uses_pnpm
