@@ -215,7 +215,7 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
     if expected_monthly_cost > 0:
         cost_delta_pct = abs(reported_monthly_cost - expected_monthly_cost) / expected_monthly_cost * 100.0
 
-    # Verify all 6 cicdcost.com cost_components + Infracost delegation
+    # Verify all 11 MiniCI cost_components (6 invoice components + 5 hidden payroll & pipeline cost models)
     cc = breakdown_json.get("cost_components", {})
     for comp_key in (
         "build_minutes_cost",
@@ -224,6 +224,11 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
         "parallelism_cost",
         "log_retention_cost",
         "cross_region_egress_cost",
+        "developer_wait_time_cost",
+        "failed_build_rerun_cost",
+        "build_cache_savings",
+        "flaky_test_ci_cd_tax",
+        "branch_protection_cost",
     ):
         if comp_key not in cc:
             canonical_drifts.append(f"Missing cost_components.{comp_key} in JSON output")
@@ -362,6 +367,16 @@ def validate_single_repo_all_modes(
         "c5_datadog_90d_usd": cc["log_retention_cost"]["monthly_datadog_90d_log_shipping_usd"],
         "c6_nat_worst_case_usd": cc["cross_region_egress_cost"]["monthly_infracost_private_subnet_nat_worst_case_usd"],
         "c6_vpc_cache_opt_usd": cc["cross_region_egress_cost"]["monthly_infracost_vpc_endpoint_cache_optimized_usd"],
+        "h1_productive_payroll_loss_usd": cc["developer_wait_time_cost"]["monthly_productive_payroll_loss_usd"],
+        "h2_immediate_flake_cost_usd": cc["failed_build_rerun_cost"]["monthly_total_immediate_flake_cost_usd"],
+        "h3_cached_jobs": cc["build_cache_savings"]["jobs_with_cache"],
+        "h3_uncached_eligible_jobs": cc["build_cache_savings"]["jobs_missing_cache"],
+        "h3_unrealized_cache_savings_usd": cc["build_cache_savings"]["monthly_unrealized_cache_savings_usd"],
+        "h4_combined_flake_tax_usd": cc["flaky_test_ci_cd_tax"]["monthly_combined_flake_tax_usd"],
+        "h5_missing_cancel_wf": cc["branch_protection_cost"]["workflows_missing_concurrency_cancel"],
+        "h5_superseded_run_waste_usd": cc["branch_protection_cost"]["monthly_superseded_run_waste_usd"],
+        "h5_missing_path_filter_wf": cc["branch_protection_cost"]["workflows_missing_path_filters"],
+        "h5_unfiltered_check_savings_usd": cc["branch_protection_cost"]["monthly_unfiltered_check_savings_usd"],
         "engine_time_us": engine_us,
         "engine_time_ms": engine_ms,
         "cli_wall_ms": round(wall_bd_ms, 2),
@@ -382,9 +397,9 @@ def write_markdown_baseline_doc(
     fresh_results: list[dict],
 ) -> None:
     lines = [
-        "# Locked 27-Repository Golden Baseline: KPIs, 6 `cicdcost.com` Components & 3-Mode Latency (`v0.3.0`)",
+        "# Locked 27-Repository Golden Baseline: KPIs, 11 Unified CI/CD Cost Models & 3-Mode Latency (`v0.4.0`)",
         "",
-        "**Locked Version:** `minici 0.3.0` (`tag: v0.3.0`)  ",
+        "**Locked Version:** `minici 0.4.0` (`tag: v0.4.0`)  ",
         "**Total Repositories Locked:** `27` (`10` Primary + `7` Internal Edge-Case + `10` Fresh World-Scale OSS)  ",
         "**Execution Modes Verified on Every Repo:** `Mode 1: CLI` • `Mode 2: GitHub Action Workflow` • `Mode 3: MCP JSON-RPC 2.0 + Shift-Left Hook`  ",
         "**Machine-Readable Companion Lock:** [`tests/golden_baseline_10_repos.json`](../tests/golden_baseline_10_repos.json)",
@@ -399,7 +414,7 @@ def write_markdown_baseline_doc(
         "python3 tools/verify_10_repos_all_modes.py",
         "```",
         "",
-        "If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or any of the 6 `cicdcost.com` invoice components on any of the 27 repositories, `verify_10_repos_all_modes.py` exits non-zero and prints the exact field delta.",
+        "If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or any of the 11 unified CI/CD cost models (`6` invoice components + `5` hidden payroll & pipeline cost models) on any of the 27 repositories, `verify_10_repos_all_modes.py` exits non-zero and prints the exact field delta.",
         "",
         "---",
         "",
@@ -417,9 +432,9 @@ def write_markdown_baseline_doc(
 
     lines.extend([
         "",
-        "### Part 1B: 10 Primary Repositories — 6 `cicdcost.com` Line-by-Line Invoice Components (`$/mo`)",
+        "### Part 1B: 10 Primary Repositories — 6 Core CI/CD Invoice Components (`$/mo`)",
         "",
-        "| Repository | C1: Rounding Tax | C2: Infracost EC2 (`Spot $/mo`) | C3: Artifact (`90d` -> `S3 14d`) | C4: Parallelism Tax | C5: Log Profile (`Datadog 90d`) | C6: Egress (`NAT Worst` -> `VPC+Cache`) |",
+        "| Repository | C1: Rounding Tax | C2: Self-Hosted EC2 (`Spot $/mo`) | C3: Artifact (`90d` -> `S3 14d`) | C4: Parallelism Tax | C5: Log Profile (`External 90d`) | C6: Egress (`NAT Worst` -> `VPC+Cache`) |",
         "| :--- | :---: | :---: | :---: | :---: | :---: | :---: |",
     ])
     for r in ten_results:
@@ -427,6 +442,20 @@ def write_markdown_baseline_doc(
             f"| **`{r['repo']}`** | `${r['c1_rounding_tax_usd']:,.2f}` | `{r['c2_ec2_instance']}` (`${r['c2_spot_monthly_usd']:,.2f}`) "
             f"| `${r['c3_artifact_90d_usd']:,.2f}` -> `${r['c3_artifact_s3_14d_usd']:,.2f}` | `${r['c4_parallelism_tax_usd']:,.2f}` "
             f"| {r['c5_log_profile']} (`${r['c5_datadog_90d_usd']:,.2f}`) | `${r['c6_nat_worst_case_usd']:,.2f}` -> `${r['c6_vpc_cache_opt_usd']:,.2f}` |"
+        )
+
+    lines.extend([
+        "",
+        "### Part 1C: 10 Primary Repositories — 5 Hidden Payroll & Pipeline Hygiene Cost Models (`$/mo`)",
+        "",
+        "| Repository | H1: 40% Context-Switch Payroll Loss | H2: Rerun Flake Cost (`12%`) | H3: Cache Coverage (`Unrealized Savings`) | H4: Combined Flake Tax (`+ Triage`) | H5: Missing `cancel-in-progress` Waste | H5: Missing Path-Filter Savings |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: |",
+    ])
+    for r in ten_results:
+        lines.append(
+            f"| **`{r['repo']}`** | `${r['h1_productive_payroll_loss_usd']:,.2f}/mo` | `${r['h2_immediate_flake_cost_usd']:,.2f}/mo` "
+            f"| `{r['h3_cached_jobs']}/{r['expanded_jobs']}` (`${r['h3_unrealized_cache_savings_usd']:,.2f}/mo`) | `${r['h4_combined_flake_tax_usd']:,.2f}/mo` "
+            f"| `{r['h5_missing_cancel_wf']}` wf (`${r['h5_superseded_run_waste_usd']:,.2f}/mo`) | `{r['h5_missing_path_filter_wf']}` wf (`${r['h5_unfiltered_check_savings_usd']:,.2f}/mo`) |"
         )
 
     lines.extend([
@@ -447,9 +476,9 @@ def write_markdown_baseline_doc(
 
     lines.extend([
         "",
-        "### Part 2B: 10 Fresh World-Scale Repositories — 6 `cicdcost.com` Line-by-Line Invoice Components (`$/mo`)",
+        "### Part 2B: 10 Fresh World-Scale Repositories — 6 Core CI/CD Invoice Components (`$/mo`)",
         "",
-        "| Repository | C1: Rounding Tax | C2: Infracost EC2 (`Spot $/mo`) | C3: Artifact (`90d` -> `S3 14d`) | C4: Parallelism Tax | C5: Log Profile (`Datadog 90d`) | C6: Egress (`NAT Worst` -> `VPC+Cache`) |",
+        "| Repository | C1: Rounding Tax | C2: Self-Hosted EC2 (`Spot $/mo`) | C3: Artifact (`90d` -> `S3 14d`) | C4: Parallelism Tax | C5: Log Profile (`External 90d`) | C6: Egress (`NAT Worst` -> `VPC+Cache`) |",
         "| :--- | :---: | :---: | :---: | :---: | :---: | :---: |",
     ])
     for r in fresh_results:
@@ -457,6 +486,20 @@ def write_markdown_baseline_doc(
             f"| **`{r['repo']}`** | `${r['c1_rounding_tax_usd']:,.2f}` | `{r['c2_ec2_instance']}` (`${r['c2_spot_monthly_usd']:,.2f}`) "
             f"| `${r['c3_artifact_90d_usd']:,.2f}` -> `${r['c3_artifact_s3_14d_usd']:,.2f}` | `${r['c4_parallelism_tax_usd']:,.2f}` "
             f"| {r['c5_log_profile']} (`${r['c5_datadog_90d_usd']:,.2f}`) | `${r['c6_nat_worst_case_usd']:,.2f}` -> `${r['c6_vpc_cache_opt_usd']:,.2f}` |"
+        )
+
+    lines.extend([
+        "",
+        "### Part 2C: 10 Fresh World-Scale Repositories — 5 Hidden Payroll & Pipeline Hygiene Cost Models (`$/mo`)",
+        "",
+        "| Repository | H1: 40% Context-Switch Payroll Loss | H2: Rerun Flake Cost (`12%`) | H3: Cache Coverage (`Unrealized Savings`) | H4: Combined Flake Tax (`+ Triage`) | H5: Missing `cancel-in-progress` Waste | H5: Missing Path-Filter Savings |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: | :---: |",
+    ])
+    for r in fresh_results:
+        lines.append(
+            f"| **`{r['repo']}`** | `${r['h1_productive_payroll_loss_usd']:,.2f}/mo` | `${r['h2_immediate_flake_cost_usd']:,.2f}/mo` "
+            f"| `{r['h3_cached_jobs']}/{r['expanded_jobs']}` (`${r['h3_unrealized_cache_savings_usd']:,.2f}/mo`) | `${r['h4_combined_flake_tax_usd']:,.2f}/mo` "
+            f"| `{r['h5_missing_cancel_wf']}` wf (`${r['h5_superseded_run_waste_usd']:,.2f}/mo`) | `{r['h5_missing_path_filter_wf']}` wf (`${r['h5_unfiltered_check_savings_usd']:,.2f}/mo`) |"
         )
 
     lines.extend([
@@ -501,7 +544,7 @@ def main():
     edge_case_results = []
 
     print("=" * 118)
-    print(" MINICI-COST-ACTION (v0.3.0) — 27-REPOSITORY (17 EXISTING + 10 FRESH) x 3-MODE PARALLEL VALIDATION & GOLDEN LOCK")
+    print(" MINICI-COST-ACTION (v0.4.0) — 27-REPOSITORY (17 EXISTING + 10 FRESH) x 3-MODE PARALLEL VALIDATION & GOLDEN LOCK")
     print("=" * 118)
 
     with tempfile.TemporaryDirectory(prefix="minici-27repo-reports-") as tmp_rep_dir:
@@ -534,7 +577,7 @@ def main():
 
         if fresh_results:
             print("-" * 118)
-            print(" 10 FRESH WORLD-SCALE GITHUB REPOSITORIES (CLI + WORKFLOW + MCP 4-RPC + 6 CICDCOST.COM COMPONENTS):")
+            print(" 10 FRESH WORLD-SCALE GITHUB REPOSITORIES (CLI + WORKFLOW + MCP 4-RPC + 11 COST MODELS):")
             for row in fresh_results:
                 warn_tag = f"⚠️ {len(row['math_audit']['custom_label_warnings'])} custom-label note(s)" if row["math_audit"]["custom_label_warnings"] else "✅ 0.00% drift"
                 print(
@@ -590,14 +633,24 @@ def main():
             "c4_parallelism_tax_usd": r["c4_parallelism_tax_usd"],
             "c5_datadog_90d_usd": r["c5_datadog_90d_usd"],
             "c6_nat_worst_case_usd": r["c6_nat_worst_case_usd"],
+            "h1_productive_payroll_loss_usd": r["h1_productive_payroll_loss_usd"],
+            "h2_immediate_flake_cost_usd": r["h2_immediate_flake_cost_usd"],
+            "h3_cached_jobs": r["h3_cached_jobs"],
+            "h3_uncached_eligible_jobs": r["h3_uncached_eligible_jobs"],
+            "h3_unrealized_cache_savings_usd": r["h3_unrealized_cache_savings_usd"],
+            "h4_combined_flake_tax_usd": r["h4_combined_flake_tax_usd"],
+            "h5_missing_cancel_wf": r["h5_missing_cancel_wf"],
+            "h5_superseded_run_waste_usd": r["h5_superseded_run_waste_usd"],
+            "h5_missing_path_filter_wf": r["h5_missing_path_filter_wf"],
+            "h5_unfiltered_check_savings_usd": r["h5_unfiltered_check_savings_usd"],
         }
 
     # Golden Locked Baseline Write or Verification
     golden_path = Path(args.golden_baseline)
     md_path = Path(args.markdown_baseline)
     locked_deterministic = {
-        "schema_version": "1.1.0",
-        "minici_version": "0.3.0",
+        "schema_version": "1.2.0",
+        "minici_version": "0.4.0",
         "repos": {r["repo"]: extract_locked_kpi(r) for r in results},
         "fresh_10_repos": {r["repo"]: extract_locked_kpi(r) for r in fresh_results},
         "edge_case_repos": {
@@ -627,6 +680,7 @@ def main():
                     continue
                 for k, v in curr_vals.items():
                     if k not in exp_vals:
+                        deviations.append(f"{section_key}[{repo_name}].{k}: missing in locked golden baseline")
                         continue
                     if abs(float(v) - float(exp_vals.get(k, -999999))) > 1e-4:
                         deviations.append(f"{section_key}[{repo_name}].{k}: expected {exp_vals.get(k)}, got {v}")
@@ -647,7 +701,7 @@ def main():
     summary_payload = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "binary": str(MINICI_BIN),
-        "minici_version": "0.3.0",
+        "minici_version": "0.4.0",
         "ten_repos": results,
         "fresh_10_repos": fresh_results,
         "edge_case_repos": edge_case_results,

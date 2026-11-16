@@ -35,23 +35,41 @@ outputs:
     description: "Net billed monthly CI/CD compute cost after free-tier allowance (USD)"
     value: ${{ steps.minici.outputs.net_billed_monthly_compute_cost_usd }}
   monthly_rounding_tax_usd:
-    description: "Component 1 (cicdcost.com/build-minutes-cost): Monthly sub-minute ceiling rounding tax (USD)"
+    description: "Monthly sub-minute ceiling rounding overhead (USD)"
     value: ${{ steps.minici.outputs.monthly_rounding_tax_usd }}
   recommended_ec2_instance:
-    description: "Component 2 (cicdcost.com/runner-cost): Infracost right-sized self-hosted EC2 instance"
+    description: "Right-sized self-hosted cloud compute instance equivalent"
     value: ${{ steps.minici.outputs.recommended_ec2_instance }}
   artifact_storage_90d_usd:
-    description: "Component 3 (cicdcost.com/artifact-storage-cost): Monthly 90-day vendor artifact storage cost (USD)"
+    description: "Monthly 90-day artifact storage cost (USD)"
     value: ${{ steps.minici.outputs.artifact_storage_90d_usd }}
   parallelism_tier_upgrade_tax_usd:
-    description: "Component 4 (cicdcost.com/parallelism-cost): Monthly concurrency cap seat-tier upgrade tax (USD)"
+    description: "Monthly concurrency cap seat-tier upgrade tax (USD)"
     value: ${{ steps.minici.outputs.parallelism_tier_upgrade_tax_usd }}
   datadog_90d_log_shipping_usd:
-    description: "Component 5 (cicdcost.com/log-retention-cost): Monthly 90-day Datadog log shipping cost (USD)"
+    description: "Monthly 90-day external log shipping benchmark cost (USD)"
     value: ${{ steps.minici.outputs.datadog_90d_log_shipping_usd }}
   nat_egress_worst_case_usd:
-    description: "Component 6 (cicdcost.com/cross-region-egress-cost): Monthly private-subnet NAT Gateway + Internet Egress cost (USD)"
+    description: "Monthly private-subnet NAT Gateway + Internet Egress benchmark cost (USD)"
     value: ${{ steps.minici.outputs.nat_egress_worst_case_usd }}
+  monthly_productive_payroll_loss_usd:
+    description: "Monthly developer wait-time payroll loss at 40% context-switch loss factor (USD)"
+    value: ${{ steps.minici.outputs.monthly_productive_payroll_loss_usd }}
+  monthly_total_immediate_flake_cost_usd:
+    description: "Monthly immediate flaky build rerun compute + 8-minute engineer investigation cost (USD)"
+    value: ${{ steps.minici.outputs.monthly_total_immediate_flake_cost_usd }}
+  monthly_unrealized_cache_savings_usd:
+    description: "Monthly unrealized dependency and build cache savings across uncached jobs (USD)"
+    value: ${{ steps.minici.outputs.monthly_unrealized_cache_savings_usd }}
+  monthly_combined_flake_tax_usd:
+    description: "Monthly combined flaky test velocity tax including 2x deferred velocity drag (USD)"
+    value: ${{ steps.minici.outputs.monthly_combined_flake_tax_usd }}
+  monthly_superseded_run_waste_usd:
+    description: "Monthly superseded PR push compute waste from workflows missing cancel-in-progress (USD)"
+    value: ${{ steps.minici.outputs.monthly_superseded_run_waste_usd }}
+  monthly_unfiltered_check_savings_usd:
+    description: "Monthly selective check savings from workflows missing path filters (USD)"
+    value: ${{ steps.minici.outputs.monthly_unfiltered_check_savings_usd }}
 
 runs:
   using: "composite"
@@ -109,5 +127,11 @@ runs:
             f.write(f"parallelism_tier_upgrade_tax_usd={cc.get(\"parallelism_cost\", {}).get(\"parallelism_tier_upgrade_tax_monthly_usd\", 0.0):.2f}\n")
             f.write(f"datadog_90d_log_shipping_usd={cc.get(\"log_retention_cost\", {}).get(\"monthly_datadog_90d_log_shipping_usd\", 0.0):.2f}\n")
             f.write(f"nat_egress_worst_case_usd={cc.get(\"cross_region_egress_cost\", {}).get(\"monthly_infracost_private_subnet_nat_worst_case_usd\", 0.0):.2f}\n")
+            f.write(f"monthly_productive_payroll_loss_usd={cc.get(\"developer_wait_time_cost\", {}).get(\"monthly_productive_payroll_loss_usd\", 0.0):.2f}\n")
+            f.write(f"monthly_total_immediate_flake_cost_usd={cc.get(\"failed_build_rerun_cost\", {}).get(\"monthly_total_immediate_flake_cost_usd\", 0.0):.2f}\n")
+            f.write(f"monthly_unrealized_cache_savings_usd={cc.get(\"build_cache_savings\", {}).get(\"monthly_unrealized_cache_savings_usd\", 0.0):.2f}\n")
+            f.write(f"monthly_combined_flake_tax_usd={cc.get(\"flaky_test_ci_cd_tax\", {}).get(\"monthly_combined_flake_tax_usd\", 0.0):.2f}\n")
+            f.write(f"monthly_superseded_run_waste_usd={cc.get(\"branch_protection_cost\", {}).get(\"monthly_superseded_run_waste_usd\", 0.0):.2f}\n")
+            f.write(f"monthly_unfiltered_check_savings_usd={cc.get(\"branch_protection_cost\", {}).get(\"monthly_unfiltered_check_savings_usd\", 0.0):.2f}\n")
         '
         fi

@@ -473,6 +473,45 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
         ));
     }
     let rec = build_contextual_recommendation(r);
+    let cc = &r.cost_components;
+    let mut extra_summary = String::new();
+    if cc.jobs_uploading_artifacts > 0 {
+        extra_summary.push_str(&format!(
+            "<p style=\"margin:6px 0 0\"><strong>Artifact Storage:</strong> {} upload job(s) • {}d retention (<strong>${:.2}/mo</strong>, {:.2} GB steady-state)</p>",
+            cc.jobs_uploading_artifacts,
+            cc.configured_retention_days,
+            cc.monthly_vendor_storage_configured_usd,
+            cc.steady_state_stored_gb_configured
+        ));
+    }
+    let mut hygiene_items = Vec::new();
+    if cc.jobs_missing_cache > 0 && cc.monthly_unrealized_cache_savings_usd >= 1.0 {
+        hygiene_items.push(format!(
+            "Cache {}/{} jobs (caching {} uncached saves ~${:.2}/mo)",
+            cc.jobs_with_cache,
+            cc.peak_concurrent_jobs_per_run,
+            cc.jobs_missing_cache,
+            cc.monthly_unrealized_cache_savings_usd
+        ));
+    }
+    if cc.workflows_missing_concurrency_cancel > 0 && cc.monthly_superseded_run_waste_usd >= 1.0 {
+        hygiene_items.push(format!(
+            "Cancel-in-progress missing on {} wf (~${:.2}/mo superseded waste)",
+            cc.workflows_missing_concurrency_cancel, cc.monthly_superseded_run_waste_usd
+        ));
+    }
+    if cc.workflows_missing_path_filters > 0 && cc.monthly_unfiltered_check_savings_usd >= 1.0 {
+        hygiene_items.push(format!(
+            "Path filters missing on {} wf (~${:.2}/mo selective savings)",
+            cc.workflows_missing_path_filters, cc.monthly_unfiltered_check_savings_usd
+        ));
+    }
+    if !hygiene_items.is_empty() {
+        extra_summary.push_str(&format!(
+            "<p style=\"margin:6px 0 0\"><strong>Pipeline Hygiene:</strong> {}</p>",
+            hygiene_items.join(" • ")
+        ));
+    }
     format!(
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><title>MiniCI FinOps Report — {}</title>\
          <style>body{{background:#080b10;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px;max-width:1100px;margin:0 auto}}\
@@ -486,10 +525,10 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
          <div class=\"kpi\">\
            <div><h3>Monthly CI Bill</h3><p>${:.2}/mo (${:.3}/run)</p></div>\
            <div><h3>Free Quota Burn</h3><p>{:.0} / {:.0}m ({:.1}%)</p></div>\
-           <div><h3>Dev Wait (Assumed ${:.0}/hr)</h3><p>${:.2}/mo ({:.1}m wait)</p></div>\
+           <div><h3>Dev Wait (${:.0}/hr • 40% Loss)</h3><p>${:.2}/mo (${:.2} loss)</p></div>\
            <div><h3>Peak Concurrency</h3><p>{} jobs ({} hosted)</p></div>\
          </div>\
-         <div class=\"card\"><p style=\"margin:0\"><strong>Recommendation:</strong> {}</p></div>\
+         <div class=\"card\"><p style=\"margin:0\"><strong>Recommendation:</strong> {}</p>{}</div>\
          <div class=\"card\"><h2>Per-Job Matrix Breakdown</h2>\
          <table><thead><tr><th>Workflow</th><th>Job ID</th><th>Matrix × SKU</th><th>Duration (Billed)</th><th>Official Rate</th><th>Cost / Run</th></tr></thead>\
          <tbody>{}</tbody></table></div></body></html>\n",
@@ -505,10 +544,11 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
         r.free_tier_quota_burn_pct,
         r.usage.dev_hourly_rate_usd,
         r.monthly_dev_wait_cost_usd,
-        r.critical_path_wait_mins_per_run,
+        cc.monthly_productive_payroll_loss_usd,
         r.cost_components.peak_concurrent_jobs_per_run,
         r.cost_components.hosted_concurrent_jobs_per_run,
         rec,
+        extra_summary,
         rows
     )
 }
