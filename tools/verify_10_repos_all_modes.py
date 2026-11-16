@@ -284,7 +284,7 @@ def validate_single_repo_all_modes(
     rc_wf, out_wf_md, err_wf, wall_wf_ms = run_timed(
         [str(MINICI_BIN), "breakdown", "--path", str(repo_path), "--format", "markdown"]
     )
-    assert rc_wf == 0 and "| Workflow | Job ID |" in out_wf_md and "6-Component CI/CD Invoice Breakdown" in out_wf_md, (
+    assert rc_wf == 0 and "| Workflow | Job ID |" in out_wf_md and "- **Recommendation:**" in out_wf_md and "cicdcost.com" not in out_wf_md, (
         f"Workflow markdown mode failed on {repo_name}"
     )
     step_summary_file.write_text(out_wf_md)

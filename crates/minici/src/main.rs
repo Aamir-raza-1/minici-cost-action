@@ -1504,12 +1504,14 @@ jobs:
             rep.cost_components.monthly_vendor_storage_configured_usd
                 < rep.cost_components.monthly_vendor_storage_90d_usd
         );
-        // Edge Case 2: Markdown & HTML include 6-Component CI/CD Invoice Breakdown
+        // Edge Case 2: Markdown & HTML include unified applicable metrics and NEVER expose external reference branding
         let md = render_breakdown_markdown(&rep);
-        assert!(md.contains("6-Component CI/CD Invoice Breakdown"));
-        assert!(md.contains("https://cicdcost.com/build-minutes-cost"));
+        assert!(md.contains("Artifact Storage:"));
+        assert!(!md.contains("cicdcost.com"));
+        assert!(!md.contains("6-Component"));
         let html = render_breakdown_html(&rep);
-        assert!(html.contains("6-Component CI/CD Invoice Breakdown"));
+        assert!(html.contains("Recommendation:"));
+        assert!(!html.contains("cicdcost.com"));
         // Edge Case 3: Per-workflow language detection (`xcodebuild` -> iOS / xcodebuild)
         assert!(rep
             .cost_components

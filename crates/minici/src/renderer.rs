@@ -233,99 +233,88 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         tot_mo_col
     ));
 
+    let cc = &r.cost_components;
+    let rounding_suffix = if cc.rounding_tax_mins_per_run > 0.0 {
+        format!(
+            " • Rounding Overhead: {:.1}m/run (${:.2}/mo)",
+            cc.rounding_tax_mins_per_run, cc.monthly_rounding_tax_usd
+        )
+    } else {
+        String::new()
+    };
     out.push_str(&format!(
-        " • Free-Tier Quota  : {:.0} / {:.0} mins ({:.1}% of monthly quota) • Net Billed: ${:.2}/mo\n",
+        " • Free-Tier Quota  : {:.0} / {:.0} mins ({:.1}% of monthly quota) • Net Billed: ${:.2}/mo{}\n",
         r.monthly_billed_mins,
         r.free_tier_included_mins,
         r.free_tier_quota_burn_pct,
-        r.net_billed_monthly_compute_cost_usd
+        r.net_billed_monthly_compute_cost_usd,
+        rounding_suffix
     ));
+
+    let concurrency_suffix = if cc.parallelism_tier_upgrade_tax_monthly_usd > 0.0 {
+        format!(
+            " • Concurrency: {} peak jobs ({} hosted > {} cap, +${:.2}/mo tier upgrade)",
+            cc.peak_concurrent_jobs_per_run,
+            cc.hosted_concurrent_jobs_per_run,
+            cc.vendor_free_concurrent_cap,
+            cc.parallelism_tier_upgrade_tax_monthly_usd
+        )
+    } else if cc.self_hosted_or_microvm_jobs_per_run > 0 {
+        format!(
+            " • Concurrency: {} peak jobs ({} hosted / {} custom)",
+            cc.peak_concurrent_jobs_per_run,
+            cc.hosted_concurrent_jobs_per_run,
+            cc.self_hosted_or_microvm_jobs_per_run
+        )
+    } else {
+        String::new()
+    };
     out.push_str(&format!(
-        " • Dev Wait-Time    : {:.1}m critical path (${:.2}/run • ${:.2}/mo at ${:.0}/hr)\n",
+        " • Dev Wait-Time    : {:.1}m critical path (${:.2}/run • ${:.2}/mo at ${:.0}/hr){}\n",
         r.critical_path_wait_mins_per_run,
         r.dev_wait_cost_per_run_usd,
         r.monthly_dev_wait_cost_usd,
-        r.usage.dev_hourly_rate_usd
+        r.usage.dev_hourly_rate_usd,
+        concurrency_suffix
     ));
 
-    if r.exceeds_5000m_self_hosted_breakeven {
-        let blacksmith_savings_usd =
-            (r.gross_monthly_compute_cost_usd - r.monthly_blacksmith_cost_usd).max(0.0);
-        let spot_savings_usd =
-            (r.gross_monthly_compute_cost_usd - r.monthly_self_hosted_spot_cost_usd).max(0.0);
+    if cc.jobs_uploading_artifacts > 0 {
+        let retention_hint = if cc.configured_retention_days > 14 {
+            format!(
+                " (14d retention reduces storage to ${:.2}/mo)",
+                cc.monthly_vendor_storage_14d_usd
+            )
+        } else {
+            String::new()
+        };
         out.push_str(&format!(
-            " • Recommendation   : Switch to ARM64 / High-Speed Runners (${:.2}/mo, saves ${:.2}/mo) or Cloud Spot (${:.2}/mo, saves ${:.2}/mo)\n",
-            r.monthly_blacksmith_cost_usd,
-            blacksmith_savings_usd,
-            r.monthly_self_hosted_spot_cost_usd,
-            spot_savings_usd
-        ));
-    } else {
-        out.push_str(&format!(
-            " • Recommendation   : Stay on SaaS runners ({:.0} / 5,000 mins/mo self-hosted break-even threshold)\n",
-            r.monthly_billed_mins
+            " • Artifact Storage : {} upload job(s) • {}d retention (${:.2}/mo, {:.2} GB steady-state){}\n",
+            cc.jobs_uploading_artifacts,
+            cc.configured_retention_days,
+            cc.monthly_vendor_storage_configured_usd,
+            cc.steady_state_stored_gb_configured,
+            retention_hint
         ));
     }
 
-    let cc = &r.cost_components;
-    let iac_badge = if cc.infracost_iac_files_detected {
-        " • [IaC Detected: `infracost breakdown` Ready]"
-    } else {
-        ""
-    };
-    let retention_note = if cc.configured_retention_days != cc.default_retention_days {
-        format!(
-            "{}d configured (${:.2}/mo) vs {}d default",
-            cc.configured_retention_days,
-            cc.monthly_vendor_storage_configured_usd,
-            cc.default_retention_days
-        )
-    } else {
-        format!("{}d default", cc.default_retention_days)
-    };
+    let uses_self_hosted_cloud_vpc = r.jobs.iter().any(|j| {
+        j.provider.starts_with("self-hosted")
+            || j.provider == "aws-codebuild"
+            || j.provider == "gcp-cloud-build"
+    });
+    if uses_self_hosted_cloud_vpc && cc.monthly_transfer_gb > 0.0 {
+        out.push_str(&format!(
+            " • Cloud Network    : {:.2} GB/mo ({}) • Private Subnet + NAT: ${:.2}/mo (VPC Endpoint + Cache: ${:.2}/mo)\n",
+            cc.monthly_transfer_gb,
+            cc.infracost_cloud_region,
+            cc.monthly_infracost_private_subnet_nat_worst_case_usd,
+            cc.monthly_infracost_vpc_endpoint_cache_optimized_usd
+        ));
+    }
+
     out.push_str(&format!(
-        "\n 6-COMPONENT CI/CD INVOICE BREAKDOWN (cicdcost.com + Infracost Cloud Delegated):\n\
-         1. Build Minutes   : {:.1}m billed/run ({:.1}m rounding tax = ${:.2}/mo) • OS-Weighted Free Quota: {:.0}m/mo • 10% Flake Retry Tax: +${:.2}/mo\n\
-         2. CI Runner [IC]  : Hosted ${:.2}/hr vs Infracost `{}` (${:.4}/hr On-Demand = ${:.0}/mo | ${:.3}/hr Spot + ${:.2}/mo gp3/CW){}\n\
-         3. Artifact [IC]   : {} upload job(s) • {} (${:.2}/mo 90d vendor vs ${:.2}/mo Infracost S3 Standard | 14d S3 Intelligent: ${:.2}/mo)\n\
-         4. Parallelism     : {} peak jobs ({} hosted / {} self-hosted-or-microVM) vs {}/{} cap • Tier-Upgrade Tax: ${:.2}/mo\n\
-         5. Log Retention   : {} • {:.1} MB/run ({:.2} GB/mo) • {}d default ($0) | Datadog 30d: ${:.2}/mo | Infracost Loki+S3: ${:.2}/mo\n\
-         6. Egress/NAT [IC] : {:.2} GB/mo ({}) • Private+NAT (${:.3}/GB): ${:.2}/mo | Cross-Region: ${:.2}/mo | VPC Endpoint+Cache: ${:.2}/mo",
-        r.billed_mins_per_run,
-        cc.rounding_tax_mins_per_run,
-        cc.monthly_rounding_tax_usd,
-        cc.monthly_os_weighted_free_tier_mins,
-        cc.monthly_flake_retry_10pct_overhead_usd,
-        cc.hosted_effective_hourly_rate_usd,
-        cc.infracost_recommended_ec2_instance,
-        cc.infracost_ec2_on_demand_hourly_usd,
-        cc.infracost_ec2_on_demand_monthly_usd,
-        cc.infracost_ec2_spot_hourly_usd,
-        cc.infracost_ec2_surrounding_overhead_monthly_usd,
-        iac_badge,
-        cc.jobs_uploading_artifacts,
-        retention_note,
-        cc.monthly_vendor_storage_90d_usd,
-        cc.monthly_infracost_s3_standard_90d_usd,
-        cc.monthly_infracost_s3_intelligent_14d_usd,
-        cc.peak_concurrent_jobs_per_run,
-        cc.hosted_concurrent_jobs_per_run,
-        cc.self_hosted_or_microvm_jobs_per_run,
-        cc.vendor_free_concurrent_cap,
-        cc.vendor_team_concurrent_cap,
-        cc.parallelism_tier_upgrade_tax_monthly_usd,
-        cc.detected_log_language_profile,
-        cc.est_log_mb_per_run,
-        cc.monthly_log_volume_gb,
-        cc.vendor_default_log_retention_days,
-        cc.monthly_datadog_30d_log_shipping_usd,
-        cc.monthly_infracost_loki_s3_usd,
-        cc.monthly_transfer_gb,
-        cc.infracost_cloud_region,
-        cc.infracost_aws_internet_egress_per_gb_usd + cc.infracost_aws_nat_gateway_per_gb_usd,
-        cc.monthly_infracost_private_subnet_nat_worst_case_usd,
-        cc.monthly_infracost_cross_region_registry_usd,
-        cc.monthly_infracost_vpc_endpoint_cache_optimized_usd
+        " • Recommendation   : {}",
+        build_contextual_recommendation(r)
     ));
 
     if !customer_mode {
@@ -377,6 +366,63 @@ pub fn render_breakdown_csv(r: &BreakdownReport) -> String {
     out
 }
 
+fn build_contextual_recommendation(r: &BreakdownReport) -> String {
+    let cc = &r.cost_components;
+    if cc.self_hosted_or_microvm_jobs_per_run > 0
+        && cc.self_hosted_or_microvm_jobs_per_run >= cc.hosted_concurrent_jobs_per_run
+    {
+        if cc.jobs_uploading_artifacts > 0 && cc.configured_retention_days > 14 {
+            return format!(
+                "Pipeline compute already optimized ({}/{} jobs on custom runners); set artifact `retention-days: 14` to cut storage from ${:.2}/mo to ${:.2}/mo",
+                cc.self_hosted_or_microvm_jobs_per_run,
+                cc.peak_concurrent_jobs_per_run,
+                cc.monthly_vendor_storage_configured_usd,
+                cc.monthly_vendor_storage_14d_usd
+            );
+        }
+        return format!(
+            "Pipeline already optimized ({}/{} jobs on custom runners; remaining {} lightweight hosted job(s) are optimal as-is)",
+            cc.self_hosted_or_microvm_jobs_per_run,
+            cc.peak_concurrent_jobs_per_run,
+            cc.hosted_concurrent_jobs_per_run
+        );
+    }
+
+    if r.exceeds_5000m_self_hosted_breakeven {
+        let blacksmith_savings_usd =
+            (r.gross_monthly_compute_cost_usd - r.monthly_blacksmith_cost_usd).max(0.0);
+        let spot_savings_usd =
+            (r.gross_monthly_compute_cost_usd - r.monthly_self_hosted_spot_cost_usd).max(0.0);
+        if blacksmith_savings_usd >= 20.0 {
+            format!(
+                "Right-size heavy jobs to ARM64 / High-Speed Runners (${:.2}/mo, saves ${:.2}/mo) or Cloud Spot (${:.2}/mo, saves ${:.2}/mo)",
+                r.monthly_blacksmith_cost_usd,
+                blacksmith_savings_usd,
+                r.monthly_self_hosted_spot_cost_usd,
+                spot_savings_usd
+            )
+        } else {
+            format!(
+                "Move sustained compute ({:.0} mins/mo) to Cloud Spot (${:.2}/mo, saves ${:.2}/mo)",
+                r.monthly_billed_mins,
+                r.monthly_self_hosted_spot_cost_usd,
+                spot_savings_usd
+            )
+        }
+    } else if cc.jobs_uploading_artifacts > 0 && cc.configured_retention_days > 14 {
+        format!(
+            "Stay on hosted runners ({:.0} / 5,000 mins/mo break-even); set artifact `retention-days: 14` to reduce storage to ${:.2}/mo",
+            r.monthly_billed_mins,
+            cc.monthly_vendor_storage_14d_usd
+        )
+    } else {
+        format!(
+            "Stay on hosted runners ({:.0} / 5,000 mins/mo self-hosted break-even threshold)",
+            r.monthly_billed_mins
+        )
+    }
+}
+
 pub fn render_breakdown_html(r: &BreakdownReport) -> String {
     let mut rows = String::new();
     for j in &r.jobs {
@@ -392,53 +438,7 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
             j.run_compute_cost_usd
         ));
     }
-    let cc = &r.cost_components;
-    let comp_html = format!(
-        "<div class=\"card\"><h2>6-Component CI/CD Invoice Breakdown (<code>cicdcost.com</code> + Infracost Cloud Delegated)</h2>\
-         <table><thead><tr><th>Component</th><th>Pipeline Profile</th><th>Monthly Cost / Cloud Alternative</th></tr></thead><tbody>\
-         <tr><td><strong>1. Build Minutes</strong></td><td>{:.1}m billed/run ({:.1}m rounding tax) • OS-Weighted Free Quota: {:.0}m/mo</td><td>Rounding Tax: <strong>${:.2}/mo</strong> • 10% Flake Retry Tax: <strong>+${:.2}/mo</strong></td></tr>\
-         <tr><td><strong>2. CI Runner [Infracost]</strong></td><td>Hosted ${:.2}/hr vs <code>{}</code>{}</td><td>On-Demand: <strong>${:.0}/mo</strong> (${:.4}/hr) • Spot: <strong>${:.3}/hr</strong> (+${:.2}/mo gp3/CW)</td></tr>\
-         <tr><td><strong>3. Artifact Storage [Infracost]</strong></td><td>{} upload job(s) • {}d configured vs {}d default</td><td>90d Vendor: <strong>${:.2}/mo</strong> vs Infracost S3 Standard: <strong>${:.2}/mo</strong> (14d S3 Intelligent: <strong>${:.2}/mo</strong>)</td></tr>\
-         <tr><td><strong>4. Parallelism</strong></td><td>{} peak jobs ({} hosted / {} self-hosted) vs {}/{} cap</td><td>Tier-Upgrade Tax: <strong>${:.2}/mo</strong></td></tr>\
-         <tr><td><strong>5. Log Retention [Infracost]</strong></td><td>{} • {:.1} MB/run ({:.2} GB/mo)</td><td>{}d Default: <strong>$0/mo</strong> • Datadog 30d: <strong>${:.2}/mo</strong> • Infracost Loki+S3: <strong>${:.2}/mo</strong></td></tr>\
-         <tr><td><strong>6. Cross-Region Egress [Infracost]</strong></td><td>{:.2} GB/mo (<code>{}</code>)</td><td>Private+NAT: <strong>${:.2}/mo</strong> • Cross-Region: <strong>${:.2}/mo</strong> • VPC Endpoint+Cache: <strong>${:.2}/mo</strong></td></tr>\
-         </tbody></table></div>",
-        r.billed_mins_per_run,
-        cc.rounding_tax_mins_per_run,
-        cc.monthly_os_weighted_free_tier_mins,
-        cc.monthly_rounding_tax_usd,
-        cc.monthly_flake_retry_10pct_overhead_usd,
-        cc.hosted_effective_hourly_rate_usd,
-        cc.infracost_recommended_ec2_instance,
-        if cc.infracost_iac_files_detected { " • <code>IaC (.tf/terragrunt) Detected</code>" } else { "" },
-        cc.infracost_ec2_on_demand_monthly_usd,
-        cc.infracost_ec2_on_demand_hourly_usd,
-        cc.infracost_ec2_spot_hourly_usd,
-        cc.infracost_ec2_surrounding_overhead_monthly_usd,
-        cc.jobs_uploading_artifacts,
-        cc.configured_retention_days,
-        cc.default_retention_days,
-        cc.monthly_vendor_storage_90d_usd,
-        cc.monthly_infracost_s3_standard_90d_usd,
-        cc.monthly_infracost_s3_intelligent_14d_usd,
-        cc.peak_concurrent_jobs_per_run,
-        cc.hosted_concurrent_jobs_per_run,
-        cc.self_hosted_or_microvm_jobs_per_run,
-        cc.vendor_free_concurrent_cap,
-        cc.vendor_team_concurrent_cap,
-        cc.parallelism_tier_upgrade_tax_monthly_usd,
-        cc.detected_log_language_profile,
-        cc.est_log_mb_per_run,
-        cc.monthly_log_volume_gb,
-        cc.vendor_default_log_retention_days,
-        cc.monthly_datadog_30d_log_shipping_usd,
-        cc.monthly_infracost_loki_s3_usd,
-        cc.monthly_transfer_gb,
-        cc.infracost_cloud_region,
-        cc.monthly_infracost_private_subnet_nat_worst_case_usd,
-        cc.monthly_infracost_cross_region_registry_usd,
-        cc.monthly_infracost_vpc_endpoint_cache_optimized_usd
-    );
+    let rec = build_contextual_recommendation(r);
     format!(
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><title>MiniCI FinOps Report — {}</title>\
          <style>body{{background:#080b10;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px;max-width:1100px;margin:0 auto}}\
@@ -453,9 +453,9 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
            <div><h3>Monthly CI Bill</h3><p>${:.2}/mo (${:.3}/run)</p></div>\
            <div><h3>Free Quota Burn</h3><p>{:.0} / {:.0}m ({:.1}%)</p></div>\
            <div><h3>Dev Wait (Assumed ${:.0}/hr)</h3><p>${:.2}/mo ({:.1}m wait)</p></div>\
-           <div><h3>ARM64 / Spot Alt</h3><p>${:.2}/mo / ${:.2}/mo</p></div>\
+           <div><h3>Peak Concurrency</h3><p>{} jobs ({} hosted)</p></div>\
          </div>\
-         {}\
+         <div class=\"card\"><p style=\"margin:0\"><strong>Recommendation:</strong> {}</p></div>\
          <div class=\"card\"><h2>Per-Job Matrix Breakdown</h2>\
          <table><thead><tr><th>Workflow</th><th>Job ID</th><th>Matrix × SKU</th><th>Duration (Billed)</th><th>Official Rate</th><th>Cost / Run</th></tr></thead>\
          <tbody>{}</tbody></table></div></body></html>\n",
@@ -472,9 +472,9 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
         r.usage.dev_hourly_rate_usd,
         r.monthly_dev_wait_cost_usd,
         r.critical_path_wait_mins_per_run,
-        r.monthly_blacksmith_cost_usd,
-        r.monthly_self_hosted_spot_cost_usd,
-        comp_html,
+        r.cost_components.peak_concurrent_jobs_per_run,
+        r.cost_components.hosted_concurrent_jobs_per_run,
+        rec,
         rows
     )
 }
@@ -489,7 +489,6 @@ pub fn render_cli_compact_diff(d: &DiffReport) -> String {
         .cloned()
         .unwrap_or_else(|| "No workflow or matrix SKU changes between base and head.".to_string());
 
-    let cc = &d.head_report.cost_components;
     format!(
         "+====================================================================================+\n\
          | MINICI — PULL REQUEST COST DIFF ({} µs • Exit Code 0 Informational)                |\n\
@@ -500,15 +499,6 @@ pub fn render_cli_compact_diff(d: &DiffReport) -> String {
            3. Monthly CI Cost   : ${:.2}/mo -> ${:.2}/mo ({}${:.2}/mo • {}{:.1}%)\n\
            4. Dev Wait Cost ($) : ${:.2}/mo -> ${:.2}/mo ({}${:.2}/mo) [Assumed Rate Configurable]\n\
            5. Key Change        : {} (total changes: {})\n\
-         +------------------------------------------------------------------------------------+\n\
-         | 6-COMPONENT CI/CD INVOICE BREAKDOWN (PR HEAD • cicdcost.com + Infracost Delegated) |\n\
-         +------------------------------------------------------------------------------------+\n\
-           1. Build Minutes     : {:.1}m billed/run ({:.1}m rounding tax = ${:.2}/mo) • 10% Flake Retry: +${:.2}/mo\n\
-           2. CI Runner [IC]    : Hosted ${:.2}/hr vs Infracost `{}` (${:.0}/mo OD | ${:.3}/hr Spot + ${:.2}/mo gp3/CW)\n\
-           3. Artifact [IC]     : {} upload job(s) • {}d configured (${:.2}/mo) vs 90d default (${:.2}/mo vendor vs ${:.2}/mo S3)\n\
-           4. Parallelism       : {} peak jobs ({} hosted / {} self-hosted) vs {}/{} cap • Tier Tax: ${:.2}/mo\n\
-           5. Log Retention     : {} • {:.1} MB/run ({:.2} GB/mo) • Datadog 30d: ${:.2}/mo | Infracost Loki+S3: ${:.2}/mo\n\
-           6. Egress/NAT [IC]   : {:.2} GB/mo ({}) • Private+NAT: ${:.2}/mo | Cross-Region: ${:.2}/mo | VPC Endpoint+Cache: ${:.2}/mo\n\
          +====================================================================================+\n",
         d.execution_time_us,
         d.base_path,
@@ -530,102 +520,38 @@ pub fn render_cli_compact_diff(d: &DiffReport) -> String {
         wait_sign,
         d.delta_monthly_dev_wait_usd.abs(),
         top_change,
-        d.job_changes.len(),
-        d.head_report.billed_mins_per_run,
-        cc.rounding_tax_mins_per_run,
-        cc.monthly_rounding_tax_usd,
-        cc.monthly_flake_retry_10pct_overhead_usd,
-        cc.hosted_effective_hourly_rate_usd,
-        cc.infracost_recommended_ec2_instance,
-        cc.infracost_ec2_on_demand_monthly_usd,
-        cc.infracost_ec2_spot_hourly_usd,
-        cc.infracost_ec2_surrounding_overhead_monthly_usd,
-        cc.jobs_uploading_artifacts,
-        cc.configured_retention_days,
-        cc.monthly_vendor_storage_configured_usd,
-        cc.monthly_vendor_storage_90d_usd,
-        cc.monthly_infracost_s3_standard_90d_usd,
-        cc.peak_concurrent_jobs_per_run,
-        cc.hosted_concurrent_jobs_per_run,
-        cc.self_hosted_or_microvm_jobs_per_run,
-        cc.vendor_free_concurrent_cap,
-        cc.vendor_team_concurrent_cap,
-        cc.parallelism_tier_upgrade_tax_monthly_usd,
-        cc.detected_log_language_profile,
-        cc.est_log_mb_per_run,
-        cc.monthly_log_volume_gb,
-        cc.monthly_datadog_30d_log_shipping_usd,
-        cc.monthly_infracost_loki_s3_usd,
-        cc.monthly_transfer_gb,
-        cc.infracost_cloud_region,
-        cc.monthly_infracost_private_subnet_nat_worst_case_usd,
-        cc.monthly_infracost_cross_region_registry_usd,
-        cc.monthly_infracost_vpc_endpoint_cache_optimized_usd
+        d.job_changes.len()
     )
 }
 
-fn render_six_components_markdown_table(r: &BreakdownReport) -> String {
+fn render_applicable_summary_notes_markdown(r: &BreakdownReport) -> String {
     let cc = &r.cost_components;
-    let iac_note = if cc.infracost_iac_files_detected {
-        " *(IaC `.tf`/`terragrunt` detected)*"
-    } else {
-        ""
-    };
-    let ret_note = if cc.configured_retention_days != cc.default_retention_days {
-        format!(
-            "`{}d` configured (`${:.2}/mo`) vs `{}d` default",
+    let mut notes = Vec::new();
+    if cc.rounding_tax_mins_per_run > 0.0 {
+        notes.push(format!(
+            "- **1-Minute Ceiling Rounding:** `{:.1}m/run` (`${:.2}/mo`)",
+            cc.rounding_tax_mins_per_run, cc.monthly_rounding_tax_usd
+        ));
+    }
+    if cc.jobs_uploading_artifacts > 0 {
+        notes.push(format!(
+            "- **Artifact Storage:** `{}` upload job(s) at `{}d` retention (`${:.2}/mo`, `{:.2} GB` steady-state)",
+            cc.jobs_uploading_artifacts,
             cc.configured_retention_days,
             cc.monthly_vendor_storage_configured_usd,
-            cc.default_retention_days
-        )
-    } else {
-        format!("`{}d` default", cc.default_retention_days)
-    };
-    format!(
-        "\n#### 🧾 6-Component CI/CD Invoice Breakdown (`cicdcost.com` + Infracost Cloud Delegated)\n\
-         | Cost Component | Pipeline Usage Profile | Monthly Cost & Cloud Alternatives |\n\
-         | :--- | :--- | :--- |\n\
-         | **1. [Build Minutes](https://cicdcost.com/build-minutes-cost)** | `{:.1}m` billed/run (`{:.1}m` rounding tax) • `{:.0}m/mo` OS-weighted free quota | Rounding Tax: **`${:.2}/mo`** • 10% Flake Retry Tax: **`+${:.2}/mo`** |\n\
-         | **2. [CI Runner](https://cicdcost.com/runner-cost)** `[Infracost]` | Hosted `${:.2}/hr` vs `{}`{} | On-Demand: **`${:.0}/mo`** (`${:.4}/hr`) • Spot: **`${:.3}/hr`** (`+${:.2}/mo` gp3/CW) |\n\
-         | **3. [Artifact Storage](https://cicdcost.com/artifact-storage-cost)** `[Infracost]` | `{}` upload job(s) • {} | 90d Vendor: **`${:.2}/mo`** vs Infracost S3 Standard: **`${:.2}/mo`** (14d S3 Intelligent: **`${:.2}/mo`**) |\n\
-         | **4. [Parallelism](https://cicdcost.com/parallelism-cost)** | `{}` peak jobs (`{}` hosted / `{}` self-hosted) vs `{}/{}` cap | Tier-Upgrade Tax: **`${:.2}/mo`** |\n\
-         | **5. [Log Retention](https://cicdcost.com/log-retention-cost)** `[Infracost]` | `{}` • `{:.1} MB/run` (`{:.2} GB/mo`) | `{}d` Default: **`$0/mo`** • Datadog 30d: **`${:.2}/mo`** • Infracost Loki+S3: **`${:.2}/mo`** |\n\
-         | **6. [Cross-Region Egress](https://cicdcost.com/cross-region-egress-cost)** `[Infracost]` | `{:.2} GB/mo` (`{}`) | Private+NAT: **`${:.2}/mo`** • Cross-Region: **`${:.2}/mo`** • VPC Endpoint+Cache: **`${:.2}/mo`** |\n",
-        r.billed_mins_per_run,
-        cc.rounding_tax_mins_per_run,
-        cc.monthly_os_weighted_free_tier_mins,
-        cc.monthly_rounding_tax_usd,
-        cc.monthly_flake_retry_10pct_overhead_usd,
-        cc.hosted_effective_hourly_rate_usd,
-        cc.infracost_recommended_ec2_instance,
-        iac_note,
-        cc.infracost_ec2_on_demand_monthly_usd,
-        cc.infracost_ec2_on_demand_hourly_usd,
-        cc.infracost_ec2_spot_hourly_usd,
-        cc.infracost_ec2_surrounding_overhead_monthly_usd,
-        cc.jobs_uploading_artifacts,
-        ret_note,
-        cc.monthly_vendor_storage_90d_usd,
-        cc.monthly_infracost_s3_standard_90d_usd,
-        cc.monthly_infracost_s3_intelligent_14d_usd,
-        cc.peak_concurrent_jobs_per_run,
-        cc.hosted_concurrent_jobs_per_run,
-        cc.self_hosted_or_microvm_jobs_per_run,
-        cc.vendor_free_concurrent_cap,
-        cc.vendor_team_concurrent_cap,
-        cc.parallelism_tier_upgrade_tax_monthly_usd,
-        cc.detected_log_language_profile,
-        cc.est_log_mb_per_run,
-        cc.monthly_log_volume_gb,
-        cc.vendor_default_log_retention_days,
-        cc.monthly_datadog_30d_log_shipping_usd,
-        cc.monthly_infracost_loki_s3_usd,
-        cc.monthly_transfer_gb,
-        cc.infracost_cloud_region,
-        cc.monthly_infracost_private_subnet_nat_worst_case_usd,
-        cc.monthly_infracost_cross_region_registry_usd,
-        cc.monthly_infracost_vpc_endpoint_cache_optimized_usd
-    )
+            cc.steady_state_stored_gb_configured
+        ));
+    }
+    if cc.parallelism_tier_upgrade_tax_monthly_usd > 0.0 {
+        notes.push(format!(
+            "- **Concurrency Cap:** `{}` hosted concurrent jobs exceed `{}` tier cap (`+${:.2}/mo` tier upgrade)",
+            cc.hosted_concurrent_jobs_per_run,
+            cc.vendor_free_concurrent_cap,
+            cc.parallelism_tier_upgrade_tax_monthly_usd
+        ));
+    }
+    notes.push(format!("- **Recommendation:** {}", build_contextual_recommendation(r)));
+    format!("\n{}\n", notes.join("\n"))
 }
 
 pub fn render_breakdown_markdown(r: &BreakdownReport) -> String {
@@ -649,28 +575,16 @@ pub fn render_breakdown_markdown(r: &BreakdownReport) -> String {
         ));
     }
 
-    let breakeven_banner = if r.exceeds_5000m_self_hosted_breakeven {
-        format!(
-            "\n> 💡 **Runner Right-Sizing Opportunity (`>= 5,000 mins/mo`):** Pipeline consumes `{:.0} billed mins/mo` (`${:.2}/mo` SaaS rate). Switching to **ARM64 / High-Speed Runners** drops compute to **`${:.2}/mo`**, or **Cloud Spot** to **`${:.2}/mo`**.\n",
-            r.monthly_billed_mins,
-            r.gross_monthly_compute_cost_usd,
-            r.monthly_blacksmith_cost_usd,
-            r.monthly_self_hosted_spot_cost_usd
-        )
-    } else {
-        String::new()
-    };
-    let six_comp_md = render_six_components_markdown_table(r);
+    let notes_md = render_applicable_summary_notes_markdown(r);
 
     format!(
         "<!-- minici-cost-comment -->\n\
 ### 💰 MiniCI CI/CD Cost & Quota Breakdown (`{:.2} ms`)\n\n\
-**Summary:** `{}` workflow(s) • `{}` expanded matrix job(s) • **`${:.2}/mo`** gross compute (**`${:.2}/mo`** net billed, `{:.1}%` of `{:.0}m` free quota) • **Dev Wait:** `${:.2}/mo` (`{:.1}m` critical path)\n\
-{breakeven_banner}\n\
+**Summary:** `{}` workflow(s) • `{}` expanded matrix job(s) • **`${:.2}/mo`** gross compute (**`${:.2}/mo`** net billed, `{:.1}%` of `{:.0}m` free quota) • **Dev Wait:** `${:.2}/mo` (`{:.1}m` critical path)\n\n\
 | Workflow | Job ID | Matrix × Runner | Billed Mins | Rate/Min | Cost/Run | Monthly (`{:.0}` runs) |\n\
 | :--- | :--- | :--- | ---: | ---: | ---: | ---: |\n\
 {rows}| **OVERALL TOTAL** | **`{} job(s)`** | **`{}`** | **`{:.1}m`** | — | **`${:.3}`** | **`${:.2}/mo`** |\n\
-{six_comp_md}",
+{notes_md}",
         r.execution_time_ms,
         r.total_workflows,
         r.total_expanded_matrix_jobs,
@@ -701,7 +615,7 @@ pub fn render_diff_markdown(d: &DiffReport) -> String {
             .collect::<Vec<_>>()
             .join("\n")
     };
-    let six_comp_md = render_six_components_markdown_table(&d.head_report);
+    let six_comp_md = render_applicable_summary_notes_markdown(&d.head_report);
 
     format!(
         "<!-- minici-cost-comment -->\n\
