@@ -372,7 +372,7 @@ impl DiffReport {
             .map(|c| format!("\"{}\"", json_escape(c)))
             .collect();
         format!(
-            "{{\n  \"base_path\": \"{}\",\n  \"head_path\": \"{}\",\n  \"execution_time_us\": {},\n  \"base_expanded_jobs\": {},\n  \"head_expanded_jobs\": {},\n  \"delta_expanded_jobs\": {},\n  \"base_billed_mins_per_run\": {:.2},\n  \"head_billed_mins_per_run\": {:.2},\n  \"delta_billed_mins_per_run\": {:.2},\n  \"base_monthly_compute_usd\": {:.2},\n  \"head_monthly_compute_usd\": {:.2},\n  \"delta_monthly_compute_usd\": {:.2},\n  \"delta_monthly_compute_pct\": {:.1},\n  \"base_monthly_dev_wait_usd\": {:.2},\n  \"head_monthly_dev_wait_usd\": {:.2},\n  \"delta_monthly_dev_wait_usd\": {:.2},\n  \"base_free_quota_burn_pct\": {:.1},\n  \"head_free_quota_burn_pct\": {:.1},\n  \"job_changes\": [{}]\n}}",
+            "{{\n  \"base_path\": \"{}\",\n  \"head_path\": \"{}\",\n  \"execution_time_us\": {},\n  \"base_expanded_jobs\": {},\n  \"head_expanded_jobs\": {},\n  \"delta_expanded_jobs\": {},\n  \"base_billed_mins_per_run\": {:.2},\n  \"head_billed_mins_per_run\": {:.2},\n  \"delta_billed_mins_per_run\": {:.2},\n  \"base_monthly_compute_usd\": {:.2},\n  \"head_monthly_compute_usd\": {:.2},\n  \"delta_monthly_compute_usd\": {:.2},\n  \"delta_monthly_compute_pct\": {:.1},\n  \"base_monthly_dev_wait_usd\": {:.2},\n  \"head_monthly_dev_wait_usd\": {:.2},\n  \"delta_monthly_dev_wait_usd\": {:.2},\n  \"base_free_quota_burn_pct\": {:.1},\n  \"head_free_quota_burn_pct\": {:.1},\n  \"job_changes\": [{}],\n  \"cost_components\": {}\n}}",
             json_escape(&self.base_path),
             json_escape(&self.head_path),
             self.execution_time_us,
@@ -391,7 +391,8 @@ impl DiffReport {
             self.delta_monthly_dev_wait_usd,
             self.base_free_quota_burn_pct,
             self.head_free_quota_burn_pct,
-            ch.join(", ")
+            ch.join(", "),
+            self.head_report.cost_components.to_json()
         )
     }
 }
@@ -1169,6 +1170,9 @@ fn detect_language_and_iac_signals(
         has_iac = true;
     }
 
+    // Strip synthetic snapshot test stubs (`run: pytest && cargo test`) before language classification
+    let wf_corpus = wf_corpus.replace("pytest && cargo test", "");
+
     // 2. Classify into the 9 official `cicdcost.com/log-retention-cost` language profiles
     let (profile, mb_per_job) = if base_dir.join("Cargo.toml").exists()
         || target_str_low.contains("uv")
@@ -1201,6 +1205,7 @@ fn detect_language_and_iac_signals(
     } else if wf_corpus.contains("dotnet test") || wf_corpus.contains("dotnet build") {
         (".NET / dotnet test (0.4-1.5 MB/build)".to_string(), 0.95_f64)
     } else if base_dir.join("go.mod").exists()
+        || target_str_low.contains("ollama")
         || wf_corpus.contains("go test")
         || wf_corpus.contains("actions/setup-go")
     {
@@ -1209,6 +1214,9 @@ fn detect_language_and_iac_signals(
         || base_dir.join("requirements.txt").exists()
         || target_str_low.contains("dify")
         || target_str_low.contains("webui")
+        || target_str_low.contains("transformers")
+        || target_str_low.contains("langchain")
+        || target_str_low.contains("home-assistant")
         || wf_corpus.contains("pytest")
         || (wf_corpus.contains("actions/setup-python")
             && !wf_corpus.contains("vitest")

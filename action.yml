@@ -27,6 +27,32 @@ inputs:
     required: false
     default: "65"
 
+outputs:
+  gross_monthly_compute_cost_usd:
+    description: "Gross monthly CI/CD compute cost (USD)"
+    value: ${{ steps.minici.outputs.gross_monthly_compute_cost_usd }}
+  net_billed_monthly_compute_cost_usd:
+    description: "Net billed monthly CI/CD compute cost after free-tier allowance (USD)"
+    value: ${{ steps.minici.outputs.net_billed_monthly_compute_cost_usd }}
+  monthly_rounding_tax_usd:
+    description: "Component 1 (cicdcost.com/build-minutes-cost): Monthly sub-minute ceiling rounding tax (USD)"
+    value: ${{ steps.minici.outputs.monthly_rounding_tax_usd }}
+  recommended_ec2_instance:
+    description: "Component 2 (cicdcost.com/runner-cost): Infracost right-sized self-hosted EC2 instance"
+    value: ${{ steps.minici.outputs.recommended_ec2_instance }}
+  artifact_storage_90d_usd:
+    description: "Component 3 (cicdcost.com/artifact-storage-cost): Monthly 90-day vendor artifact storage cost (USD)"
+    value: ${{ steps.minici.outputs.artifact_storage_90d_usd }}
+  parallelism_tier_upgrade_tax_usd:
+    description: "Component 4 (cicdcost.com/parallelism-cost): Monthly concurrency cap seat-tier upgrade tax (USD)"
+    value: ${{ steps.minici.outputs.parallelism_tier_upgrade_tax_usd }}
+  datadog_90d_log_shipping_usd:
+    description: "Component 5 (cicdcost.com/log-retention-cost): Monthly 90-day Datadog log shipping cost (USD)"
+    value: ${{ steps.minici.outputs.datadog_90d_log_shipping_usd }}
+  nat_egress_worst_case_usd:
+    description: "Component 6 (cicdcost.com/cross-region-egress-cost): Monthly private-subnet NAT Gateway + Internet Egress cost (USD)"
+    value: ${{ steps.minici.outputs.nat_egress_worst_case_usd }}
+
 runs:
   using: "composite"
   steps:
@@ -59,4 +85,29 @@ runs:
         if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f .minici_breakdown.md ]; then
           cat .minici_breakdown.md >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        if [ -n "${GITHUB_OUTPUT:-}" ]; then
+          "$BIN_PATH" breakdown \
+            --path "${{ inputs.path }}" \
+            --tier "${{ inputs.tier }}" \
+            --prs-per-week "${{ inputs.prs-per-week }}" \
+            --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
+            --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+            --format json \
+            --out-file .minici_breakdown.json \
+            --quiet
+          python3 -c '
+        import json, os
+        d = json.load(open(".minici_breakdown.json"))
+        cc = d.get("cost_components", {})
+        with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+            f.write(f"gross_monthly_compute_cost_usd={d.get(\"gross_monthly_compute_cost_usd\", 0.0):.2f}\n")
+            f.write(f"net_billed_monthly_compute_cost_usd={d.get(\"net_billed_monthly_compute_cost_usd\", 0.0):.2f}\n")
+            f.write(f"monthly_rounding_tax_usd={cc.get(\"build_minutes_cost\", {}).get(\"monthly_rounding_tax_usd\", 0.0):.2f}\n")
+            f.write(f"recommended_ec2_instance={cc.get(\"runner_cost\", {}).get(\"infracost_recommended_ec2_instance\", \"\")}\n")
+            f.write(f"artifact_storage_90d_usd={cc.get(\"artifact_storage_cost\", {}).get(\"monthly_vendor_storage_90d_usd\", 0.0):.2f}\n")
+            f.write(f"parallelism_tier_upgrade_tax_usd={cc.get(\"parallelism_cost\", {}).get(\"parallelism_tier_upgrade_tax_monthly_usd\", 0.0):.2f}\n")
+            f.write(f"datadog_90d_log_shipping_usd={cc.get(\"log_retention_cost\", {}).get(\"monthly_datadog_90d_log_shipping_usd\", 0.0):.2f}\n")
+            f.write(f"nat_egress_worst_case_usd={cc.get(\"cross_region_egress_cost\", {}).get(\"monthly_infracost_private_subnet_nat_worst_case_usd\", 0.0):.2f}\n")
+        '
         fi

@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.0",
-  "minici_version": "0.2.0",
+  "schema_version": "1.1.0",
+  "minici_version": "0.3.0",
   "repos": {
     "MaximVote/maxim": {
       "workflows": 41,
@@ -11,7 +11,13 @@
       "monthly_cost_usd": 1009.41,
       "free_tier_burn_pct": 4221.8,
       "dev_wait_mins": 9.1,
-      "monthly_dev_wait_usd": 4269.38
+      "monthly_dev_wait_usd": 4269.38,
+      "c1_rounding_tax_usd": 27.44,
+      "c2_spot_monthly_usd": 128.29,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 0.0,
+      "c5_datadog_90d_usd": 63.76,
+      "c6_nat_worst_case_usd": 742.96
     },
     "mgjartproject/FineArts-BE": {
       "workflows": 2,
@@ -22,7 +28,13 @@
       "monthly_cost_usd": 46.76,
       "free_tier_burn_pct": 389.7,
       "dev_wait_mins": 6.35,
-      "monthly_dev_wait_usd": 2979.04
+      "monthly_dev_wait_usd": 2979.04,
+      "c1_rounding_tax_usd": 11.69,
+      "c2_spot_monthly_usd": 36.97,
+      "c3_artifact_90d_usd": 8.12,
+      "c4_parallelism_tax_usd": 0.0,
+      "c5_datadog_90d_usd": 10.07,
+      "c6_nat_worst_case_usd": 63.13
     },
     "Eazy-Ops/Backend": {
       "workflows": 5,
@@ -33,7 +45,13 @@
       "monthly_cost_usd": 72.74,
       "free_tier_burn_pct": 606.2,
       "dev_wait_mins": 17.85,
-      "monthly_dev_wait_usd": 8374.22
+      "monthly_dev_wait_usd": 8374.22,
+      "c1_rounding_tax_usd": 6.37,
+      "c2_spot_monthly_usd": 43.25,
+      "c3_artifact_90d_usd": 8.12,
+      "c4_parallelism_tax_usd": 0.0,
+      "c5_datadog_90d_usd": 5.61,
+      "c6_nat_worst_case_usd": 52.61
     },
     "astral-sh/uv": {
       "workflows": 47,
@@ -44,7 +62,13 @@
       "monthly_cost_usd": 3464.0,
       "free_tier_burn_pct": 16156.3,
       "dev_wait_mins": 13.05,
-      "monthly_dev_wait_usd": 6122.62
+      "monthly_dev_wait_usd": 6122.62,
+      "c1_rounding_tax_usd": 461.87,
+      "c2_spot_monthly_usd": 628.93,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 510.0,
+      "c5_datadog_90d_usd": 597.91,
+      "c6_nat_worst_case_usd": 3600.24
     },
     "denoland/deno": {
       "workflows": 11,
@@ -55,7 +79,13 @@
       "monthly_cost_usd": 20206.81,
       "free_tier_burn_pct": 40269.0,
       "dev_wait_mins": 27.75,
-      "monthly_dev_wait_usd": 13015.98
+      "monthly_dev_wait_usd": 13015.98,
+      "c1_rounding_tax_usd": 913.65,
+      "c2_spot_monthly_usd": 6783.54,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 510.0,
+      "c5_datadog_90d_usd": 398.59,
+      "c6_nat_worst_case_usd": 4221.04
     },
     "ggml-org/llama.cpp": {
       "workflows": 62,
@@ -66,7 +96,13 @@
       "monthly_cost_usd": 1930.75,
       "free_tier_burn_pct": 9955.8,
       "dev_wait_mins": 13.6,
-      "monthly_dev_wait_usd": 6378.09
+      "monthly_dev_wait_usd": 6378.09,
+      "c1_rounding_tax_usd": 258.64,
+      "c2_spot_monthly_usd": 498.59,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 510.0,
+      "c5_datadog_90d_usd": 1530.05,
+      "c6_nat_worst_case_usd": 2438.16
     },
     "immich-app/immich": {
       "workflows": 27,
@@ -77,7 +113,13 @@
       "monthly_cost_usd": 819.67,
       "free_tier_burn_pct": 5823.9,
       "dev_wait_mins": 10.4,
-      "monthly_dev_wait_usd": 4879.91
+      "monthly_dev_wait_usd": 4879.91,
+      "c1_rounding_tax_usd": 104.82,
+      "c2_spot_monthly_usd": 198.52,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 510.0,
+      "c5_datadog_90d_usd": 855.6,
+      "c6_nat_worst_case_usd": 1058.04
     },
     "langgenius/dify": {
       "workflows": 41,
@@ -88,7 +130,13 @@
       "monthly_cost_usd": 1153.51,
       "free_tier_burn_pct": 8519.3,
       "dev_wait_mins": 10.35,
-      "monthly_dev_wait_usd": 4853.93
+      "monthly_dev_wait_usd": 4853.93,
+      "c1_rounding_tax_usd": 40.01,
+      "c2_spot_monthly_usd": 278.02,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 100.0,
+      "c5_datadog_90d_usd": 196.28,
+      "c6_nat_worst_case_usd": 1926.68
     },
     "open-webui/open-webui": {
       "workflows": 7,
@@ -99,7 +147,13 @@
       "monthly_cost_usd": 226.03,
       "free_tier_burn_pct": 1883.6,
       "dev_wait_mins": 9.5,
-      "monthly_dev_wait_usd": 4455.57
+      "monthly_dev_wait_usd": 4455.57,
+      "c1_rounding_tax_usd": 12.6,
+      "c2_spot_monthly_usd": 72.61,
+      "c3_artifact_90d_usd": 162.38,
+      "c4_parallelism_tax_usd": 0.0,
+      "c5_datadog_90d_usd": 30.18,
+      "c6_nat_worst_case_usd": 230.31
     },
     "mendableai/firecrawl": {
       "workflows": 36,
@@ -110,7 +164,185 @@
       "monthly_cost_usd": 1978.81,
       "free_tier_burn_pct": 13571.3,
       "dev_wait_mins": 84.45,
-      "monthly_dev_wait_usd": 39615.17
+      "monthly_dev_wait_usd": 39615.17,
+      "c1_rounding_tax_usd": 64.08,
+      "c2_spot_monthly_usd": 345.09,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 100.0,
+      "c5_datadog_90d_usd": 211.6,
+      "c6_nat_worst_case_usd": 1089.02
+    }
+  },
+  "fresh_10_repos": {
+    "microsoft/vscode": {
+      "workflows": 5,
+      "defined_jobs": 26,
+      "expanded_jobs": 36,
+      "billed_mins_per_run": 127.0,
+      "cost_per_run_usd": 4.858,
+      "monthly_cost_usd": 2103.51,
+      "free_tier_burn_pct": 2749.6,
+      "dev_wait_mins": 7.85,
+      "monthly_dev_wait_usd": 3680.5,
+      "c1_rounding_tax_usd": 134.99,
+      "c2_spot_monthly_usd": 421.43,
+      "c3_artifact_90d_usd": 8.12,
+      "c4_parallelism_tax_usd": 510.0,
+      "c5_datadog_90d_usd": 40.25,
+      "c6_nat_worst_case_usd": 378.79
+    },
+    "flutter/flutter": {
+      "workflows": 6,
+      "defined_jobs": 11,
+      "expanded_jobs": 11,
+      "billed_mins_per_run": 20.0,
+      "cost_per_run_usd": 0.176,
+      "monthly_cost_usd": 76.21,
+      "free_tier_burn_pct": 433.0,
+      "dev_wait_mins": 2.85,
+      "monthly_dev_wait_usd": 1337.97,
+      "c1_rounding_tax_usd": 13.91,
+      "c2_spot_monthly_usd": 46.06,
+      "c3_artifact_90d_usd": 8.12,
+      "c4_parallelism_tax_usd": 0.0,
+      "c5_datadog_90d_usd": 12.28,
+      "c6_nat_worst_case_usd": 115.74
+    },
+    "ollama/ollama": {
+      "workflows": 4,
+      "defined_jobs": 18,
+      "expanded_jobs": 47,
+      "billed_mins_per_run": 149.0,
+      "cost_per_run_usd": 2.924,
+      "monthly_cost_usd": 1266.09,
+      "free_tier_burn_pct": 3225.9,
+      "dev_wait_mins": 7.6,
+      "monthly_dev_wait_usd": 3563.59,
+      "c1_rounding_tax_usd": 93.47,
+      "c2_spot_monthly_usd": 415.8,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 510.0,
+      "c5_datadog_90d_usd": 26.27,
+      "c6_nat_worst_case_usd": 760.5
+    },
+    "huggingface/transformers": {
+      "workflows": 7,
+      "defined_jobs": 37,
+      "expanded_jobs": 57,
+      "billed_mins_per_run": 217.0,
+      "cost_per_run_usd": 1.302,
+      "monthly_cost_usd": 563.77,
+      "free_tier_burn_pct": 4698.1,
+      "dev_wait_mins": 7.6,
+      "monthly_dev_wait_usd": 3563.59,
+      "c1_rounding_tax_usd": 62.87,
+      "c2_spot_monthly_usd": 129.89,
+      "c3_artifact_90d_usd": 81.19,
+      "c4_parallelism_tax_usd": 100.0,
+      "c5_datadog_90d_usd": 95.63,
+      "c6_nat_worst_case_usd": 620.21
+    },
+    "vercel/next.js": {
+      "workflows": 5,
+      "defined_jobs": 38,
+      "expanded_jobs": 45,
+      "billed_mins_per_run": 132.0,
+      "cost_per_run_usd": 2.124,
+      "monthly_cost_usd": 919.69,
+      "free_tier_burn_pct": 2857.8,
+      "dev_wait_mins": 5.35,
+      "monthly_dev_wait_usd": 2511.4,
+      "c1_rounding_tax_usd": 95.8,
+      "c2_spot_monthly_usd": 271.35,
+      "c3_artifact_90d_usd": 8.12,
+      "c4_parallelism_tax_usd": 100.0,
+      "c5_datadog_90d_usd": 50.32,
+      "c6_nat_worst_case_usd": 473.49
+    },
+    "langchain-ai/langchain": {
+      "workflows": 27,
+      "defined_jobs": 41,
+      "expanded_jobs": 43,
+      "billed_mins_per_run": 105.0,
+      "cost_per_run_usd": 0.63,
+      "monthly_cost_usd": 272.79,
+      "free_tier_burn_pct": 2273.3,
+      "dev_wait_mins": 6.6,
+      "monthly_dev_wait_usd": 3095.95,
+      "c1_rounding_tax_usd": 51.57,
+      "c2_spot_monthly_usd": 74.04,
+      "c3_artifact_90d_usd": 81.19,
+      "c4_parallelism_tax_usd": 100.0,
+      "c5_datadog_90d_usd": 72.13,
+      "c6_nat_worst_case_usd": 472.9
+    },
+    "n8n-io/n8n": {
+      "workflows": 12,
+      "defined_jobs": 38,
+      "expanded_jobs": 44,
+      "billed_mins_per_run": 198.85,
+      "cost_per_run_usd": 1.4694,
+      "monthly_cost_usd": 636.25,
+      "free_tier_burn_pct": 4305.1,
+      "dev_wait_mins": 10.35,
+      "monthly_dev_wait_usd": 4853.93,
+      "c1_rounding_tax_usd": 23.04,
+      "c2_spot_monthly_usd": 128.64,
+      "c3_artifact_90d_usd": 8.12,
+      "c4_parallelism_tax_usd": 100.0,
+      "c5_datadog_90d_usd": 49.22,
+      "c6_nat_worst_case_usd": 462.96
+    },
+    "supabase/supabase": {
+      "workflows": 12,
+      "defined_jobs": 17,
+      "expanded_jobs": 25,
+      "billed_mins_per_run": 68.85,
+      "cost_per_run_usd": 0.62,
+      "monthly_cost_usd": 268.46,
+      "free_tier_burn_pct": 1490.6,
+      "dev_wait_mins": 5.45,
+      "monthly_dev_wait_usd": 2554.7,
+      "c1_rounding_tax_usd": 6.43,
+      "c2_spot_monthly_usd": 64.81,
+      "c3_artifact_90d_usd": 162.38,
+      "c4_parallelism_tax_usd": 0.0,
+      "c5_datadog_90d_usd": 27.97,
+      "c6_nat_worst_case_usd": 303.97
+    },
+    "home-assistant/core": {
+      "workflows": 19,
+      "defined_jobs": 66,
+      "expanded_jobs": 87,
+      "billed_mins_per_run": 561.0,
+      "cost_per_run_usd": 3.242,
+      "monthly_cost_usd": 1403.79,
+      "free_tier_burn_pct": 12145.7,
+      "dev_wait_mins": 47.2,
+      "monthly_dev_wait_usd": 22139.29,
+      "c1_rounding_tax_usd": 113.73,
+      "c2_spot_monthly_usd": 291.49,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 510.0,
+      "c5_datadog_90d_usd": 145.96,
+      "c6_nat_worst_case_usd": 1713.32
+    },
+    "pydantic/pydantic": {
+      "workflows": 12,
+      "defined_jobs": 66,
+      "expanded_jobs": 175,
+      "billed_mins_per_run": 930.7,
+      "cost_per_run_usd": 10.9928,
+      "monthly_cost_usd": 4759.88,
+      "free_tier_burn_pct": 20149.7,
+      "dev_wait_mins": 12.7,
+      "monthly_dev_wait_usd": 5958.08,
+      "c1_rounding_tax_usd": 377.44,
+      "c2_spot_monthly_usd": 1369.18,
+      "c3_artifact_90d_usd": 243.56,
+      "c4_parallelism_tax_usd": 510.0,
+      "c5_datadog_90d_usd": 430.61,
+      "c6_nat_worst_case_usd": 3130.27
     }
   },
   "edge_case_repos": {
