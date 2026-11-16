@@ -364,6 +364,8 @@ fn analyze_github_job_block(
     out_jobs: &mut Vec<ExpandedJobCost>,
 ) {
     let mut raw_runs_on = "ubuntu-latest".to_string();
+    let mut saw_runs_on = false;
+    let mut uses_local_reusable_workflow = false;
     let mut has_job_concurrency = has_top_concurrency;
     let mut explicit_est_mins: Option<f64> = None;
     let mut has_sparse = false;
@@ -398,7 +400,18 @@ fn analyze_github_job_block(
                 }
             }
         }
+        if !saw_steps && !in_matrix && trimmed.starts_with("uses:") {
+            if let Some(val) = trimmed.splitn(2, ':').nth(1) {
+                let target = val.trim().trim_matches('"').trim_matches('\'');
+                if target.starts_with("./.github/workflows/")
+                    || target.starts_with(".github/workflows/")
+                {
+                    uses_local_reusable_workflow = true;
+                }
+            }
+        }
         if trimmed.starts_with("runs-on:") {
+            saw_runs_on = true;
             if let Some(val) = trimmed.splitn(2, ':').nth(1) {
                 let list = parse_inline_yaml_list(val);
                 if !list.is_empty() {
@@ -486,34 +499,43 @@ fn analyze_github_job_block(
         }
         if saw_steps {
             if trimmed.contains("actions/checkout") {
-                step_mins += 0.6;
+                step_mins += 0.35;
             } else if trimmed.starts_with("filter:")
                 || trimmed.starts_with("sparse-checkout:")
                 || (trimmed.starts_with("fetch-depth:") && trimmed.ends_with('1'))
             {
                 if !has_sparse {
                     has_sparse = true;
-                    step_mins = (step_mins - 0.4).max(0.5);
+                    step_mins = (step_mins - 0.3).max(0.5);
                 }
             } else if trimmed.contains("upload-artifact") {
                 uploads_artifacts = true;
-                step_mins += 0.4;
+                step_mins += 0.35;
             } else if trimmed.contains("pytest")
                 || trimmed.contains("cargo test")
                 || trimmed.contains("npm test")
-                || trimmed.contains("vitest")
+                || (trimmed.contains("vitest")
+                    && !trimmed.contains(".vitest-reports")
+                    && !trimmed.contains("--merge-reports")
+                    && !trimmed.starts_with("path:"))
                 || trimmed.contains("go test")
                 || trimmed.contains("mvn test")
             {
-                step_mins += 3.2;
+                step_mins += 2.5;
             } else if trimmed.contains("docker build")
                 || trimmed.contains("cargo build --release")
             {
-                step_mins += 4.0;
+                step_mins += 3.5;
             } else if trimmed.starts_with("- name:") || trimmed.starts_with("- run:") || trimmed.starts_with("- uses:") {
-                step_mins += 0.6;
+                step_mins += 0.25;
             }
         }
+    }
+
+    // Pure local reusable-workflow caller stubs (`uses: ./.github/workflows/...` with no `runs-on:` or `steps:`)
+    // orchestrate another workflow already present in `.github/workflows/` and do not allocate their own runner VM.
+    if uses_local_reusable_workflow && !saw_runs_on && !saw_steps {
+        return;
     }
 
     let raw_mins = explicit_est_mins.unwrap_or(if saw_steps { step_mins } else { 3.5 });
@@ -959,6 +981,43 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         if cb_file.is_file() {
             workflow_count += 1;
             parse_gitlab_or_other_ci(&cb_file, "buildspec.yml", "BUILD_GENERAL1_SMALL", &mut jobs);
+        }
+        // Fallback for monorepos with nested `<subdir>/.github/workflows` (e.g., `Eazy-Ops/Automation` `cron/.github/workflows`)
+        if workflow_count == 0 {
+            if let Ok(sub_entries) = fs::read_dir(target) {
+                let mut sub_dirs: Vec<_> = sub_entries
+                    .filter_map(|e| e.ok().map(|x| x.path()))
+                    .filter(|p| p.is_dir() && !p.file_name().and_then(|n| n.to_str()).unwrap_or("").starts_with('.'))
+                    .collect();
+                sub_dirs.sort();
+                for sub_dir in sub_dirs {
+                    let nested_gh = sub_dir.join(".github").join("workflows");
+                    if nested_gh.is_dir() {
+                        if let Ok(entries) = fs::read_dir(&nested_gh) {
+                            let mut paths: Vec<_> = entries
+                                .filter_map(|e| e.ok().map(|x| x.path()))
+                                .filter(|p| {
+                                    p.extension()
+                                        .and_then(|e| e.to_str())
+                                        .map(|ext| ext == "yml" || ext == "yaml")
+                                        .unwrap_or(false)
+                                })
+                                .collect();
+                            paths.sort();
+                            let sub_name = sub_dir.file_name().and_then(|s| s.to_str()).unwrap_or("sub");
+                            for p in paths {
+                                workflow_count += 1;
+                                let rel = format!(
+                                    "{}/.github/workflows/{}",
+                                    sub_name,
+                                    p.file_name().and_then(|s| s.to_str()).unwrap_or("ci.yml")
+                                );
+                                parse_github_workflow_file(&p, &rel, &mut jobs);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

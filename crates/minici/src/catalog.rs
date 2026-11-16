@@ -672,6 +672,41 @@ pub fn lookup_infracost_cloud_spec(lower: &str) -> Option<&'static InfracostClou
         .max_by_key(|spec| spec.instance_type.len())
 }
 
+/// Extracts explicit or trailing vCPU core counts from a normalized runner label after stripping
+/// canonical OS version numbers (`24.04`, `2022`, `2025`, `windows-11`, `macos-15`, etc.) per Lesson 11 & Lesson 15.
+fn extract_runner_vcpus(lower: &str) -> Option<u32> {
+    let mut cleaned = lower.to_string();
+    for token in [
+        "26.04", "26-04", "26_04", "24.04", "24-04", "24_04", "22.04", "22-04", "22_04",
+        "20.04", "20-04", "18.04", "2204", "2404", "2604", "2025", "2022", "2019",
+        "windows-11", "windows-10", "macos-26", "macos-15", "macos-14", "macos-13", "macos-12",
+        "xcode-27", "xcode-16", "xcode-15", "x86-64", "x86_64", "aarch64", "arm64",
+        "cuda13", "cuda12", "vs2026", "vs2022", "9950x", "1201", "gb10", "s390x", "ppc64le", "riscv64",
+    ] {
+        cleaned = cleaned.replace(token, "");
+    }
+    for (n, pats) in [
+        (96u32, &["96vcpu", "96-core", "96core", "-96"][..]),
+        (64u32, &["64vcpu", "64-core", "64core", "16xlarge", "-64"][..]),
+        (32u32, &["32vcpu", "32-core", "32core", "8xlarge", "c8g_8x", "-32"][..]),
+        (16u32, &["16vcpu", "16-core", "16core", "16x32", "4xlarge", "-16", "-xl"][..]),
+        (8u32, &["8vcpu", "8-core", "8core", "2xlarge", "-8"][..]),
+        (4u32, &["4vcpu", "4-core", "4core", "xlarge", "-4"][..]),
+        (2u32, &["2vcpu", "2-core", "2core", "-2"][..]),
+    ] {
+        for pat in pats {
+            if pat.starts_with('-') {
+                if cleaned.ends_with(pat) || cleaned.contains(&format!("{}-", pat)) {
+                    return Some(n);
+                }
+            } else if cleaned.contains(pat) {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
 /// Zero-allocation microsecond lookup (`< 5 µs`) resolving any runner label across all providers,
 /// using `EMBEDDED_SKU_CATALOG`, `INFRACOST_CLOUD_CATALOG` for AWS/GCP/Azure instances, and `~/.minici/pricing_overrides.json`.
 pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
@@ -703,6 +738,13 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         apply_live_override(&mut s, raw_label);
         return s;
     }
+
+    let is_arm = lower.contains("arm")
+        || lower.contains("aarch64")
+        || lower.contains("graviton")
+        || lower.contains("c8g")
+        || lower.contains("c7g");
+    let explicit_vcpus = extract_runner_vcpus(&lower);
 
     // 2. Non-GitHub Multi-CI SaaS Providers (GitLab CI, CircleCI, Bitbucket Pipelines, AWS CodeBuild)
     let mut resolved = if lower.contains("gitlab") || lower.contains("saas-linux") || lower.contains("saas-macos") {
@@ -821,6 +863,25 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             }
             s
         }
+    } else if lower.contains("self-hosted") || lower.contains("eks") || lower.contains("k8s") {
+        // Check self-hosted BEFORE generic OS SaaS branches so `self-hosted-macOS-ARM64` and
+        // `self-hosted-Windows-X64-Intel` resolve to self-hosted compute instead of GitHub SaaS!
+        let mut s = EMBEDDED_SKU_CATALOG[21].clone();
+        if lower.contains("macos") || lower.contains("darwin") {
+            s.os = "macOS";
+            s.arch = if is_arm { "arm64" } else { "x86_64" };
+        } else if lower.contains("windows") || lower.contains("win") {
+            s.os = "Windows";
+            s.arch = if is_arm { "arm64" } else { "x86_64" };
+        } else if is_arm {
+            s.arch = "arm64";
+        }
+        if let Some(vc) = explicit_vcpus {
+            s.vcpus = vc;
+            s.ram_gb = (vc as f64) * 4.0;
+            s.rate_per_min_usd = (vc as f64) * 0.0006;
+        }
+        s
     } else if lower.contains("blacksmith")
         || lower.contains("buildjet")
         || lower.contains("warpbuild")
@@ -829,35 +890,35 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         || lower.contains("namespace")
     {
         let mut s = EMBEDDED_SKU_CATALOG[20].clone();
-        if lower.contains("64vcpu") || lower.contains("64-core") || lower.contains("64core") {
-            s.sku_label = "blacksmith-64vcpu";
-            s.vcpus = 64;
-            s.ram_gb = 256.0;
-            s.rate_per_min_usd = 0.128;
-        } else if lower.contains("32vcpu") || lower.contains("32-core") || lower.contains("32core") {
-            s.sku_label = "blacksmith-32vcpu";
-            s.vcpus = 32;
-            s.ram_gb = 128.0;
-            s.rate_per_min_usd = 0.064;
-        } else if lower.contains("16vcpu") || lower.contains("16-core") || lower.contains("16core") {
-            s.sku_label = "blacksmith-16vcpu";
-            s.vcpus = 16;
-            s.ram_gb = 64.0;
-            s.rate_per_min_usd = 0.032;
-        } else if lower.contains("8vcpu") || lower.contains("8-core") || lower.contains("8core") {
-            s.sku_label = "blacksmith-8vcpu";
-            s.vcpus = 8;
-            s.ram_gb = 32.0;
-            s.rate_per_min_usd = 0.016;
-        } else if lower.contains("4vcpu") || lower.contains("4-core") || lower.contains("4core") {
-            s.sku_label = "blacksmith-4vcpu";
-            s.vcpus = 4;
-            s.ram_gb = 16.0;
-            s.rate_per_min_usd = 0.008;
-        } else if lower.contains("2vcpu") || lower.contains("2-core") || lower.contains("2core") {
-            s.vcpus = 2;
-            s.ram_gb = 8.0;
-            s.rate_per_min_usd = 0.004;
+        if lower.contains("macos") || lower.contains("darwin") {
+            s.sku_label = "third-party-macos";
+            s.os = "macOS";
+            s.arch = "arm64";
+            s.vcpus = explicit_vcpus.unwrap_or(4);
+            s.ram_gb = 14.0;
+            s.rate_per_min_usd = 0.0320;
+        } else if lower.contains("windows") || lower.contains("win") {
+            let vc = explicit_vcpus.unwrap_or(4);
+            s.sku_label = "third-party-windows";
+            s.os = "Windows";
+            s.arch = if is_arm { "arm64" } else { "x86_64" };
+            s.vcpus = vc;
+            s.ram_gb = (vc as f64) * 4.0;
+            s.rate_per_min_usd = (vc as f64) * 0.0020;
+        } else {
+            let vc = explicit_vcpus.unwrap_or(2);
+            s.vcpus = vc;
+            s.ram_gb = (vc as f64) * 4.0;
+            s.arch = if is_arm { "arm64" } else { "x86_64" };
+            s.rate_per_min_usd = (vc as f64) * 0.0020;
+            s.sku_label = match vc {
+                64 => "blacksmith-64vcpu",
+                32 => "blacksmith-32vcpu",
+                16 => "blacksmith-16vcpu",
+                8 => "blacksmith-8vcpu",
+                4 => "blacksmith-4vcpu",
+                _ => "blacksmith-2vcpu",
+            };
         }
         s.blacksmith_equiv_rate_usd = s.rate_per_min_usd;
         s
@@ -867,7 +928,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         EMBEDDED_SKU_CATALOG[25].clone()
     } else if lower.contains("aws") || lower.contains("ec2") {
         EMBEDDED_SKU_CATALOG[22].clone()
-    // 3. GitHub Actions Official SaaS Runners (macOS, Windows, Larger Linux Runners — Synced with pricing/github.json)
+    // 3. GitHub Actions Official SaaS & Custom Org Runner Scale Sets (macOS, Windows, Larger Linux Runners)
     } else if lower.contains("macos-14-xlarge") || lower.contains("macos-15-xlarge") || lower.contains("macos-26-xlarge") || lower.contains("macos-xlarge") || lower.contains("m2-pro") {
         let mut s = EMBEDDED_SKU_CATALOG[9].clone();
         s.sku_label = "macos-xlarge";
@@ -882,88 +943,101 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         EMBEDDED_SKU_CATALOG[8].clone()
     } else if lower.contains("windows") || lower.contains("win") {
         let mut s = EMBEDDED_SKU_CATALOG[7].clone();
-        if lower.contains("arm") {
+        if is_arm {
             s.sku_label = "windows-11-arm";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.008;
         }
-        if lower.contains("96-core") || lower.contains("96core") {
-            s.sku_label = "windows-96core";
-            s.vcpus = 96;
-            s.rate_per_min_usd = 0.552;
-        } else if lower.contains("64-core") || lower.contains("64core") {
-            s.sku_label = "windows-64core";
-            s.vcpus = 64;
-            s.rate_per_min_usd = if s.arch == "arm64" { 0.194 } else { 0.322 };
-        } else if lower.contains("32-core") || lower.contains("32core") {
-            s.sku_label = "windows-32core";
-            s.vcpus = 32;
-            s.rate_per_min_usd = if s.arch == "arm64" { 0.098 } else { 0.162 };
-        } else if lower.contains("16-core") || lower.contains("16core") {
-            s.sku_label = "windows-16core";
-            s.vcpus = 16;
-            s.rate_per_min_usd = if s.arch == "arm64" { 0.050 } else { 0.082 };
-        } else if lower.contains("8-core") || lower.contains("8core") {
-            s.sku_label = "windows-8core";
-            s.vcpus = 8;
-            s.rate_per_min_usd = if s.arch == "arm64" { 0.026 } else { 0.042 };
-        } else if lower.contains("4-core") || lower.contains("4core") {
-            s.sku_label = "windows-4core";
-            s.vcpus = 4;
-            s.rate_per_min_usd = if s.arch == "arm64" { 0.014 } else { 0.022 };
+        match explicit_vcpus {
+            Some(96) => {
+                s.sku_label = "windows-96core";
+                s.vcpus = 96;
+                s.rate_per_min_usd = 0.552;
+            }
+            Some(64) => {
+                s.sku_label = "windows-64core";
+                s.vcpus = 64;
+                s.rate_per_min_usd = if s.arch == "arm64" { 0.194 } else { 0.322 };
+            }
+            Some(32) => {
+                s.sku_label = "windows-32core";
+                s.vcpus = 32;
+                s.rate_per_min_usd = if s.arch == "arm64" { 0.098 } else { 0.162 };
+            }
+            Some(16) => {
+                s.sku_label = "windows-16core";
+                s.vcpus = 16;
+                s.rate_per_min_usd = if s.arch == "arm64" { 0.050 } else { 0.082 };
+            }
+            Some(8) => {
+                s.sku_label = "windows-8core";
+                s.vcpus = 8;
+                s.rate_per_min_usd = if s.arch == "arm64" { 0.026 } else { 0.042 };
+            }
+            Some(4) if lower.contains("4-core") || lower.contains("4core") || lower.ends_with("-4") => {
+                s.sku_label = "windows-4core";
+                s.vcpus = 4;
+                s.rate_per_min_usd = if s.arch == "arm64" { 0.014 } else { 0.022 };
+            }
+            _ => {}
         }
         s
-    } else if lower.contains("96-core") || lower.contains("96core") {
+    } else if lower.starts_with("hf-jobs-") {
+        let mut s = EMBEDDED_SKU_CATALOG[2].clone();
+        s.sku_label = "ubuntu-4core";
+        s.vcpus = 4;
+        s.ram_gb = 16.0;
+        s.rate_per_min_usd = if lower.contains("t4-medium") { 0.0160 } else { 0.0120 };
+        s
+    } else if explicit_vcpus == Some(96) {
         let mut s = EMBEDDED_SKU_CATALOG[6].clone();
         s.sku_label = "ubuntu-96core";
         s.vcpus = 96;
         s.ram_gb = 384.0;
         s.rate_per_min_usd = 0.252;
         s
-    } else if lower.contains("64-core") || lower.contains("64core") {
+    } else if explicit_vcpus == Some(64) {
         let mut s = EMBEDDED_SKU_CATALOG[6].clone();
-        if lower.contains("arm") {
+        if is_arm {
             s.sku_label = "ubuntu-24.04-arm-64core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.098;
         }
         s
-    } else if lower.contains("32-core") || lower.contains("32core") {
+    } else if explicit_vcpus == Some(32) {
         let mut s = EMBEDDED_SKU_CATALOG[5].clone();
-        if lower.contains("arm") {
+        if is_arm {
             s.sku_label = "ubuntu-24.04-arm-32core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.050;
         }
         s
-    } else if lower.contains("16-core") || lower.contains("16core") || lower.contains("2xlarge") {
+    } else if explicit_vcpus == Some(16) {
         let mut s = EMBEDDED_SKU_CATALOG[4].clone();
-        if lower.contains("arm") {
+        if is_arm {
             s.sku_label = "ubuntu-24.04-arm-16core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.026;
         }
         s
-    } else if lower.contains("8-core") || lower.contains("8core") || lower.contains("xlarge") {
+    } else if explicit_vcpus == Some(8) {
         let mut s = EMBEDDED_SKU_CATALOG[3].clone();
-        if lower.contains("arm") {
+        if is_arm {
             s.sku_label = "ubuntu-24.04-arm-8core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.014;
         }
         s
-    } else if lower.contains("4-core") || lower.contains("4core") || lower.contains("large") {
+    } else if explicit_vcpus == Some(4) || lower.contains("large") {
         let mut s = EMBEDDED_SKU_CATALOG[2].clone();
-        if lower.contains("arm") {
+        if is_arm {
             s.sku_label = "ubuntu-24.04-arm-4core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.008;
         }
         s
-    } else if lower.contains("arm") || lower.contains("graviton") {
+    } else if is_arm {
         EMBEDDED_SKU_CATALOG[1].clone()
-    } else if lower.contains("self-hosted") || lower.contains("eks") || lower.contains("k8s") {
-        EMBEDDED_SKU_CATALOG[21].clone()
     } else {
         EMBEDDED_SKU_CATALOG[0].clone()
     };

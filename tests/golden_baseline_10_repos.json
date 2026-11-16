@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0.0",
+  "minici_version": "0.2.0",
+  "repos": {
+    "MaximVote/maxim": {
+      "workflows": 41,
+      "defined_jobs": 45,
+      "expanded_jobs": 57,
+      "billed_mins_per_run": 195.0,
+      "cost_per_run_usd": 2.3312,
+      "monthly_cost_usd": 1009.41,
+      "free_tier_burn_pct": 4221.8,
+      "dev_wait_mins": 9.1,
+      "monthly_dev_wait_usd": 4269.38
+    },
+    "mgjartproject/FineArts-BE": {
+      "workflows": 2,
+      "defined_jobs": 6,
+      "expanded_jobs": 6,
+      "billed_mins_per_run": 18.0,
+      "cost_per_run_usd": 0.108,
+      "monthly_cost_usd": 46.76,
+      "free_tier_burn_pct": 389.7,
+      "dev_wait_mins": 6.35,
+      "monthly_dev_wait_usd": 2979.04
+    },
+    "Eazy-Ops/Backend": {
+      "workflows": 5,
+      "defined_jobs": 5,
+      "expanded_jobs": 5,
+      "billed_mins_per_run": 28.0,
+      "cost_per_run_usd": 0.168,
+      "monthly_cost_usd": 72.74,
+      "free_tier_burn_pct": 606.2,
+      "dev_wait_mins": 17.85,
+      "monthly_dev_wait_usd": 8374.22
+    },
+    "astral-sh/uv": {
+      "workflows": 47,
+      "defined_jobs": 223,
+      "expanded_jobs": 243,
+      "billed_mins_per_run": 746.25,
+      "cost_per_run_usd": 8.0,
+      "monthly_cost_usd": 3464.0,
+      "free_tier_burn_pct": 16156.3,
+      "dev_wait_mins": 13.05,
+      "monthly_dev_wait_usd": 6122.62
+    },
+    "denoland/deno": {
+      "workflows": 11,
+      "defined_jobs": 59,
+      "expanded_jobs": 162,
+      "billed_mins_per_run": 1860.0,
+      "cost_per_run_usd": 46.667,
+      "monthly_cost_usd": 20206.81,
+      "free_tier_burn_pct": 40269.0,
+      "dev_wait_mins": 27.75,
+      "monthly_dev_wait_usd": 13015.98
+    },
+    "ggml-org/llama.cpp": {
+      "workflows": 62,
+      "defined_jobs": 121,
+      "expanded_jobs": 152,
+      "billed_mins_per_run": 459.85,
+      "cost_per_run_usd": 4.459,
+      "monthly_cost_usd": 1930.75,
+      "free_tier_burn_pct": 9955.8,
+      "dev_wait_mins": 13.6,
+      "monthly_dev_wait_usd": 6378.09
+    },
+    "immich-app/immich": {
+      "workflows": 27,
+      "defined_jobs": 76,
+      "expanded_jobs": 85,
+      "billed_mins_per_run": 269.0,
+      "cost_per_run_usd": 1.893,
+      "monthly_cost_usd": 819.67,
+      "free_tier_burn_pct": 5823.9,
+      "dev_wait_mins": 10.4,
+      "monthly_dev_wait_usd": 4879.91
+    },
+    "langgenius/dify": {
+      "workflows": 41,
+      "defined_jobs": 84,
+      "expanded_jobs": 117,
+      "billed_mins_per_run": 393.5,
+      "cost_per_run_usd": 2.664,
+      "monthly_cost_usd": 1153.51,
+      "free_tier_burn_pct": 8519.3,
+      "dev_wait_mins": 10.35,
+      "monthly_dev_wait_usd": 4853.93
+    },
+    "open-webui/open-webui": {
+      "workflows": 7,
+      "defined_jobs": 13,
+      "expanded_jobs": 18,
+      "billed_mins_per_run": 87.0,
+      "cost_per_run_usd": 0.522,
+      "monthly_cost_usd": 226.03,
+      "free_tier_burn_pct": 1883.6,
+      "dev_wait_mins": 9.5,
+      "monthly_dev_wait_usd": 4455.57
+    },
+    "mendableai/firecrawl": {
+      "workflows": 36,
+      "defined_jobs": 71,
+      "expanded_jobs": 86,
+      "billed_mins_per_run": 626.85,
+      "cost_per_run_usd": 4.57,
+      "monthly_cost_usd": 1978.81,
+      "free_tier_burn_pct": 13571.3,
+      "dev_wait_mins": 84.45,
+      "monthly_dev_wait_usd": 39615.17
+    }
+  },
+  "edge_case_repos": {
+    "MaximVote/tf": {
+      "workflows": 6,
+      "expanded_jobs": 8,
+      "monthly_cost_usd": 70.15,
+      "net_billed_monthly_usd": 70.15
+    },
+    "mgjartproject/gfa-data-pipelines": {
+      "workflows": 2,
+      "expanded_jobs": 23,
+      "monthly_cost_usd": 127.3,
+      "net_billed_monthly_usd": 127.3
+    },
+    "mgjartproject/frontend": {
+      "workflows": 2,
+      "expanded_jobs": 6,
+      "monthly_cost_usd": 44.17,
+      "net_billed_monthly_usd": 44.17
+    },
+    "mgjartproject/FineArt_AI_Pipeline": {
+      "workflows": 0,
+      "expanded_jobs": 0,
+      "monthly_cost_usd": 0.0,
+      "net_billed_monthly_usd": 0.0
+    },
+    "Eazy-Ops/frontend": {
+      "workflows": 2,
+      "expanded_jobs": 2,
+      "monthly_cost_usd": 20.78,
+      "net_billed_monthly_usd": 20.78
+    },
+    "Eazy-Ops/multi-cloud-finops-mcp-server": {
+      "workflows": 1,
+      "expanded_jobs": 1,
+      "monthly_cost_usd": 5.2,
+      "net_billed_monthly_usd": 0.0
+    },
+    "Eazy-Ops/Automation": {
+      "workflows": 0,
+      "expanded_jobs": 0,
+      "monthly_cost_usd": 0.0,
+      "net_billed_monthly_usd": 0.0
+    }
+  }
+}

@@ -195,3 +195,37 @@ To ensure our pricing and verification engine works out-of-the-box for **any** o
 3. **Unpriced Self-Hosted Runner Warning:** Whenever `self_hosted` minutes $> 0$ and `self_hosted_usd_per_month` is not provided, emit `unpriced_self_hosted_warning` and `self_hosted_cloud_equivalent_usd` so `$0.00` software fees are never mistaken for zero infrastructure cost.
 4. **Hard Non-Negativity & Reconciliation Invariants:** Clamp all negative inputs (`duration_s`, `count`, `shards`, `seats`, `storage_gb`, `cache_gb`, `egress_gb`, `skipped_runs`) at `0`, cap `skipped_runs <= monthly_runs`, and guarantee `round(gross_consumed_usd - discount_allowance_usd, 2) == round(net_billable_usd, 2)` on every receipt.
 
+---
+
+## 15. Nov 16, 2026 — 10-Repository (3 Internal + 7 Fresh OSS) × 3-Mode Pre-Lock Validation Findings (`minici-cost-action` v0.2.0)
+
+Before locking Feature 1 (`minici-cost-action` / `minici` v0.2.0), we executed [`scripts/validate_minici_cost_10_repos.sh`](file:///Users/araza/personal/minici-cost-action/scripts/validate_minici_cost_10_repos.sh) and [`tools/verify_10_repos_all_modes.py`](file:///Users/araza/personal/minici-cost-action/tools/verify_10_repos_all_modes.py) across **10 primary repositories** (`MaximVote/maxim`, `mgjartproject/FineArts-BE`, `Eazy-Ops/Backend`, `astral-sh/uv`, `denoland/deno`, `ggml-org/llama.cpp`, `immich-app/immich`, `langgenius/dify`, `open-webui/open-webui`, `mendableai/firecrawl`) plus **7 additional internal repositories** (`MaximVote/tf`, `mgjartproject/gfa-data-pipelines`, `mgjartproject/frontend`, `mgjartproject/FineArt_AI_Pipeline`, `Eazy-Ops/frontend`, `Eazy-Ops/multi-cloud-finops-mcp-server`, `Eazy-Ops/Automation`).
+
+### 15.1 Static Rust Catalog vs. JSON Pricing Drift (Resolved)
+- **What Happened:** `pricing/github-actions.json` carried GitHub's January 1, 2026 post-cut rates (`$0.006/min` 2-vCPU Linux, `$0.005/min` ARM64, `$0.010/min` Windows, `$0.062/min` macOS), whereas [`crates/minici/src/catalog.rs`](file:///Users/araza/personal/minici-cost-action/crates/minici/src/catalog.rs) initially retained 2025 rates (`$0.008`, `$0.016`, `$0.080`).
+- **Resolution:** Added [`tools/sync_rust_sku_catalog.py`](file:///Users/araza/personal/minici-cost-action/tools/sync_rust_sku_catalog.py) (`--check` and `--apply-overrides`) into Gate 7 of [`scripts/qa_closed_loop.sh`](file:///Users/araza/personal/minici-cost-action/scripts/qa_closed_loop.sh) and `minici self-update`, enforcing **24/24 canonical SKU parity (`0.00%` drift)**.
+
+### 15.2 `ggml-org/llama.cpp`: Self-Hosted macOS & Windows Labels (`self-hosted-macOS-ARM64`, `self-hosted-Windows-X64-Intel`)
+- **What We Found:** `ggml-org/llama.cpp` defines both Linux self-hosted runners (`self-hosted-Linux-NVIDIA`, `self-hosted-Linux-Intel-OpenVINO`) and macOS/Windows self-hosted runners (`self-hosted-macOS-ARM64`, `self-hosted-llama-server-macOS-ARM64`, `self-hosted-Windows-X64-Intel`). Because `lookup_sku()` in [`crates/minici/src/main.rs`](file:///Users/araza/personal/minici-cost-action/crates/minici/src/main.rs) checked `lower.contains("macos")` and `lower.contains("windows")` *before* `lower.contains("self-hosted")`, `self-hosted-macOS-ARM64` resolved to GitHub SaaS macOS (`$0.0620/min`) instead of self-hosted compute (`$0.0024/min`).
+- **Rule / Action Item:** Check `lower.contains("self-hosted")` *before* generic OS SaaS branches in `lookup_sku()`, while preserving the detected OS (`macOS` / `Windows` / `Linux`) for metadata accuracy.
+
+### 15.3 `astral-sh/uv` & `langgenius/dify`: Third-Party Runner Trailing vCPU Suffixes (`depot-ubuntu-24.04-4/8/16`, `namespace-profile-macos-15`)
+- **What We Found:**
+  1. `astral-sh/uv` and `langgenius/dify` use Depot runners where the vCPU count is a trailing numeric suffix (`depot-ubuntu-24.04-4`, `depot-ubuntu-24.04-8`, `depot-ubuntu-24.04-16`, `depot-ubuntu-latest-4`) rather than `-4vcpu` or `-4core`. Matching `depot-` to a flat 2-vCPU rate (`$0.0040/min`) under-prices 4/8/16-vCPU Depot runners (`$0.0080/min`, `$0.0160/min`, `$0.0320/min`).
+  2. `astral-sh/uv` uses `namespace-profile-macos-15` and `namespace-profile-windows-2022-x86-64-16x32`, which matched `namespace-` as 2-vCPU Linux (`$0.0040/min`) instead of macOS/Windows Namespace profiles.
+
+### 15.4 `astral-sh/uv`, `denoland/deno`, `ggml-org/llama.cpp`: Custom Organization Runner Scale Sets (`github-ubuntu-24.04-aarch64-4`, `ubuntu-24.04-xl`, `ah-ubuntu_24_04-c8g_8x`, `hf-jobs-t4-medium:cuda13`)
+- **What We Found:**
+  - `astral-sh/uv` names its GitHub Larger Runner groups `github-ubuntu-24.04-aarch64-2`, `github-ubuntu-24.04-aarch64-4`, `github-ubuntu-24.04-x86_64-8`, and `github-windows-11-aarch64-8` (using `aarch64` instead of `-arm`, and trailing `-2`/`-4`/`-8` instead of `-4core`/`-8core`).
+  - `denoland/deno` uses `ubuntu-24.04-xl`, and `ggml-org/llama.cpp` uses AWS Graviton (`ah-ubuntu_24_04-c8g_8x`) and HuggingFace GPU/CPU (`hf-jobs-t4-medium:cuda13`) runner scale sets. Without trailing-core heuristics or `.minici.toml` `[sku_overrides]`, these fall back to default 2-vCPU Linux (`$0.0060/min`).
+
+### 15.5 `Eazy-Ops/Automation` & `mgjartproject/FineArt_AI_Pipeline`: Nested Monorepo Workflows & Zero-Workflow Repositories
+- **What We Found:**
+  - In `Eazy-Ops/Automation`, 5 GitHub Actions workflows (`api.yml`, `cronjob-evening.yml`, `cronjob-morning.yml`, `frontEnd.yml`, `qa-cronjob-flow.yml`) reside in `cron/.github/workflows/` rather than root `.github/workflows/`.
+  - In `mgjartproject/FineArt_AI_Pipeline`, `mgjartproject/terraform-infra`, and `Eazy-Ops/control-panel`, there are `0` CI workflow files. `minici` handles zero-workflow repositories gracefully (`✓ minici: Skipped (0 CI workflow files found)`, exit code `0` in `~0.1 ms`).
+  - In `Eazy-Ops/multi-cloud-finops-mcp-server`, gross compute is `$10.39/mo` (`1,732 mins/mo`, `86.6%` of the `2,000 mins/mo` free quota), and `minici` accurately reports **`$0.00/mo` net billed** (`free (within included quota)`).
+
+### 15.6 Non-Interactive Subprocess Invocation of `--hook pre-tool-use`
+- **What We Found:** Because `minici breakdown --hook pre-tool-use` reads Claude Code's `PreToolUse` JSON payload from `stdin`, invoking it from a test runner with an open inherited `stdin` blocks waiting for EOF. Automated scripts must always pass `input='{"tool_name":"Bash","tool_input":{"command":"git push"}}\n'` (or `stdin=subprocess.DEVNULL`).
+
+
