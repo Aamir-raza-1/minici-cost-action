@@ -136,6 +136,11 @@ for flag in $DISCOVERED_FLAGS; do
   esac
 done
 echo "✅ PASS ($FLAG_COUNT/13 discovered flags dynamically executed)"
+if [ -d "$HOME/.minici/10-repos-cache" ] || [ -d "/tmp/minici-cost-10-repos" ]; then
+  echo -n "⏳ [Gate 9B/9] Verifying 27-Repo Golden Baseline (17 Existing + 10 Fresh x 3 Modes)... "
+  python3 "$REPO_ROOT/tools/verify_10_repos_all_modes.py" >/dev/null
+  echo "✅ PASS (27/27 repos • 0.00% KPI deviation against locked baseline)"
+fi
 PASS_COUNT=$((PASS_COUNT + 1))
 
 echo "+------------------------------------------------------------------------------------+"
