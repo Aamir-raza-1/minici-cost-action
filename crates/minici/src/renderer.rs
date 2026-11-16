@@ -489,6 +489,7 @@ pub fn render_cli_compact_diff(d: &DiffReport) -> String {
         .cloned()
         .unwrap_or_else(|| "No workflow or matrix SKU changes between base and head.".to_string());
 
+    let cc = &d.head_report.cost_components;
     format!(
         "+====================================================================================+\n\
          | MINICI — PULL REQUEST COST DIFF ({} µs • Exit Code 0 Informational)                |\n\
@@ -499,6 +500,15 @@ pub fn render_cli_compact_diff(d: &DiffReport) -> String {
            3. Monthly CI Cost   : ${:.2}/mo -> ${:.2}/mo ({}${:.2}/mo • {}{:.1}%)\n\
            4. Dev Wait Cost ($) : ${:.2}/mo -> ${:.2}/mo ({}${:.2}/mo) [Assumed Rate Configurable]\n\
            5. Key Change        : {} (total changes: {})\n\
+         +------------------------------------------------------------------------------------+\n\
+         | 6-COMPONENT CI/CD INVOICE BREAKDOWN (PR HEAD • cicdcost.com + Infracost Delegated) |\n\
+         +------------------------------------------------------------------------------------+\n\
+           1. Build Minutes     : {:.1}m billed/run ({:.1}m rounding tax = ${:.2}/mo) • 10% Flake Retry: +${:.2}/mo\n\
+           2. CI Runner [IC]    : Hosted ${:.2}/hr vs Infracost `{}` (${:.0}/mo OD | ${:.3}/hr Spot + ${:.2}/mo gp3/CW)\n\
+           3. Artifact [IC]     : {} upload job(s) • {}d configured (${:.2}/mo) vs 90d default (${:.2}/mo vendor vs ${:.2}/mo S3)\n\
+           4. Parallelism       : {} peak jobs ({} hosted / {} self-hosted) vs {}/{} cap • Tier Tax: ${:.2}/mo\n\
+           5. Log Retention     : {} • {:.1} MB/run ({:.2} GB/mo) • Datadog 30d: ${:.2}/mo | Infracost Loki+S3: ${:.2}/mo\n\
+           6. Egress/NAT [IC]   : {:.2} GB/mo ({}) • Private+NAT: ${:.2}/mo | Cross-Region: ${:.2}/mo | VPC Endpoint+Cache: ${:.2}/mo\n\
          +====================================================================================+\n",
         d.execution_time_us,
         d.base_path,
@@ -520,7 +530,37 @@ pub fn render_cli_compact_diff(d: &DiffReport) -> String {
         wait_sign,
         d.delta_monthly_dev_wait_usd.abs(),
         top_change,
-        d.job_changes.len()
+        d.job_changes.len(),
+        d.head_report.billed_mins_per_run,
+        cc.rounding_tax_mins_per_run,
+        cc.monthly_rounding_tax_usd,
+        cc.monthly_flake_retry_10pct_overhead_usd,
+        cc.hosted_effective_hourly_rate_usd,
+        cc.infracost_recommended_ec2_instance,
+        cc.infracost_ec2_on_demand_monthly_usd,
+        cc.infracost_ec2_spot_hourly_usd,
+        cc.infracost_ec2_surrounding_overhead_monthly_usd,
+        cc.jobs_uploading_artifacts,
+        cc.configured_retention_days,
+        cc.monthly_vendor_storage_configured_usd,
+        cc.monthly_vendor_storage_90d_usd,
+        cc.monthly_infracost_s3_standard_90d_usd,
+        cc.peak_concurrent_jobs_per_run,
+        cc.hosted_concurrent_jobs_per_run,
+        cc.self_hosted_or_microvm_jobs_per_run,
+        cc.vendor_free_concurrent_cap,
+        cc.vendor_team_concurrent_cap,
+        cc.parallelism_tier_upgrade_tax_monthly_usd,
+        cc.detected_log_language_profile,
+        cc.est_log_mb_per_run,
+        cc.monthly_log_volume_gb,
+        cc.monthly_datadog_30d_log_shipping_usd,
+        cc.monthly_infracost_loki_s3_usd,
+        cc.monthly_transfer_gb,
+        cc.infracost_cloud_region,
+        cc.monthly_infracost_private_subnet_nat_worst_case_usd,
+        cc.monthly_infracost_cross_region_registry_usd,
+        cc.monthly_infracost_vpc_endpoint_cache_optimized_usd
     )
 }
 
