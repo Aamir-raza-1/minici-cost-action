@@ -70,3 +70,9 @@ minici self-update
 
 ## 👤 Author & License
 Built by **Aamir Raza** (`raza.aamir01@gmail.com` • GitHub: `@Aamir-raza-1`) • Licensed under Apache-2.0.
+
+### 📸 Live Terminal Screenshot & Slow-Motion MP4 Proof
+
+- **Slow-Motion Terminal Video (`.mp4`):** [`web/live-terminal-proof.mp4`](web/live-terminal-proof.mp4)
+
+![minici-cost-action Live Terminal Proof](web/live-terminal-proof.png)
