@@ -1513,8 +1513,10 @@ fn contains_standalone_token(haystack: &str, token: &str) -> bool {
     while let Some(rel_idx) = haystack[pos..].find(token) {
         let start = pos + rel_idx;
         let end = start + t_bytes.len();
-        let before_ok = start == 0 || !h_bytes[start - 1].is_ascii_alphanumeric();
-        let after_ok = end == h_bytes.len() || !h_bytes[end].is_ascii_alphanumeric();
+        let before_ok =
+            start == 0 || (!h_bytes[start - 1].is_ascii_alphanumeric() && h_bytes[start - 1] != b'_');
+        let after_ok =
+            end == h_bytes.len() || (!h_bytes[end].is_ascii_alphanumeric() && h_bytes[end] != b'_');
         if before_ok && after_ok {
             return true;
         }
@@ -2808,7 +2810,10 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         && monthly_billed_mins < 25000.0
         && gross_monthly_compute_cost_usd < 500.0
         && macos_mins_per_run == 0.0;
-    let premature_multi_os_pr_matrix_trap = hygiene.pr_push_runs_multi_os_all_three;
+    let premature_multi_os_pr_matrix_trap = hygiene.pr_push_runs_multi_os_all_three
+        && linux_mins_per_run > 0.0
+        && windows_mins_per_run > 0.0
+        && macos_mins_per_run > 0.0;
     let mut pr_non_linux_run_cost_usd = 0.0_f64;
     if premature_multi_os_pr_matrix_trap {
         for j in &jobs {
