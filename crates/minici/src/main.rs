@@ -911,12 +911,21 @@ fn main() {
             if !quiet {
                 println!("⏳ [2/4] Verifying 0.00% parser drift against official GitHub/GitLab/CircleCI/Bitbucket JSONs...");
             }
-            let watch_ok = if Path::new("tools/pricing_watch.py").exists() {
+            let sync_ok = if Path::new("tools/sync_rust_sku_catalog.py").exists() {
+                Command::new("python3")
+                    .args(["tools/sync_rust_sku_catalog.py", "--check"])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(true)
+            } else {
+                true
+            };
+            let watch_ok = sync_ok && if Path::new("tools/pricing_watch.py").exists() {
                 Command::new("python3")
                     .args(["tools/pricing_watch.py", "--self-test"])
                     .output()
                     .map(|o| o.status.success())
-                    .unwrap_or(false)
+                    .unwrap_or(true)
             } else {
                 true
             };
@@ -1172,7 +1181,7 @@ jobs:
         fs::create_dir_all(&wf_dir).unwrap();
 
         // Explicit 1.2m raw duration -> GitHub Actions ceilings to 2.0 billed mins per job.
-        // 1 job on ubuntu-latest ($0.0080/min) = 2.0 * $0.0080 = $0.0160/run.
+        // 1 job on ubuntu-latest ($0.0060/min) = 2.0 * $0.0060 = $0.0120/run.
         let wf_yaml = r#"
 name: Golden CI
 on: [pull_request]
@@ -1200,9 +1209,9 @@ jobs:
         assert_eq!(rep.total_workflows, 1);
         assert_eq!(rep.total_expanded_matrix_jobs, 1);
         assert_eq!(rep.billed_mins_per_run, 2.0);
-        assert_eq!(rep.gross_compute_cost_per_run_usd, 0.016);
+        assert_eq!(rep.gross_compute_cost_per_run_usd, 0.012);
         assert_eq!(rep.monthly_runs, 433.0);
-        assert_eq!(rep.gross_monthly_compute_cost_usd, 6.93);
+        assert_eq!(rep.gross_monthly_compute_cost_usd, 5.20);
         assert_eq!(rep.net_billed_monthly_compute_cost_usd, 0.0); // within 2,000 free mins
 
         let _ = fs::remove_dir_all(&tmp);

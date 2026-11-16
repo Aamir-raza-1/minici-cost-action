@@ -254,7 +254,7 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         let spot_savings_usd =
             (r.gross_monthly_compute_cost_usd - r.monthly_self_hosted_spot_cost_usd).max(0.0);
         out.push_str(&format!(
-            " • Recommendation   : Switch to Blacksmith (${:.2}/mo, saves ${:.2}/mo) or Cloud Spot (${:.2}/mo, saves ${:.2}/mo)",
+            " • Recommendation   : Switch to ARM64 / High-Speed Runners (${:.2}/mo, saves ${:.2}/mo) or Cloud Spot (${:.2}/mo, saves ${:.2}/mo)",
             r.monthly_blacksmith_cost_usd,
             blacksmith_savings_usd,
             r.monthly_self_hosted_spot_cost_usd,
@@ -339,13 +339,13 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
          th{{color:#94a3b8}}code{{color:#38bdf8;font-family:monospace}}.kpi{{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}}\
          .kpi div{{background:#151e2c;padding:14px;border-radius:8px;border:1px solid #1e293b}}.kpi h3{{margin:0 0 6px;font-size:12px;color:#94a3b8}}\
          .kpi p{{margin:0;font-size:20px;font-weight:700;color:#10b981}}</style></head><body>\
-         <h1>MiniCI (Skipwise) — CI/CD Cost &amp; Matrix FinOps Report</h1>\
+         <h1>MiniCI — CI/CD Cost &amp; Matrix FinOps Report</h1>\
          <p>Target: <code>{}</code> • Scanned in <code>{:.2} ms</code> • {} Workflows ({} Expanded Matrix Jobs)</p>\
          <div class=\"kpi\">\
            <div><h3>Monthly CI Bill</h3><p>${:.2}/mo (${:.3}/run)</p></div>\
            <div><h3>Free Quota Burn</h3><p>{:.0} / {:.0}m ({:.1}%)</p></div>\
            <div><h3>Dev Wait (Assumed ${:.0}/hr)</h3><p>${:.2}/mo ({:.1}m wait)</p></div>\
-           <div><h3>Blacksmith / Spot Alt</h3><p>${:.2}/mo / ${:.2}/mo</p></div>\
+           <div><h3>ARM64 / Spot Alt</h3><p>${:.2}/mo / ${:.2}/mo</p></div>\
          </div>\
          <div class=\"card\"><h2>Per-Job Matrix Breakdown</h2>\
          <table><thead><tr><th>Workflow</th><th>Job ID</th><th>Matrix × SKU</th><th>Duration (Billed)</th><th>Official Rate</th><th>Cost / Run</th></tr></thead>\
@@ -437,7 +437,7 @@ pub fn render_breakdown_markdown(r: &BreakdownReport) -> String {
 
     let breakeven_banner = if r.exceeds_5000m_self_hosted_breakeven {
         format!(
-            "\n> 💡 **Runner Right-Sizing Opportunity (`>= 5,000 mins/mo`):** Pipeline consumes `{:.0} billed mins/mo` (`${:.2}/mo` SaaS rate). Switching to **Blacksmith** drops compute to **`${:.2}/mo`**, or **Cloud Spot** to **`${:.2}/mo`**.\n",
+            "\n> 💡 **Runner Right-Sizing Opportunity (`>= 5,000 mins/mo`):** Pipeline consumes `{:.0} billed mins/mo` (`${:.2}/mo` SaaS rate). Switching to **ARM64 / High-Speed Runners** drops compute to **`${:.2}/mo`**, or **Cloud Spot** to **`${:.2}/mo`**.\n",
             r.monthly_billed_mins,
             r.gross_monthly_compute_cost_usd,
             r.monthly_blacksmith_cost_usd,
@@ -488,7 +488,7 @@ pub fn render_diff_markdown(d: &DiffReport) -> String {
 
     format!(
         "<!-- minici-cost-comment -->\n\
-### 💰 MiniCI (`Skipwise`) Pull Request CI/CD Cost Diff (`{} µs` Rust Engine)\n\n\
+### 💰 MiniCI Pull Request CI/CD Cost Diff (`{} µs` Rust Engine)\n\n\
 | Metric | Base Branch | PR Branch (Head) | Delta (`Before vs. After`) |\n\
 | :--- | :--- | :--- | :--- |\n\
 | **Expanded Matrix Jobs** | `{} jobs` | **`{} jobs`** | **`{:+} jobs`** |\n\

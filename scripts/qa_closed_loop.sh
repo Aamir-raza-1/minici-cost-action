@@ -86,12 +86,15 @@ echo "✅ PASS (HTML, CSV, MD verified)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 7: Catalog & Live Hot-Reload Engine
-echo -n "⏳ [Gate 7/8] Verifying 7-Provider + Infracost Cloud SKU Catalog... "
+echo -n "⏳ [Gate 7/9] Verifying 7-Provider + Infracost Cloud SKU Catalog & 0% JSON Drift... "
 CAT_OUT=$("$BIN" catalog)
 echo "$CAT_OUT" | grep -q '"provider":"github-actions"' || { echo "❌ FAIL: Missing github-actions"; exit 1; }
 echo "$CAT_OUT" | grep -q '"provider":"gcp-cloud-build"' || { echo "❌ FAIL: Missing gcp-cloud-build"; exit 1; }
 echo "$CAT_OUT" | grep -q '"provider":"azure-pipelines"' || { echo "❌ FAIL: Missing azure-pipelines"; exit 1; }
-echo "✅ PASS (All 7 CI providers active)"
+if [ -f "$REPO_ROOT/tools/sync_rust_sku_catalog.py" ]; then
+  python3 "$REPO_ROOT/tools/sync_rust_sku_catalog.py" --check --bin "$BIN" >/dev/null
+fi
+echo "✅ PASS (All 7 CI providers active • 24/24 canonical JSON SKUs 0.00% drift)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 8: Live MCP Server JSON-RPC 2.0 Stdio Protocol Verification

@@ -1,7 +1,7 @@
 {
   "target_path": "/Users/araza/personal/minici-cost-action",
-  "execution_time_us": 148,
-  "execution_time_ms": 0.148,
+  "execution_time_us": 122,
+  "execution_time_ms": 0.122,
   "detected_providers": ["github-actions"],
   "usage": {"tier":"auto","prs_per_week":25.0,"pushes_per_pr":4.0,"dev_hourly_rate_usd":65.00,"artifact_gb_per_run":0.25,"artifact_retention_days":30},
   "total_workflows": 2,
@@ -17,10 +17,10 @@
   "free_tier_included_mins": 2000.0,
   "free_tier_quota_burn_pct": 194.9,
   "effective_tier": "paid (exceeds free quota)",
-  "gross_compute_cost_per_run_usd": 0.0720,
-  "gross_monthly_compute_cost_usd": 31.18,
+  "gross_compute_cost_per_run_usd": 0.0540,
+  "gross_monthly_compute_cost_usd": 23.38,
   "discount_allowance_monthly_usd": 0.00,
-  "net_billed_monthly_compute_cost_usd": 31.18,
+  "net_billed_monthly_compute_cost_usd": 23.38,
   "third_party_runner_monthly_cost_usd": -0.00,
   "dev_wait_cost_per_run_usd": 5.96,
   "monthly_dev_wait_cost_usd": 2580.68,
@@ -30,7 +30,7 @@
   "monthly_self_hosted_spot_cost_usd": 34.07,
   "exceeds_5000m_self_hosted_breakeven": false,
   "jobs": [
-    {"workflow_file":".github/workflows/ci.yml","job_id":"verify-action","matrix_combination_count":1,"runner_label":"ubuntu-latest","provider":"github-actions","os":"Linux","vcpus":2,"est_raw_duration_mins_per_job":5.50,"billed_mins_per_job":6.00,"total_billed_mins_all_matrix":6.00,"rate_per_min_usd":0.0080,"run_compute_cost_usd":0.0480,"blacksmith_run_cost_usd":0.0220,"self_hosted_spot_run_cost_usd":0.0066,"has_concurrency_cancel":false,"has_sparse_or_shallow_clone":false,"uploads_artifacts":false},
-    {"workflow_file":".github/workflows/minici-cost.yml","job_id":"ci-cost-audit","matrix_combination_count":1,"runner_label":"ubuntu-latest","provider":"github-actions","os":"Linux","vcpus":2,"est_raw_duration_mins_per_job":2.30,"billed_mins_per_job":3.00,"total_billed_mins_all_matrix":3.00,"rate_per_min_usd":0.0080,"run_compute_cost_usd":0.0240,"blacksmith_run_cost_usd":0.0092,"self_hosted_spot_run_cost_usd":0.0028,"has_concurrency_cancel":false,"has_sparse_or_shallow_clone":false,"uploads_artifacts":false}
+    {"workflow_file":".github/workflows/ci.yml","job_id":"verify-action","matrix_combination_count":1,"runner_label":"ubuntu-latest","provider":"github-actions","os":"Linux","vcpus":2,"est_raw_duration_mins_per_job":5.50,"billed_mins_per_job":6.00,"total_billed_mins_all_matrix":6.00,"rate_per_min_usd":0.0060,"run_compute_cost_usd":0.0360,"blacksmith_run_cost_usd":0.0220,"self_hosted_spot_run_cost_usd":0.0066,"has_concurrency_cancel":false,"has_sparse_or_shallow_clone":false,"uploads_artifacts":false},
+    {"workflow_file":".github/workflows/minici-cost.yml","job_id":"ci-cost-audit","matrix_combination_count":1,"runner_label":"ubuntu-latest","provider":"github-actions","os":"Linux","vcpus":2,"est_raw_duration_mins_per_job":2.30,"billed_mins_per_job":3.00,"total_billed_mins_all_matrix":3.00,"rate_per_min_usd":0.0060,"run_compute_cost_usd":0.0180,"blacksmith_run_cost_usd":0.0092,"self_hosted_spot_run_cost_usd":0.0028,"has_concurrency_cancel":false,"has_sparse_or_shallow_clone":false,"uploads_artifacts":false}
   ]
 }

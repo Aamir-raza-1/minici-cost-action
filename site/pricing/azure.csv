@@ -1,0 +1,14 @@
+platform,sku,os,arch,cores,gpu,unit,usd,plan,included_qty,uses_allowance,rounding,source_url,checked_on,status
+azure,user_basic_plan,all,all,0,false,user_month,6,team,5,false,month,https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/,2026-11-11,official
+azure,user_basic_test_plans,all,all,0,false,user_month,52,enterprise,0,false,month,https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/,2026-11-11,official
+azure,ms_hosted_parallel_job,linux,x64,2,false,parallel_slot_month,40,all,1,true,month,https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/,2026-11-11,official
+azure,self_hosted_parallel_job,all,all,0,false,parallel_slot_month,15,all,1,false,month,https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/,2026-11-11,official
+azure,mdp_Standard_D2ads_v5,linux,x64,2,false,hour,0.096,all,0,false,exact_seconds,https://learn.microsoft.com/en-us/azure/devops/managed-devops-pools/pricing,2026-11-11,official
+azure,mdp_Standard_D4ads_v5,linux,x64,4,false,hour,0.192,all,0,false,exact_seconds,https://learn.microsoft.com/en-us/azure/devops/managed-devops-pools/pricing,2026-11-11,official
+azure,az_gh_hosted_linux_8c,linux,x64,8,false,minute,0.022,all,0,false,ceil_minute_per_job,https://learn.microsoft.com/en-us/azure/devops/pipelines/agents/hosted,2026-11-11,official
+azure,az_gh_hosted_linux_16c,linux,x64,16,false,minute,0.042,all,0,false,ceil_minute_per_job,https://learn.microsoft.com/en-us/azure/devops/pipelines/agents/hosted,2026-11-11,official
+azure,az_gh_hosted_win_8c,windows,x64,8,false,minute,0.042,all,0,false,ceil_minute_per_job,https://learn.microsoft.com/en-us/azure/devops/pipelines/agents/hosted,2026-11-11,official
+azure,az_gh_hosted_macos_xl,macos,arm64,5,true,minute,0.102,all,0,false,ceil_minute_per_job,https://learn.microsoft.com/en-us/azure/devops/pipelines/agents/hosted,2026-11-11,official
+azure,azure_artifacts_2_10gb,all,all,0,false,gb_month,2,all,2,false,gb_month,https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/,2026-11-11,official
+azure,azure_artifacts_10_100gb,all,all,0,false,gb_month,1,all,0,false,gb_month,https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/,2026-11-11,official
+azure,azure_artifacts_100_1000gb,all,all,0,false,gb_month,0.5,all,0,false,gb_month,https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/,2026-11-11,official
