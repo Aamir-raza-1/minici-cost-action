@@ -1465,7 +1465,7 @@ jobs:
         fs::create_dir_all(&wf_dir).unwrap();
         fs::write(
             wf_dir.join("ci.yml"),
-            "name: CI\non: push\njobs:\n  build:\n    runs-on: macos-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/upload-artifact@v4\n      - run: npm test\n",
+            "name: CI\non: push\njobs:\n  build:\n    runs-on: macos-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 7\n      - run: xcodebuild -scheme App test\n      - run: terragrunt plan\n",
         )
         .unwrap();
 
@@ -1479,6 +1479,31 @@ jobs:
         assert!(js.contains("\"log_retention_cost\":"));
         assert!(js.contains("\"cross_region_egress_cost\":"));
         assert!(js.contains("\"infracost_delegated\":true"));
+        // Edge Case 1: YAML `retention-days: 7` parsed into job & cost_components
+        assert_eq!(rep.jobs[0].artifact_retention_days, Some(7));
+        assert_eq!(rep.cost_components.configured_retention_days, 7);
+        assert!(
+            rep.cost_components.monthly_vendor_storage_configured_usd
+                < rep.cost_components.monthly_vendor_storage_90d_usd
+        );
+        // Edge Case 2: Markdown & HTML include 6-Component CI/CD Invoice Breakdown
+        let md = render_breakdown_markdown(&rep);
+        assert!(md.contains("6-Component CI/CD Invoice Breakdown"));
+        assert!(md.contains("https://cicdcost.com/build-minutes-cost"));
+        let html = render_breakdown_html(&rep);
+        assert!(html.contains("6-Component CI/CD Invoice Breakdown"));
+        // Edge Case 3: Per-workflow language detection (`xcodebuild` -> iOS / xcodebuild)
+        assert!(rep
+            .cost_components
+            .detected_log_language_profile
+            .contains("iOS / xcodebuild"));
+        // Edge Case 4: Live Infracost IaC detection (`terragrunt plan`)
+        assert!(rep.cost_components.infracost_iac_files_detected);
+        // Edge Case 5: ARM64 runner (`macos-latest` is arm64 3-vCPU) recommends `m6g.xlarge`
+        assert!(rep
+            .cost_components
+            .infracost_recommended_ec2_instance
+            .contains("m6g.xlarge"));
         // macOS 10x free-tier multiplier check
         assert!(rep.cost_components.os_weighted_free_tier_mins_per_run >= rep.billed_mins_per_run * 9.9);
         assert_eq!(rep.cost_components.macos_self_hosted_mac_mini_monthly_usd, 25.0);

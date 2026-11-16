@@ -95,12 +95,17 @@ pub struct ExpandedJobCost {
     pub has_concurrency_cancel: bool,
     pub has_sparse_or_shallow_clone: bool,
     pub uploads_artifacts: bool,
+    pub artifact_retention_days: Option<u32>,
 }
 
 impl ExpandedJobCost {
     pub fn to_json(&self) -> String {
+        let ret_json = self
+            .artifact_retention_days
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"workflow_file\":\"{}\",\"job_id\":\"{}\",\"matrix_combination_count\":{},\"runner_label\":\"{}\",\"provider\":\"{}\",\"os\":\"{}\",\"vcpus\":{},\"est_raw_duration_mins_per_job\":{:.2},\"billed_mins_per_job\":{:.2},\"total_billed_mins_all_matrix\":{:.2},\"rate_per_min_usd\":{:.4},\"run_compute_cost_usd\":{:.4},\"blacksmith_run_cost_usd\":{:.4},\"self_hosted_spot_run_cost_usd\":{:.4},\"has_concurrency_cancel\":{},\"has_sparse_or_shallow_clone\":{},\"uploads_artifacts\":{}}}",
+            "{{\"workflow_file\":\"{}\",\"job_id\":\"{}\",\"matrix_combination_count\":{},\"runner_label\":\"{}\",\"provider\":\"{}\",\"os\":\"{}\",\"vcpus\":{},\"est_raw_duration_mins_per_job\":{:.2},\"billed_mins_per_job\":{:.2},\"total_billed_mins_all_matrix\":{:.2},\"rate_per_min_usd\":{:.4},\"run_compute_cost_usd\":{:.4},\"blacksmith_run_cost_usd\":{:.4},\"self_hosted_spot_run_cost_usd\":{:.4},\"has_concurrency_cancel\":{},\"has_sparse_or_shallow_clone\":{},\"uploads_artifacts\":{},\"artifact_retention_days\":{}}}",
             json_escape(&self.workflow_file),
             json_escape(&self.job_id),
             self.matrix_combination_count,
@@ -117,7 +122,8 @@ impl ExpandedJobCost {
             self.self_hosted_spot_run_cost_usd,
             self.has_concurrency_cancel,
             self.has_sparse_or_shallow_clone,
-            self.uploads_artifacts
+            self.uploads_artifacts,
+            ret_json
         )
     }
 }
@@ -134,6 +140,7 @@ pub struct CostComponentsBreakdown {
     pub monthly_os_weighted_free_tier_mins: f64,
     pub monthly_flake_retry_10pct_overhead_usd: f64,
     // 2. CI Runner Cost — Infracost Cloud Delegated (https://cicdcost.com/runner-cost)
+    pub infracost_iac_files_detected: bool,
     pub hosted_effective_hourly_rate_usd: f64,
     pub infracost_recommended_ec2_instance: String,
     pub infracost_ec2_on_demand_hourly_usd: f64,
@@ -146,6 +153,10 @@ pub struct CostComponentsBreakdown {
     // 3. Artifact Storage Cost — Infracost S3/ECR Delegated (https://cicdcost.com/artifact-storage-cost)
     pub jobs_uploading_artifacts: usize,
     pub default_retention_days: u32,
+    pub configured_retention_days: u32,
+    pub steady_state_stored_gb_configured: f64,
+    pub monthly_vendor_storage_configured_usd: f64,
+    pub monthly_infracost_s3_configured_usd: f64,
     pub steady_state_stored_gb_90d: f64,
     pub steady_state_stored_gb_14d: f64,
     pub monthly_vendor_storage_90d_usd: f64,
@@ -186,7 +197,7 @@ pub struct CostComponentsBreakdown {
 impl CostComponentsBreakdown {
     pub fn to_json(&self) -> String {
         format!(
-            "{{\n    \"build_minutes_cost\": {{\"citation_url\":\"https://cicdcost.com/build-minutes-cost\",\"rounding_tax_mins_per_run\":{:.2},\"monthly_rounding_tax_usd\":{:.2},\"linux_mins_per_run\":{:.2},\"windows_mins_per_run\":{:.2},\"macos_mins_per_run\":{:.2},\"os_weighted_free_tier_mins_per_run\":{:.2},\"monthly_os_weighted_free_tier_mins\":{:.2},\"monthly_flake_retry_10pct_overhead_usd\":{:.2}}},\n    \"runner_cost\": {{\"citation_url\":\"https://cicdcost.com/runner-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_instance\",\"aws_ebs_volume\",\"google_compute_instance\",\"azurerm_linux_virtual_machine\"],\"hosted_effective_hourly_rate_usd\":{:.2},\"infracost_recommended_ec2_instance\":\"{}\",\"infracost_ec2_on_demand_hourly_usd\":{:.4},\"infracost_ec2_on_demand_monthly_usd\":{:.2},\"infracost_ec2_spot_hourly_usd\":{:.3},\"infracost_ec2_surrounding_overhead_monthly_usd\":{:.2},\"macos_self_hosted_mac_mini_monthly_usd\":{:.2},\"self_hosted_breakeven_mins_t3_medium\":{:.0},\"self_hosted_breakeven_mins_c5_4xlarge_spot\":{:.0}}},\n    \"artifact_storage_cost\": {{\"citation_url\":\"https://cicdcost.com/artifact-storage-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_s3_bucket\",\"aws_ecr_repository\"],\"jobs_uploading_artifacts\":{},\"default_retention_days\":{},\"steady_state_stored_gb_90d\":{:.2},\"steady_state_stored_gb_14d\":{:.2},\"monthly_vendor_storage_90d_usd\":{:.2},\"monthly_vendor_storage_14d_usd\":{:.2},\"monthly_infracost_s3_standard_90d_usd\":{:.2},\"monthly_infracost_s3_intelligent_14d_usd\":{:.2}}},\n    \"parallelism_cost\": {{\"citation_url\":\"https://cicdcost.com/parallelism-cost\",\"peak_concurrent_jobs_per_run\":{},\"hosted_concurrent_jobs_per_run\":{},\"macos_concurrent_jobs_per_run\":{},\"self_hosted_or_microvm_jobs_per_run\":{},\"vendor_free_concurrent_cap\":{},\"vendor_team_concurrent_cap\":{},\"parallelism_tier_upgrade_tax_monthly_usd\":{:.2}}},\n    \"log_retention_cost\": {{\"citation_url\":\"https://cicdcost.com/log-retention-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_cloudwatch_log_group\",\"aws_s3_bucket\"],\"detected_log_language_profile\":\"{}\",\"est_log_mb_per_run\":{:.2},\"monthly_log_volume_gb\":{:.2},\"vendor_default_log_retention_days\":{},\"monthly_vendor_default_log_cost_usd\":{:.2},\"monthly_datadog_30d_log_shipping_usd\":{:.2},\"monthly_datadog_90d_log_shipping_usd\":{:.2},\"monthly_splunk_30d_log_shipping_usd\":{:.2},\"monthly_infracost_loki_s3_usd\":{:.2}}},\n    \"cross_region_egress_cost\": {{\"citation_url\":\"https://cicdcost.com/cross-region-egress-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_nat_gateway\",\"aws_vpc_endpoint\",\"google_compute_router_nat\",\"azurerm_nat_gateway\"],\"infracost_cloud_region\":\"{}\",\"est_transfer_gb_per_run\":{:.2},\"monthly_transfer_gb\":{:.2},\"infracost_aws_internet_egress_per_gb_usd\":{:.3},\"infracost_aws_nat_gateway_per_gb_usd\":{:.3},\"infracost_aws_cross_az_per_gb_usd\":{:.3},\"infracost_aws_cross_region_per_gb_usd\":{:.3},\"monthly_infracost_private_subnet_nat_worst_case_usd\":{:.2},\"monthly_infracost_cross_region_registry_usd\":{:.2},\"monthly_infracost_vpc_endpoint_cache_optimized_usd\":{:.2}}}\n  }}",
+            "{{\n    \"build_minutes_cost\": {{\"citation_url\":\"https://cicdcost.com/build-minutes-cost\",\"rounding_tax_mins_per_run\":{:.2},\"monthly_rounding_tax_usd\":{:.2},\"linux_mins_per_run\":{:.2},\"windows_mins_per_run\":{:.2},\"macos_mins_per_run\":{:.2},\"os_weighted_free_tier_mins_per_run\":{:.2},\"monthly_os_weighted_free_tier_mins\":{:.2},\"monthly_flake_retry_10pct_overhead_usd\":{:.2}}},\n    \"runner_cost\": {{\"citation_url\":\"https://cicdcost.com/runner-cost\",\"infracost_delegated\":true,\"infracost_iac_files_detected\":{},\"infracost_resources\":[\"aws_instance\",\"aws_ebs_volume\",\"google_compute_instance\",\"azurerm_linux_virtual_machine\"],\"hosted_effective_hourly_rate_usd\":{:.2},\"infracost_recommended_ec2_instance\":\"{}\",\"infracost_ec2_on_demand_hourly_usd\":{:.4},\"infracost_ec2_on_demand_monthly_usd\":{:.2},\"infracost_ec2_spot_hourly_usd\":{:.3},\"infracost_ec2_surrounding_overhead_monthly_usd\":{:.2},\"macos_self_hosted_mac_mini_monthly_usd\":{:.2},\"self_hosted_breakeven_mins_t3_medium\":{:.0},\"self_hosted_breakeven_mins_c5_4xlarge_spot\":{:.0}}},\n    \"artifact_storage_cost\": {{\"citation_url\":\"https://cicdcost.com/artifact-storage-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_s3_bucket\",\"aws_ecr_repository\"],\"jobs_uploading_artifacts\":{},\"default_retention_days\":{},\"configured_retention_days\":{},\"steady_state_stored_gb_configured\":{:.2},\"monthly_vendor_storage_configured_usd\":{:.2},\"monthly_infracost_s3_configured_usd\":{:.2},\"steady_state_stored_gb_90d\":{:.2},\"steady_state_stored_gb_14d\":{:.2},\"monthly_vendor_storage_90d_usd\":{:.2},\"monthly_vendor_storage_14d_usd\":{:.2},\"monthly_infracost_s3_standard_90d_usd\":{:.2},\"monthly_infracost_s3_intelligent_14d_usd\":{:.2}}},\n    \"parallelism_cost\": {{\"citation_url\":\"https://cicdcost.com/parallelism-cost\",\"peak_concurrent_jobs_per_run\":{},\"hosted_concurrent_jobs_per_run\":{},\"macos_concurrent_jobs_per_run\":{},\"self_hosted_or_microvm_jobs_per_run\":{},\"vendor_free_concurrent_cap\":{},\"vendor_team_concurrent_cap\":{},\"parallelism_tier_upgrade_tax_monthly_usd\":{:.2}}},\n    \"log_retention_cost\": {{\"citation_url\":\"https://cicdcost.com/log-retention-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_cloudwatch_log_group\",\"aws_s3_bucket\"],\"detected_log_language_profile\":\"{}\",\"est_log_mb_per_run\":{:.2},\"monthly_log_volume_gb\":{:.2},\"vendor_default_log_retention_days\":{},\"monthly_vendor_default_log_cost_usd\":{:.2},\"monthly_datadog_30d_log_shipping_usd\":{:.2},\"monthly_datadog_90d_log_shipping_usd\":{:.2},\"monthly_splunk_30d_log_shipping_usd\":{:.2},\"monthly_infracost_loki_s3_usd\":{:.2}}},\n    \"cross_region_egress_cost\": {{\"citation_url\":\"https://cicdcost.com/cross-region-egress-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_nat_gateway\",\"aws_vpc_endpoint\",\"google_compute_router_nat\",\"azurerm_nat_gateway\"],\"infracost_cloud_region\":\"{}\",\"est_transfer_gb_per_run\":{:.2},\"monthly_transfer_gb\":{:.2},\"infracost_aws_internet_egress_per_gb_usd\":{:.3},\"infracost_aws_nat_gateway_per_gb_usd\":{:.3},\"infracost_aws_cross_az_per_gb_usd\":{:.3},\"infracost_aws_cross_region_per_gb_usd\":{:.3},\"monthly_infracost_private_subnet_nat_worst_case_usd\":{:.2},\"monthly_infracost_cross_region_registry_usd\":{:.2},\"monthly_infracost_vpc_endpoint_cache_optimized_usd\":{:.2}}}\n  }}",
             self.rounding_tax_mins_per_run,
             self.monthly_rounding_tax_usd,
             self.linux_mins_per_run,
@@ -195,6 +206,7 @@ impl CostComponentsBreakdown {
             self.os_weighted_free_tier_mins_per_run,
             self.monthly_os_weighted_free_tier_mins,
             self.monthly_flake_retry_10pct_overhead_usd,
+            self.infracost_iac_files_detected,
             self.hosted_effective_hourly_rate_usd,
             json_escape(&self.infracost_recommended_ec2_instance),
             self.infracost_ec2_on_demand_hourly_usd,
@@ -206,6 +218,10 @@ impl CostComponentsBreakdown {
             self.self_hosted_breakeven_mins_c5_4xlarge_spot,
             self.jobs_uploading_artifacts,
             self.default_retention_days,
+            self.configured_retention_days,
+            self.steady_state_stored_gb_configured,
+            self.monthly_vendor_storage_configured_usd,
+            self.monthly_infracost_s3_configured_usd,
             self.steady_state_stored_gb_90d,
             self.steady_state_stored_gb_14d,
             self.monthly_vendor_storage_90d_usd,
@@ -426,12 +442,49 @@ fn load_usage_config(root: &Path, override_cfg: Option<UsageConfig>) -> UsageCon
                             cfg.artifact_gb_per_run = n;
                         }
                     }
+                    "artifact_retention_days" => {
+                        if let Ok(n) = v.parse::<u32>() {
+                            cfg.artifact_retention_days = n.clamp(1, 400);
+                        }
+                    }
                     _ => {}
                 }
             }
         }
     }
     cfg
+}
+
+/// Parses GitHub Actions `retention-days: <N>` or GitLab CI `expire_in: <duration>` into days (`1..=400`).
+pub fn parse_retention_days_value(raw: &str) -> Option<u32> {
+    let clean = raw
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .to_ascii_lowercase();
+    if clean.is_empty() {
+        return None;
+    }
+    if let Ok(days) = clean.parse::<u32>() {
+        return Some(days.clamp(1, 400));
+    }
+    let num_part: String = clean.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if let Ok(n) = num_part.parse::<u32>() {
+        let rest = clean[num_part.len()..].trim();
+        let days = if rest.starts_with("week") || rest == "w" {
+            n.saturating_mul(7)
+        } else if rest.starts_with("month") || rest == "mo" {
+            n.saturating_mul(30)
+        } else if rest.starts_with("year") || rest == "y" || rest == "yr" {
+            n.saturating_mul(365)
+        } else if rest.starts_with("hour") || rest.starts_with("hr") || rest == "h" {
+            (n.saturating_add(23)) / 24
+        } else {
+            n
+        };
+        return Some(days.clamp(1, 400));
+    }
+    None
 }
 
 fn extract_os_from_flow_map(s: &str) -> Option<String> {
@@ -496,6 +549,7 @@ fn analyze_github_job_block(
     let mut explicit_est_mins: Option<f64> = None;
     let mut has_sparse = false;
     let mut uploads_artifacts = false;
+    let mut artifact_retention_days: Option<u32> = None;
     let mut step_mins = 0.5_f64;
     let mut saw_steps = false;
 
@@ -637,6 +691,12 @@ fn analyze_github_job_block(
             } else if trimmed.contains("upload-artifact") {
                 uploads_artifacts = true;
                 step_mins += 0.35;
+            } else if trimmed.starts_with("retention-days:") {
+                if let Some(val) = trimmed.splitn(2, ':').nth(1) {
+                    if let Some(days) = parse_retention_days_value(val) {
+                        artifact_retention_days = Some(days);
+                    }
+                }
             } else if trimmed.contains("pytest")
                 || trimmed.contains("cargo test")
                 || trimmed.contains("npm test")
@@ -753,6 +813,7 @@ fn analyze_github_job_block(
                     has_concurrency_cancel: has_job_concurrency,
                     has_sparse_or_shallow_clone: has_sparse,
                     uploads_artifacts,
+                    artifact_retention_days,
                 });
             }
             return;
@@ -806,6 +867,7 @@ fn analyze_github_job_block(
                 has_concurrency_cancel: has_job_concurrency,
                 has_sparse_or_shallow_clone: has_sparse,
                 uploads_artifacts,
+                artifact_retention_days,
             });
         }
     } else {
@@ -850,6 +912,7 @@ fn analyze_github_job_block(
             has_concurrency_cancel: has_job_concurrency,
             has_sparse_or_shallow_clone: has_sparse,
             uploads_artifacts,
+            artifact_retention_days,
         });
     }
 }
@@ -944,6 +1007,7 @@ fn parse_gitlab_or_other_ci(
     let mut job_names: Vec<String> = Vec::new();
     let mut sku_label = provider_hint.to_string();
     let mut uploads_artifacts = false;
+    let mut artifact_retention_days: Option<u32> = None;
     let mut has_interruptible = false;
 
     for line in content.lines() {
@@ -991,6 +1055,14 @@ fn parse_gitlab_or_other_ci(
         if trimmed.starts_with("artifacts:") || trimmed.starts_with("store_artifacts:") {
             uploads_artifacts = true;
         }
+        if trimmed.starts_with("expire_in:") || trimmed.starts_with("retention-days:") {
+            if let Some(val) = trimmed.splitn(2, ':').nth(1) {
+                if let Some(days) = parse_retention_days_value(val) {
+                    artifact_retention_days = Some(days);
+                    uploads_artifacts = true;
+                }
+            }
+        }
         if trimmed.starts_with("interruptible: true") {
             has_interruptible = true;
         }
@@ -1024,8 +1096,131 @@ fn parse_gitlab_or_other_ci(
             has_concurrency_cancel: has_interruptible,
             has_sparse_or_shallow_clone: false,
             uploads_artifacts,
+            artifact_retention_days,
         });
     }
+}
+
+/// Inspects repository manifest files, `.tf`/`terragrunt.hcl` IaC files, and CI workflow YAML contents
+/// to classify the 9 `cicdcost.com/log-retention-cost` language profiles and detect Infracost IaC presence.
+fn detect_language_and_iac_signals(
+    target: &Path,
+    jobs: &[ExpandedJobCost],
+) -> (String, f64, bool) {
+    let base_dir = if target.is_file() {
+        target.parent().unwrap_or(Path::new("."))
+    } else {
+        target
+    };
+    let target_str_low = target.display().to_string().to_ascii_lowercase();
+
+    // 1. Detect Terraform (`.tf`, `.tfvars`) or Terragrunt (`terragrunt.hcl`) files or IaC workflow steps
+    let mut has_iac = base_dir.join("main.tf").exists()
+        || base_dir.join("terragrunt.hcl").exists()
+        || base_dir.join("versions.tf").exists()
+        || base_dir.join("providers.tf").exists()
+        || jobs.iter().any(|j| {
+            let wf_low = j.workflow_file.to_ascii_lowercase();
+            let id_low = j.job_id.to_ascii_lowercase();
+            wf_low.contains("terragrunt")
+                || wf_low.contains("terraform")
+                || id_low.contains("terragrunt")
+                || id_low.contains("terraform")
+        });
+
+    if !has_iac && base_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(base_dir) {
+            for entry in entries.flatten() {
+                let fname = entry.file_name().to_string_lossy().to_ascii_lowercase();
+                if fname.ends_with(".tf")
+                    || fname.ends_with(".tfvars")
+                    || fname == "terragrunt.hcl"
+                {
+                    has_iac = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Collect combined workflow YAML text (for workflow-only snapshots or single workflow files)
+    let mut wf_corpus = String::new();
+    if target.is_file() {
+        if let Ok(c) = fs::read_to_string(target) {
+            wf_corpus.push_str(&c.to_ascii_lowercase());
+        }
+    } else {
+        let gh_dir = base_dir.join(".github").join("workflows");
+        if let Ok(entries) = fs::read_dir(&gh_dir) {
+            for entry in entries.flatten().take(25) {
+                if let Ok(c) = fs::read_to_string(entry.path()) {
+                    wf_corpus.push_str(&c.to_ascii_lowercase());
+                    wf_corpus.push('\n');
+                }
+            }
+        }
+    }
+    if !has_iac
+        && (wf_corpus.contains("terragrunt")
+            || wf_corpus.contains("hashicorp/setup-terraform")
+            || wf_corpus.contains("terraform plan")
+            || wf_corpus.contains("terraform apply"))
+    {
+        has_iac = true;
+    }
+
+    // 2. Classify into the 9 official `cicdcost.com/log-retention-cost` language profiles
+    let (profile, mb_per_job) = if base_dir.join("Cargo.toml").exists()
+        || target_str_low.contains("uv")
+        || target_str_low.contains("deno")
+        || wf_corpus.contains("cargo test")
+        || wf_corpus.contains("cargo build")
+        || wf_corpus.contains("dtolnay/rust-toolchain")
+    {
+        ("Rust / cargo test (0.6-2.0 MB/build)".to_string(), 1.10_f64)
+    } else if wf_corpus.contains("xcodebuild")
+        || base_dir.join("Podfile").exists()
+        || base_dir.join("Package.swift").exists()
+    {
+        ("iOS / xcodebuild (2.0-8.0 MB/build)".to_string(), 4.50_f64)
+    } else if (wf_corpus.contains("gradlew") || base_dir.join("build.gradle").exists())
+        && (wf_corpus.contains("emulator") || wf_corpus.contains("assembledebug") || wf_corpus.contains("android"))
+    {
+        (
+            "Android / Gradle + emulator (3.0-10.0 MB/build)".to_string(),
+            5.50_f64,
+        )
+    } else if base_dir.join("build.gradle").exists()
+        || base_dir.join("build.gradle.kts").exists()
+        || wf_corpus.contains("gradle test")
+        || wf_corpus.contains("./gradlew")
+    {
+        ("Java / Gradle (0.8-3.0 MB/build)".to_string(), 1.50_f64)
+    } else if base_dir.join("pom.xml").exists() || wf_corpus.contains("mvn ") {
+        ("Java / Maven (0.5-2.0 MB/build)".to_string(), 1.25_f64)
+    } else if wf_corpus.contains("dotnet test") || wf_corpus.contains("dotnet build") {
+        (".NET / dotnet test (0.4-1.5 MB/build)".to_string(), 0.95_f64)
+    } else if base_dir.join("go.mod").exists()
+        || wf_corpus.contains("go test")
+        || wf_corpus.contains("actions/setup-go")
+    {
+        ("Go / go test (0.1-0.4 MB/build)".to_string(), 0.25_f64)
+    } else if base_dir.join("pyproject.toml").exists()
+        || base_dir.join("requirements.txt").exists()
+        || target_str_low.contains("dify")
+        || target_str_low.contains("webui")
+        || wf_corpus.contains("pytest")
+        || (wf_corpus.contains("actions/setup-python") && !wf_corpus.contains("vitest"))
+    {
+        ("Python / pytest (0.3-1.2 MB/build)".to_string(), 0.75_f64)
+    } else {
+        (
+            "Node / npm / Vitest (0.2-0.8 MB/build)".to_string(),
+            0.50_f64,
+        )
+    };
+
+    (profile, mb_per_job, has_iac)
 }
 
 pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> BreakdownReport {
@@ -1288,7 +1483,9 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     let mut macos_mins_per_run = 0.0_f64;
     let mut os_weighted_free_tier_mins_per_run = 0.0_f64;
     let mut max_vcpus = 2_u32;
+    let mut has_arm_jobs = false;
     let mut jobs_uploading_artifacts = 0_usize;
+    let mut yaml_configured_retention_days: Option<u32> = None;
     let mut macos_concurrent_jobs_per_run = 0_usize;
     let mut self_hosted_or_microvm_jobs_per_run = 0_usize;
 
@@ -1298,6 +1495,13 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         }
         if j.uploads_artifacts {
             jobs_uploading_artifacts += j.matrix_combination_count;
+        }
+        if let Some(d) = j.artifact_retention_days {
+            yaml_configured_retention_days = Some(
+                yaml_configured_retention_days
+                    .map(|prev| prev.max(d))
+                    .unwrap_or(d),
+            );
         }
         let os_low = j.os.to_ascii_lowercase();
         if os_low.contains("mac") {
@@ -1312,6 +1516,14 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         os_weighted_free_tier_mins_per_run += j.total_billed_mins_all_matrix * mult;
 
         let rl_low = j.runner_label.to_ascii_lowercase();
+        if rl_low.contains("arm")
+            || rl_low.contains("aarch64")
+            || rl_low.contains("c7g")
+            || rl_low.contains("c8g")
+            || resolve_runner_sku(&j.runner_label).arch == "arm64"
+        {
+            has_arm_jobs = true;
+        }
         if j.provider.starts_with("self-hosted")
             || j.provider == "blacksmith"
             || rl_low.contains("blacksmith")
@@ -1332,7 +1544,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
 
     let hosted_effective_hourly_rate_usd = ((avg_rate_per_min * 60.0) * 100.0).round() / 100.0;
     let (ec2_label, ec2_od_hr, ec2_od_mo, ec2_spot_hr) =
-        infracost_ec2_runner_profile(max_vcpus, false);
+        infracost_ec2_runner_profile(max_vcpus, has_arm_jobs);
     let infracost_ec2_surrounding_overhead_monthly_usd = if jobs.is_empty() { 0.0 } else { 8.40 };
     let macos_self_hosted_mac_mini_monthly_usd = if macos_concurrent_jobs_per_run > 0 {
         25.00
@@ -1340,12 +1552,19 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         0.0
     };
 
-    // 3. Artifact Storage (90d default vs 14d optimized + Infracost S3 Standard $0.023 & S3 Intelligent $0.018)
+    // 3. Artifact Storage (90d default vs configured YAML retention-days vs 14d optimized + Infracost S3)
     let default_retention_days = if providers.iter().any(|p| p == "gitlab-ci" || p == "circleci") {
         30
     } else {
         90
     };
+    let configured_retention_days = yaml_configured_retention_days.unwrap_or({
+        if usage.artifact_retention_days != 30 {
+            usage.artifact_retention_days
+        } else {
+            default_retention_days
+        }
+    });
     let monthly_created_gb = if jobs.is_empty() {
         0.0
     } else if any_artifacts {
@@ -1353,6 +1572,15 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     } else {
         usage.artifact_gb_per_run * (monthly_runs * 0.1)
     };
+    let steady_state_stored_gb_configured =
+        ((monthly_created_gb * (configured_retention_days as f64 / 30.0)) * 100.0).round() / 100.0;
+    let monthly_vendor_storage_configured_usd =
+        ((steady_state_stored_gb_configured * ARTIFACT_STORAGE_VENDOR_USD_PER_GB_MO) * 100.0)
+            .round()
+            / 100.0;
+    let monthly_infracost_s3_configured_usd =
+        ((steady_state_stored_gb_configured * ARTIFACT_STORAGE_S3_USD_PER_GB_MO) * 100.0).round()
+            / 100.0;
     let steady_state_stored_gb_90d = ((monthly_created_gb * 3.0) * 100.0).round() / 100.0;
     let steady_state_stored_gb_14d =
         ((monthly_created_gb * (14.0 / 30.0)) * 100.0).round() / 100.0;
@@ -1396,26 +1624,9 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             0.00
         };
 
-    // 5. Log Retention Cost (Per-language log volume & Datadog / Splunk / Infracost Loki+S3)
-    let target_str_low = target.display().to_string().to_ascii_lowercase();
-    let (detected_log_language_profile, base_log_mb_per_job) = if target.join("Cargo.toml").exists()
-        || target_str_low.contains("uv")
-        || target_str_low.contains("deno")
-    {
-        ("Rust / cargo test (0.6-2.0 MB/build)".to_string(), 1.10_f64)
-    } else if target.join("pyproject.toml").exists()
-        || target.join("requirements.txt").exists()
-        || target_str_low.contains("dify")
-        || target_str_low.contains("webui")
-    {
-        ("Python / pytest (0.3-1.2 MB/build)".to_string(), 0.75_f64)
-    } else if target.join("go.mod").exists() {
-        ("Go / go test (0.1-0.4 MB/build)".to_string(), 0.25_f64)
-    } else if target.join("build.gradle").exists() || target.join("pom.xml").exists() {
-        ("Java / Gradle-Maven (0.8-3.0 MB/build)".to_string(), 1.50_f64)
-    } else {
-        ("Node / npm / Vitest (0.2-0.8 MB/build)".to_string(), 0.50_f64)
-    };
+    // 5. Log Retention Cost (Per-language log volume across all 9 cicdcost.com profiles + IaC detection)
+    let (detected_log_language_profile, base_log_mb_per_job, infracost_iac_files_detected) =
+        detect_language_and_iac_signals(target, &jobs);
     let est_log_mb_per_run = if total_expanded_matrix_jobs == 0 {
         0.0
     } else {
@@ -1477,6 +1688,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             / 100.0,
         monthly_os_weighted_free_tier_mins,
         monthly_flake_retry_10pct_overhead_usd,
+        infracost_iac_files_detected,
         hosted_effective_hourly_rate_usd,
         infracost_recommended_ec2_instance: ec2_label.to_string(),
         infracost_ec2_on_demand_hourly_usd: ec2_od_hr,
@@ -1488,6 +1700,10 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         self_hosted_breakeven_mins_c5_4xlarge_spot: SELF_HOSTED_C5_4XLARGE_SPOT_BREAKEVEN_MINS,
         jobs_uploading_artifacts,
         default_retention_days,
+        configured_retention_days,
+        steady_state_stored_gb_configured,
+        monthly_vendor_storage_configured_usd,
+        monthly_infracost_s3_configured_usd,
         steady_state_stored_gb_90d,
         steady_state_stored_gb_14d,
         monthly_vendor_storage_90d_usd,
