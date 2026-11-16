@@ -1210,7 +1210,10 @@ fn detect_language_and_iac_signals(
         || target_str_low.contains("dify")
         || target_str_low.contains("webui")
         || wf_corpus.contains("pytest")
-        || (wf_corpus.contains("actions/setup-python") && !wf_corpus.contains("vitest"))
+        || (wf_corpus.contains("actions/setup-python")
+            && !wf_corpus.contains("vitest")
+            && !wf_corpus.contains("pnpm")
+            && !wf_corpus.contains("actions/setup-node"))
     {
         ("Python / pytest (0.3-1.2 MB/build)".to_string(), 0.75_f64)
     } else {
