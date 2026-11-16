@@ -1483,7 +1483,7 @@ jobs:
         fs::create_dir_all(&wf_dir).unwrap();
         fs::write(
             wf_dir.join("ci.yml"),
-            "name: CI\non: push\njobs:\n  build:\n    runs-on: macos-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 7\n      - run: xcodebuild -scheme App test\n      - run: terragrunt plan\n",
+            "name: CI\non: push\njobs:\n  build:\n    runs-on: macos-latest\n    est-minutes: 5.0\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 7\n      - run: xcodebuild -scheme App test\n      - run: terragrunt plan\n",
         )
         .unwrap();
 
@@ -1550,5 +1550,81 @@ jobs:
         );
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_five_hidden_cost_models_delta_edge_cases() {
+        let dir = std::env::temp_dir().join("minici_5_hidden_delta_test");
+        let _ = fs::remove_dir_all(&dir);
+        let wf_dir = dir.join(".github").join("workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+
+        // Workflow 1: PR-triggered workflow with expression-based cancel-in-progress,
+        // commented-out `# paths:`, 1 cached job (local composite action), 1 uncached heavy job (>2m),
+        // and 1 uncached lightweight notification job (<=2m).
+        fs::write(
+            wf_dir.join("pr-checks.yml"),
+            "name: PR Checks\non:\n  pull_request:\n    branches: [main]\n    # paths:\n    #   - 'src/**'\nconcurrency:\n  group: pr-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\njobs:\n  build-cached:\n    runs-on: blacksmith-4vcpu-ubuntu-2404\n    est-minutes: 6.0\n    steps:\n      - uses: actions/checkout@v4\n      - uses: ./.github/actions/enable-corepack\n      - run: pnpm build\n  docker-uncached:\n    runs-on: ubuntu-latest\n    est-minutes: 8.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: docker compose build\n  notify-linear:\n    runs-on: ubuntu-slim\n    est-minutes: 1.0\n    steps:\n      - run: echo notify\n",
+        )
+        .unwrap();
+
+        // Workflow 2: Reusable / schedule-only workflow (should NOT be flagged for branch protection
+        // concurrency cancel or path filter waste). Uses BuildKit --cache-from.
+        fs::write(
+            wf_dir.join("reusable-deploy.yml"),
+            "name: Reusable Deploy\non:\n  workflow_call:\n  schedule:\n    - cron: '0 9 * * 1-5'\njobs:\n  deploy-image:\n    runs-on: blacksmith-4vcpu-ubuntu-2404\n    est-minutes: 5.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: docker buildx build --cache-from type=gha --cache-to type=gha,mode=max .\n",
+        )
+        .unwrap();
+
+        let rep = analyze_path(&dir, None);
+        // Edge Case 1 & 2: Only PR/push workflows evaluated for branch protection & superseded runs;
+        // expression-based cancel-in-progress recognized; commented `# paths:` ignored.
+        assert_eq!(rep.cost_components.workflows_with_concurrency_cancel, 1);
+        assert_eq!(rep.cost_components.workflows_missing_concurrency_cancel, 0);
+        assert_eq!(rep.cost_components.workflows_with_path_filters, 0);
+        assert_eq!(rep.cost_components.workflows_missing_path_filters, 1);
+        assert_eq!(rep.cost_components.monthly_superseded_run_waste_usd, 0.0);
+        assert!(rep.cost_components.monthly_unfiltered_check_savings_usd > 0.0);
+
+        // Edge Case 3 & 4: Per-job uses_cache + <=2.0m lightweight job exclusion
+        let cached_job = rep.jobs.iter().find(|j| j.job_id == "build-cached").unwrap();
+        let uncached_heavy = rep.jobs.iter().find(|j| j.job_id == "docker-uncached").unwrap();
+        let notify_light = rep.jobs.iter().find(|j| j.job_id == "notify-linear").unwrap();
+        let deploy_job = rep.jobs.iter().find(|j| j.job_id == "deploy-image").unwrap();
+        assert!(cached_job.uses_cache);
+        assert!(!uncached_heavy.uses_cache);
+        assert!(!notify_light.uses_cache);
+        assert!(deploy_job.uses_cache);
+        assert_eq!(rep.cost_components.jobs_with_cache, 2);
+        // Only `docker-uncached` (8.0m > 2.0m) counts as missing cache; `notify-linear` (1.0m <= 2.0m) is excluded
+        assert_eq!(rep.cost_components.jobs_missing_cache, 1);
+        assert!(rep.to_json().contains("\"uses_cache\":true"));
+        assert!(rep.to_json().contains("\"uses_cache\":false"));
+
+        // Edge Case 5: Mixed-runner repo (`blacksmith` + `github-actions`) still reports GitHub Actions cache limits
+        assert_eq!(rep.cost_components.vendor_cache_size_limit, "10 GB / repo");
+        assert_eq!(
+            rep.cost_components.vendor_cache_eviction_policy,
+            "LRU after 7 days unused"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+
+        // Edge Case 6: Nested monorepo workflow hygiene detection (`cron/.github/workflows`)
+        let nested_dir = std::env::temp_dir().join("minici_nested_monorepo_hygiene_test");
+        let _ = fs::remove_dir_all(&nested_dir);
+        let sub_wf = nested_dir.join("cron").join(".github").join("workflows");
+        fs::create_dir_all(&sub_wf).unwrap();
+        fs::write(
+            sub_wf.join("sync.yml"),
+            "name: Sync\non: push\njobs:\n  run-sync:\n    runs-on: ubuntu-latest\n    est-minutes: 4.0\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/cache@v4\n      - run: npm test\n",
+        )
+        .unwrap();
+        let nested_rep = analyze_path(&nested_dir, None);
+        assert_eq!(nested_rep.cost_components.jobs_with_cache, 1);
+        assert_eq!(nested_rep.cost_components.jobs_missing_cache, 0);
+        assert_eq!(nested_rep.cost_components.workflows_missing_concurrency_cancel, 1);
+        assert_eq!(nested_rep.cost_components.workflows_missing_path_filters, 1);
+        let _ = fs::remove_dir_all(&nested_dir);
     }
 }

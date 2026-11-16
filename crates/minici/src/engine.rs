@@ -95,6 +95,7 @@ pub struct ExpandedJobCost {
     pub self_hosted_spot_run_cost_usd: f64,
     pub has_concurrency_cancel: bool,
     pub has_sparse_or_shallow_clone: bool,
+    pub uses_cache: bool,
     pub uploads_artifacts: bool,
     pub artifact_retention_days: Option<u32>,
 }
@@ -106,7 +107,7 @@ impl ExpandedJobCost {
             .map(|d| d.to_string())
             .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"workflow_file\":\"{}\",\"job_id\":\"{}\",\"matrix_combination_count\":{},\"runner_label\":\"{}\",\"provider\":\"{}\",\"os\":\"{}\",\"vcpus\":{},\"est_raw_duration_mins_per_job\":{:.2},\"billed_mins_per_job\":{:.2},\"total_billed_mins_all_matrix\":{:.2},\"rate_per_min_usd\":{:.4},\"run_compute_cost_usd\":{:.4},\"blacksmith_run_cost_usd\":{:.4},\"self_hosted_spot_run_cost_usd\":{:.4},\"has_concurrency_cancel\":{},\"has_sparse_or_shallow_clone\":{},\"uploads_artifacts\":{},\"artifact_retention_days\":{}}}",
+            "{{\"workflow_file\":\"{}\",\"job_id\":\"{}\",\"matrix_combination_count\":{},\"runner_label\":\"{}\",\"provider\":\"{}\",\"os\":\"{}\",\"vcpus\":{},\"est_raw_duration_mins_per_job\":{:.2},\"billed_mins_per_job\":{:.2},\"total_billed_mins_all_matrix\":{:.2},\"rate_per_min_usd\":{:.4},\"run_compute_cost_usd\":{:.4},\"blacksmith_run_cost_usd\":{:.4},\"self_hosted_spot_run_cost_usd\":{:.4},\"has_concurrency_cancel\":{},\"has_sparse_or_shallow_clone\":{},\"uses_cache\":{},\"uploads_artifacts\":{},\"artifact_retention_days\":{}}}",
             json_escape(&self.workflow_file),
             json_escape(&self.job_id),
             self.matrix_combination_count,
@@ -123,6 +124,7 @@ impl ExpandedJobCost {
             self.self_hosted_spot_run_cost_usd,
             self.has_concurrency_cancel,
             self.has_sparse_or_shallow_clone,
+            self.uses_cache,
             self.uploads_artifacts,
             ret_json
         )
@@ -628,18 +630,39 @@ fn strip_comment(line: &str) -> &str {
     }
 }
 
+fn line_has_cache_signal(low_line: &str) -> bool {
+    low_line.contains("actions/cache")
+        || low_line.contains("cache:")
+        || low_line.contains("cache-key:")
+        || low_line.contains("cache-from")
+        || low_line.contains("cache-to")
+        || low_line.contains("setup-docker-builder")
+        || low_line.contains("rust-cache")
+        || low_line.contains("sccache")
+        || low_line.contains("setup-gradle")
+        || low_line.contains("save_cache")
+        || low_line.contains("restore_cache")
+        || low_line.contains("./.github/actions/")
+        || low_line.contains("setup-node")
+        || low_line.contains("setup-python")
+        || low_line.contains("setup-go")
+        || low_line.contains("setup-uv")
+}
+
 /// Fast zero-allocation scanner for a single GitHub Actions job block (`lines` belonging to one job).
 fn analyze_github_job_block(
     wf_rel: &str,
     job_id: &str,
     job_lines: &[&str],
     has_top_concurrency: bool,
+    has_top_cache: bool,
     out_jobs: &mut Vec<ExpandedJobCost>,
 ) {
     let mut raw_runs_on = "ubuntu-latest".to_string();
     let mut saw_runs_on = false;
     let mut uses_local_reusable_workflow = false;
     let mut has_job_concurrency = has_top_concurrency;
+    let mut uses_cache = has_top_cache;
     let mut explicit_est_mins: Option<f64> = None;
     let mut has_sparse = false;
     let mut uploads_artifacts = false;
@@ -663,6 +686,10 @@ fn analyze_github_job_block(
             continue;
         }
         let ind = indent_of(clean);
+        let low_trimmed = trimmed.to_ascii_lowercase();
+        if line_has_cache_signal(&low_trimmed) {
+            uses_cache = true;
+        }
 
         if trimmed.starts_with("concurrency:") {
             has_job_concurrency = true;
@@ -906,6 +933,7 @@ fn analyze_github_job_block(
                         / 10000.0,
                     has_concurrency_cancel: has_job_concurrency,
                     has_sparse_or_shallow_clone: has_sparse,
+                    uses_cache,
                     uploads_artifacts,
                     artifact_retention_days,
                 });
@@ -960,6 +988,7 @@ fn analyze_github_job_block(
                     / 10000.0,
                 has_concurrency_cancel: has_job_concurrency,
                 has_sparse_or_shallow_clone: has_sparse,
+                uses_cache,
                 uploads_artifacts,
                 artifact_retention_days,
             });
@@ -1005,6 +1034,7 @@ fn analyze_github_job_block(
                 / 10000.0,
             has_concurrency_cancel: has_job_concurrency,
             has_sparse_or_shallow_clone: has_sparse,
+            uses_cache,
             uploads_artifacts,
             artifact_retention_days,
         });
@@ -1018,6 +1048,7 @@ fn parse_github_workflow_file(wf_path: &Path, rel_name: &str, out_jobs: &mut Vec
     };
     let all_lines: Vec<&str> = content.lines().collect();
     let mut has_top_concurrency = false;
+    let mut has_top_cache = false;
     let mut in_jobs = false;
     let mut jobs_indent = 0usize;
     let mut job_header_indent: Option<usize> = None;
@@ -1032,8 +1063,13 @@ fn parse_github_workflow_file(wf_path: &Path, rel_name: &str, out_jobs: &mut Vec
         }
         let ind = indent_of(clean);
 
-        if !in_jobs && ind == 0 && trimmed.starts_with("concurrency:") {
-            has_top_concurrency = true;
+        if !in_jobs {
+            if ind == 0 && trimmed.starts_with("concurrency:") {
+                has_top_concurrency = true;
+            }
+            if line_has_cache_signal(&trimmed.to_ascii_lowercase()) {
+                has_top_cache = true;
+            }
         }
         if ind == 0 && trimmed == "jobs:" {
             in_jobs = true;
@@ -1049,6 +1085,7 @@ fn parse_github_workflow_file(wf_path: &Path, rel_name: &str, out_jobs: &mut Vec
                         &jid,
                         &current_job_lines,
                         has_top_concurrency,
+                        has_top_cache,
                         out_jobs,
                     );
                     current_job_lines.clear();
@@ -1066,6 +1103,7 @@ fn parse_github_workflow_file(wf_path: &Path, rel_name: &str, out_jobs: &mut Vec
                         &jid,
                         &current_job_lines,
                         has_top_concurrency,
+                        has_top_cache,
                         out_jobs,
                     );
                     current_job_lines.clear();
@@ -1083,6 +1121,7 @@ fn parse_github_workflow_file(wf_path: &Path, rel_name: &str, out_jobs: &mut Vec
             &jid,
             &current_job_lines,
             has_top_concurrency,
+            has_top_cache,
             out_jobs,
         );
     }
@@ -1103,12 +1142,16 @@ fn parse_gitlab_or_other_ci(
     let mut uploads_artifacts = false;
     let mut artifact_retention_days: Option<u32> = None;
     let mut has_interruptible = false;
+    let mut has_cache = false;
 
     for line in content.lines() {
         let clean = strip_comment(line);
         let trimmed = clean.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
+        }
+        if line_has_cache_signal(&trimmed.to_ascii_lowercase()) {
+            has_cache = true;
         }
         let ind = indent_of(clean);
         if ind == 0 && trimmed.ends_with(':') && !trimmed.starts_with('.') {
@@ -1189,6 +1232,7 @@ fn parse_gitlab_or_other_ci(
                 / 10000.0,
             has_concurrency_cancel: has_interruptible,
             has_sparse_or_shallow_clone: false,
+            uses_cache: has_cache,
             uploads_artifacts,
             artifact_retention_days,
         });
@@ -1345,6 +1389,45 @@ struct WorkflowHygieneSignals {
     cached_workflow_files: Vec<String>,
 }
 
+fn workflow_triggers_on_pr_or_push(raw_low: &str) -> bool {
+    let mut has_on = false;
+    let mut in_on = false;
+    for line in raw_low.lines() {
+        let clean = strip_comment(line);
+        let trimmed = clean.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let ind = indent_of(clean);
+        if ind == 0 {
+            if trimmed == "on:"
+                || trimmed.starts_with("on:")
+                || trimmed.starts_with("\"on\":")
+                || trimmed.starts_with("'on':")
+            {
+                has_on = true;
+                in_on = true;
+                if let Some(rhs) = trimmed.splitn(2, ':').nth(1) {
+                    let r = rhs.trim();
+                    if r.contains("push") || r.contains("pull_request") {
+                        return true;
+                    }
+                }
+            } else {
+                in_on = false;
+            }
+        } else if in_on
+            && (trimmed.starts_with("push")
+                || trimmed.starts_with("pull_request")
+                || trimmed.starts_with("- push")
+                || trimmed.starts_with("- pull_request"))
+        {
+            return true;
+        }
+    }
+    !has_on
+}
+
 fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
     let mut sig = WorkflowHygieneSignals::default();
     let base_dir = if target.is_file() {
@@ -1400,9 +1483,65 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
                 }
             }
         }
+        // Fallback for monorepos with nested `<subdir>/.github/workflows` (e.g., `Eazy-Ops/Automation` `cron/.github/workflows`)
+        if wf_files.is_empty() {
+            if let Ok(sub_entries) = fs::read_dir(base_dir) {
+                let mut sub_dirs: Vec<_> = sub_entries
+                    .filter_map(|e| e.ok().map(|x| x.path()))
+                    .filter(|p| {
+                        p.is_dir()
+                            && !p
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("")
+                                .starts_with('.')
+                    })
+                    .collect();
+                sub_dirs.sort();
+                for sub_dir in sub_dirs {
+                    let nested_gh = sub_dir.join(".github").join("workflows");
+                    if nested_gh.is_dir() {
+                        if let Ok(entries) = fs::read_dir(&nested_gh) {
+                            let mut paths: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+                            paths.sort();
+                            let sub_name = sub_dir
+                                .file_name()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("sub");
+                            for p in paths {
+                                let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("");
+                                if ext == "yml" || ext == "yaml" {
+                                    if let Ok(raw) = fs::read_to_string(&p) {
+                                        let rel = format!(
+                                            "{}/.github/workflows/{}",
+                                            sub_name,
+                                            p.file_name()
+                                                .and_then(|s| s.to_str())
+                                                .unwrap_or("ci.yml")
+                                        );
+                                        wf_files.push((rel, raw.to_ascii_lowercase()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    for (wf_name, low) in &wf_files {
+    for (wf_name, raw_low) in &wf_files {
+        let active_lines: Vec<&str> = raw_low
+            .lines()
+            .map(strip_comment)
+            .filter(|l| {
+                let t = l.trim();
+                !t.is_empty() && !t.starts_with('#')
+            })
+            .collect();
+        let low = active_lines.join("\n");
+        let triggers_pr_or_push = workflow_triggers_on_pr_or_push(raw_low);
+
         if low.contains("pnpm") {
             sig.uses_pnpm = true;
         }
@@ -1416,6 +1555,7 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             || low.contains("type=registry")
             || low.contains("type=gha")
             || low.contains("buildx")
+            || low.contains("setup-docker-builder")
         {
             sig.has_docker_buildkit_cache = true;
         }
@@ -1444,23 +1584,21 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             sig.has_affected_only_graph_tool = true;
         }
 
-        let has_cache = low.contains("actions/cache")
-            || low.contains("rust-cache")
-            || low.contains("cache:")
-            || low.contains("save_cache")
-            || low.contains("restore_cache")
-            || low.contains("setup-gradle");
+        let has_cache = active_lines.iter().any(|l| line_has_cache_signal(l));
         if has_cache {
             sig.cached_workflow_files.push(wf_name.clone());
         }
 
         let has_cancel = low.contains("cancel-in-progress: true")
             || low.contains("cancel-in-progress:true")
+            || low.contains("cancel-in-progress: ${{")
+            || low.contains("cancel-in-progress:${{")
+            || low.contains("cancel-in-progress: !contains")
             || low.contains("interruptible: true")
             || low.contains("auto-cancel");
         if has_cancel {
             sig.workflows_with_concurrency_cancel += 1;
-        } else {
+        } else if triggers_pr_or_push {
             sig.workflows_missing_concurrency_cancel += 1;
             sig.uncancelled_workflow_files.push(wf_name.clone());
         }
@@ -1473,7 +1611,7 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             || low.contains("changes:");
         if has_paths {
             sig.workflows_with_path_filters += 1;
-        } else {
+        } else if triggers_pr_or_push {
             sig.workflows_missing_path_filters += 1;
             sig.unfiltered_workflow_files.push(wf_name.clone());
         }
@@ -2018,13 +2156,9 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     let mut jobs_missing_cache = 0_usize;
     let mut uncached_run_cost_usd = 0.0_f64;
     for j in &jobs {
-        if hygiene
-            .cached_workflow_files
-            .iter()
-            .any(|wf| wf == &j.workflow_file)
-        {
+        if j.uses_cache {
             jobs_with_cache += j.matrix_combination_count;
-        } else {
+        } else if j.est_raw_duration_mins_per_job > 2.0 {
             jobs_missing_cache += j.matrix_combination_count;
             uncached_run_cost_usd += j.run_compute_cost_usd;
         }
@@ -2036,10 +2170,18 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     } else {
         75.0
     };
-    let primary_provider = providers
-        .first()
-        .map(|s| s.as_str())
-        .unwrap_or("github-actions");
+    let primary_provider = if providers.iter().any(|s| s == "github-actions")
+        || jobs
+            .iter()
+            .any(|j| j.workflow_file.contains(".github/workflows"))
+    {
+        "github-actions"
+    } else {
+        providers
+            .first()
+            .map(|s| s.as_str())
+            .unwrap_or("github-actions")
+    };
     let (vendor_cache_limit, vendor_cache_eviction) = vendor_cache_mechanics(primary_provider);
     let monthly_uncached_compute_usd =
         ((uncached_run_cost_usd * monthly_runs) * 100.0).round() / 100.0;
