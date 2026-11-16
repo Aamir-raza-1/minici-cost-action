@@ -1627,4 +1627,44 @@ jobs:
         assert_eq!(nested_rep.cost_components.workflows_missing_path_filters, 1);
         let _ = fs::remove_dir_all(&nested_dir);
     }
+
+    #[test]
+    fn test_five_team_stage_and_pipeline_shape_models() {
+        let dir = std::env::temp_dir().join("minici_5_team_stage_pipeline_shape_test");
+        let _ = fs::remove_dir_all(&dir);
+        let wf_dir = dir.join(".github").join("workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::create_dir_all(dir.join("packages").join("auth")).unwrap();
+        fs::create_dir_all(dir.join("packages").join("billing")).unwrap();
+        fs::create_dir_all(dir.join("packages").join("gateway")).unwrap();
+        fs::write(dir.join("turbo.json"), "{}").unwrap();
+
+        fs::write(
+            wf_dir.join("ci.yml"),
+            "name: Monorepo PR Suite\non:\n  pull_request:\npermissions:\n  id-token: write\njobs:\n  linux-suite:\n    runs-on: ubuntu-latest\n    environment: production\n    est-minutes: 12.0\n    steps:\n      - uses: actions/checkout@main\n      - uses: github/codeql-action/analyze@v3\n      - run: AWS_REGION=us-east-1 EU_REGION=eu-west-1 APAC_REGION=ap-southeast-1 npm test\n  windows-suite:\n    runs-on: windows-latest\n    est-minutes: 10.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: npm test\n  macos-ios-suite:\n    runs-on: macos-latest\n    est-minutes: 18.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: xcodebuild test\n",
+        )
+        .unwrap();
+
+        let rep = analyze_path(&dir, None);
+        let cc = &rep.cost_components;
+        assert_eq!(cc.detected_pipeline_shape, "monorepo");
+        assert_eq!(cc.detected_monorepo_tool, "turborepo");
+        assert!(cc.detected_workspace_units_count >= 3);
+        assert!(cc.monthly_affected_only_savings_usd > 0.0);
+        assert!(cc.premature_multi_os_pr_matrix_trap);
+        assert!(cc.monthly_multi_os_pr_to_nightly_savings_usd > 0.0);
+        assert!(cc.mac_mini_hardware_payback_months > 0.0);
+        assert!(cc.self_hosted_breakeven_reached);
+        assert!(cc.compliance_controls_count >= 3);
+        assert!(cc.regional_residency_multiplier >= 2.5);
+        assert!(cc.unpinned_template_refs_count >= 1);
+        assert!(cc.monthly_setup_overhead_hours > 0.0);
+        let json_out = rep.to_json();
+        assert!(json_out.contains("\"startup_stage_cost\":"));
+        assert!(json_out.contains("\"scaleup_stage_cost\":"));
+        assert!(json_out.contains("\"enterprise_stage_cost\":"));
+        assert!(json_out.contains("\"monorepo_ci_cost\":"));
+        assert!(json_out.contains("\"microservices_ci_cost\":"));
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

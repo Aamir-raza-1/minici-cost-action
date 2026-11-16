@@ -298,6 +298,27 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
     }
 
     let mut hygiene_parts = Vec::new();
+    if cc.detected_pipeline_shape == "monorepo" && cc.detected_workspace_units_count >= 2 {
+        if !cc.has_affected_only_graph_tool && cc.monthly_affected_only_savings_usd >= 10.0 {
+            hygiene_parts.push(format!(
+                "Monorepo ({} units, {} affected-only saves ~${:.2}/mo)",
+                cc.detected_workspace_units_count,
+                cc.recommended_affected_tool,
+                cc.monthly_affected_only_savings_usd
+            ));
+        } else {
+            hygiene_parts.push(format!(
+                "Monorepo ({} units • {})",
+                cc.detected_workspace_units_count, cc.detected_monorepo_tool
+            ));
+        }
+    } else if cc.detected_pipeline_shape == "multi-service-microservices" {
+        hygiene_parts.push(format!(
+            "Multi-service ({} units, {:.0}% setup overhead)",
+            cc.detected_workspace_units_count.max(r.total_workflows),
+            cc.setup_overhead_share_pct
+        ));
+    }
     if cc.jobs_missing_cache > 0 && cc.monthly_unrealized_cache_savings_usd >= 1.0 {
         hygiene_parts.push(format!(
             "Cache {}/{} jobs (caching {} uncached saves ~${:.2}/mo)",
@@ -322,6 +343,12 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         hygiene_parts.push(format!(
             "Path filters missing on {} wf (~${:.2}/mo selective savings)",
             cc.workflows_missing_path_filters, cc.monthly_unfiltered_check_savings_usd
+        ));
+    }
+    if cc.unpinned_template_refs_count > 0 {
+        hygiene_parts.push(format!(
+            "{} unpinned @main/@master ref(s)",
+            cc.unpinned_template_refs_count
         ));
     }
     if !hygiene_parts.is_empty() {

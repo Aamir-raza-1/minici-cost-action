@@ -243,12 +243,69 @@ pub struct CostComponentsBreakdown {
     pub slow_blocking_checks_over_10m: usize,
     pub monthly_superseded_run_waste_usd: f64,
     pub monthly_unfiltered_check_savings_usd: f64,
+    // 12. Startup Stage Cost (1-15 Devs, Free-Tier Burn, Upgrade Triggers & Early Traps)
+    pub inferred_team_stage: String,
+    pub implied_active_devs: usize,
+    pub free_tier_burn_pct: f64,
+    pub upgrade_trigger_80pct_reached: bool,
+    pub premature_self_hosting_trap: bool,
+    pub premature_multi_os_pr_matrix_trap: bool,
+    pub monthly_multi_os_pr_to_nightly_savings_usd: f64,
+    pub mac_mini_hardware_payback_months: f64,
+    // 13. Scaleup Stage Cost (25-100 Devs, Tier-Crisis Decisions, Required-Check Audit & Platform Eng ROI)
+    pub self_hosted_breakeven_reached: bool,
+    pub team_to_enterprise_seat_jump_monthly_usd: f64,
+    pub quarterly_required_check_audit_savings_usd: f64,
+    pub platform_engineer_monthly_fully_loaded_usd: f64,
+    pub recoverable_ci_and_wait_monthly_usd: f64,
+    pub platform_engineer_roi_coverage_pct: f64,
+    // 14. Enterprise Stage Cost (250+ Devs, Compliance Overhead, Regional Residency & Dedicated Tenancy)
+    pub detected_compliance_controls: Vec<String>,
+    pub compliance_controls_count: usize,
+    pub detected_cloud_regions: Vec<String>,
+    pub regional_residency_multiplier: f64,
+    pub enterprise_250_seat_licence_monthly_usd: f64,
+    pub siem_1yr_audit_log_retention_monthly_usd: f64,
+    pub dedicated_tenancy_premium_pct_min: f64,
+    pub dedicated_tenancy_premium_pct_max: f64,
+    // 15. Monorepo CI Cost (Dynamic Workspace Detection, Unconstrained Blast Radius & Affected-Only Fix)
+    pub detected_pipeline_shape: String,
+    pub detected_workspace_units_count: usize,
+    pub detected_monorepo_tool: String,
+    pub recommended_affected_tool: String,
+    pub has_nightly_full_suite_safety_net: bool,
+    pub affected_only_reduction_pct_min: f64,
+    pub affected_only_reduction_pct_max: f64,
+    pub monthly_affected_only_savings_usd: f64,
+    // 16. Microservices CI Cost (Per-Service Setup Overhead, Reusable Templates, Pinning & Shared Cache)
+    pub est_setup_overhead_sec_per_job: f64,
+    pub monthly_setup_overhead_hours: f64,
+    pub setup_overhead_share_pct: f64,
+    pub monthly_setup_overhead_compute_usd: f64,
+    pub monthly_shared_infra_setup_savings_usd: f64,
+    pub reusable_workflow_calls_count: usize,
+    pub unpinned_template_refs_count: usize,
+    pub cross_repo_triggers_count: usize,
+    pub est_aggregate_cache_gb: f64,
+    pub exceeds_10gb_repo_cache_limit: bool,
 }
 
 impl CostComponentsBreakdown {
     pub fn to_json(&self) -> String {
+        let compliance_json = self
+            .detected_compliance_controls
+            .iter()
+            .map(|c| format!("\"{}\"", json_escape(c)))
+            .collect::<Vec<_>>()
+            .join(",");
+        let regions_json = self
+            .detected_cloud_regions
+            .iter()
+            .map(|r| format!("\"{}\"", json_escape(r)))
+            .collect::<Vec<_>>()
+            .join(",");
         format!(
-            "{{\n    \"build_minutes_cost\": {{\"rounding_tax_mins_per_run\":{:.2},\"monthly_rounding_tax_usd\":{:.2},\"linux_mins_per_run\":{:.2},\"windows_mins_per_run\":{:.2},\"macos_mins_per_run\":{:.2},\"os_weighted_free_tier_mins_per_run\":{:.2},\"monthly_os_weighted_free_tier_mins\":{:.2},\"monthly_flake_retry_10pct_overhead_usd\":{:.2}}},\n    \"runner_cost\": {{\"infracost_delegated\":true,\"infracost_iac_files_detected\":{},\"infracost_resources\":[\"aws_instance\",\"aws_ebs_volume\",\"google_compute_instance\",\"azurerm_linux_virtual_machine\"],\"hosted_effective_hourly_rate_usd\":{:.2},\"infracost_recommended_ec2_instance\":\"{}\",\"infracost_ec2_on_demand_hourly_usd\":{:.4},\"infracost_ec2_on_demand_monthly_usd\":{:.2},\"infracost_ec2_spot_hourly_usd\":{:.3},\"infracost_ec2_surrounding_overhead_monthly_usd\":{:.2},\"macos_self_hosted_mac_mini_monthly_usd\":{:.2},\"self_hosted_breakeven_mins_t3_medium\":{:.0},\"self_hosted_breakeven_mins_c5_4xlarge_spot\":{:.0}}},\n    \"artifact_storage_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_s3_bucket\",\"aws_ecr_repository\"],\"jobs_uploading_artifacts\":{},\"default_retention_days\":{},\"configured_retention_days\":{},\"steady_state_stored_gb_configured\":{:.2},\"monthly_vendor_storage_configured_usd\":{:.2},\"monthly_infracost_s3_configured_usd\":{:.2},\"steady_state_stored_gb_90d\":{:.2},\"steady_state_stored_gb_14d\":{:.2},\"monthly_vendor_storage_90d_usd\":{:.2},\"monthly_vendor_storage_14d_usd\":{:.2},\"monthly_infracost_s3_standard_90d_usd\":{:.2},\"monthly_infracost_s3_intelligent_14d_usd\":{:.2}}},\n    \"parallelism_cost\": {{\"peak_concurrent_jobs_per_run\":{},\"hosted_concurrent_jobs_per_run\":{},\"macos_concurrent_jobs_per_run\":{},\"self_hosted_or_microvm_jobs_per_run\":{},\"vendor_free_concurrent_cap\":{},\"vendor_team_concurrent_cap\":{},\"parallelism_tier_upgrade_tax_monthly_usd\":{:.2}}},\n    \"log_retention_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_cloudwatch_log_group\",\"aws_s3_bucket\"],\"detected_log_language_profile\":\"{}\",\"est_log_mb_per_run\":{:.2},\"monthly_log_volume_gb\":{:.2},\"vendor_default_log_retention_days\":{},\"monthly_vendor_default_log_cost_usd\":{:.2},\"monthly_datadog_30d_log_shipping_usd\":{:.2},\"monthly_datadog_90d_log_shipping_usd\":{:.2},\"monthly_splunk_30d_log_shipping_usd\":{:.2},\"monthly_infracost_loki_s3_usd\":{:.2}}},\n    \"cross_region_egress_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_nat_gateway\",\"aws_vpc_endpoint\",\"google_compute_router_nat\",\"azurerm_nat_gateway\"],\"infracost_cloud_region\":\"{}\",\"est_transfer_gb_per_run\":{:.2},\"monthly_transfer_gb\":{:.2},\"infracost_aws_internet_egress_per_gb_usd\":{:.3},\"infracost_aws_nat_gateway_per_gb_usd\":{:.3},\"infracost_aws_cross_az_per_gb_usd\":{:.3},\"infracost_aws_cross_region_per_gb_usd\":{:.3},\"monthly_infracost_private_subnet_nat_worst_case_usd\":{:.2},\"monthly_infracost_cross_region_registry_usd\":{:.2},\"monthly_infracost_vpc_endpoint_cache_optimized_usd\":{:.2}}},\n    \"developer_wait_time_cost\": {{\"productivity_loss_factor\":{:.2},\"blended_fully_loaded_hourly_usd\":{:.2},\"monthly_wait_hours\":{:.2},\"monthly_productive_payroll_loss_usd\":{:.2},\"monthly_blended_100hr_productive_loss_usd\":{:.2},\"wait_to_compute_cost_ratio\":{:.2},\"lead_time_feedback_tier\":\"{}\"}},\n    \"failed_build_rerun_cost\": {{\"estimated_flake_rate_pct\":{:.1},\"has_job_level_auto_retry\":{},\"monthly_flaky_reruns\":{:.2},\"monthly_rerun_compute_cost_usd\":{:.2},\"avg_investigation_mins_per_flake\":{:.1},\"monthly_flake_investigation_hours\":{:.2},\"monthly_flake_investigation_payroll_usd\":{:.2},\"monthly_total_immediate_flake_cost_usd\":{:.2},\"monthly_savings_at_1pct_target_usd\":{:.2}}},\n    \"build_cache_savings\": {{\"stack_cache_profile\":\"{}\",\"realistic_saving_pct_min\":{:.1},\"realistic_saving_pct_max\":{:.1},\"jobs_with_cache\":{},\"jobs_missing_cache\":{},\"has_restore_keys_fallback\":{},\"has_docker_buildkit_cache\":{},\"estimated_cache_hit_rate_pct\":{:.1},\"vendor_cache_size_limit\":\"{}\",\"vendor_cache_eviction_policy\":\"{}\",\"monthly_uncached_compute_usd\":{:.2},\"monthly_unrealized_cache_savings_usd\":{:.2}}},\n    \"flaky_test_ci_cd_tax\": {{\"monthly_immediate_flake_cost_usd\":{:.2},\"deferred_velocity_drag_multiplier\":{:.1},\"monthly_deferred_velocity_drag_usd\":{:.2},\"monthly_combined_flake_tax_usd\":{:.2},\"deflake_project_est_cost_usd\":{:.2},\"deflake_payback_weeks\":{:.2}}},\n    \"branch_protection_cost\": {{\"required_checks_count\":{},\"monthly_required_check_executions\":{},\"workflows_with_concurrency_cancel\":{},\"workflows_missing_concurrency_cancel\":{},\"workflows_with_path_filters\":{},\"workflows_missing_path_filters\":{},\"has_affected_only_graph_tool\":{},\"slow_blocking_checks_over_10m\":{},\"monthly_superseded_run_waste_usd\":{:.2},\"monthly_unfiltered_check_savings_usd\":{:.2}}}\n  }}",
+            "{{\n    \"build_minutes_cost\": {{\"rounding_tax_mins_per_run\":{:.2},\"monthly_rounding_tax_usd\":{:.2},\"linux_mins_per_run\":{:.2},\"windows_mins_per_run\":{:.2},\"macos_mins_per_run\":{:.2},\"os_weighted_free_tier_mins_per_run\":{:.2},\"monthly_os_weighted_free_tier_mins\":{:.2},\"monthly_flake_retry_10pct_overhead_usd\":{:.2}}},\n    \"runner_cost\": {{\"infracost_delegated\":true,\"infracost_iac_files_detected\":{},\"infracost_resources\":[\"aws_instance\",\"aws_ebs_volume\",\"google_compute_instance\",\"azurerm_linux_virtual_machine\"],\"hosted_effective_hourly_rate_usd\":{:.2},\"infracost_recommended_ec2_instance\":\"{}\",\"infracost_ec2_on_demand_hourly_usd\":{:.4},\"infracost_ec2_on_demand_monthly_usd\":{:.2},\"infracost_ec2_spot_hourly_usd\":{:.3},\"infracost_ec2_surrounding_overhead_monthly_usd\":{:.2},\"macos_self_hosted_mac_mini_monthly_usd\":{:.2},\"self_hosted_breakeven_mins_t3_medium\":{:.0},\"self_hosted_breakeven_mins_c5_4xlarge_spot\":{:.0}}},\n    \"artifact_storage_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_s3_bucket\",\"aws_ecr_repository\"],\"jobs_uploading_artifacts\":{},\"default_retention_days\":{},\"configured_retention_days\":{},\"steady_state_stored_gb_configured\":{:.2},\"monthly_vendor_storage_configured_usd\":{:.2},\"monthly_infracost_s3_configured_usd\":{:.2},\"steady_state_stored_gb_90d\":{:.2},\"steady_state_stored_gb_14d\":{:.2},\"monthly_vendor_storage_90d_usd\":{:.2},\"monthly_vendor_storage_14d_usd\":{:.2},\"monthly_infracost_s3_standard_90d_usd\":{:.2},\"monthly_infracost_s3_intelligent_14d_usd\":{:.2}}},\n    \"parallelism_cost\": {{\"peak_concurrent_jobs_per_run\":{},\"hosted_concurrent_jobs_per_run\":{},\"macos_concurrent_jobs_per_run\":{},\"self_hosted_or_microvm_jobs_per_run\":{},\"vendor_free_concurrent_cap\":{},\"vendor_team_concurrent_cap\":{},\"parallelism_tier_upgrade_tax_monthly_usd\":{:.2}}},\n    \"log_retention_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_cloudwatch_log_group\",\"aws_s3_bucket\"],\"detected_log_language_profile\":\"{}\",\"est_log_mb_per_run\":{:.2},\"monthly_log_volume_gb\":{:.2},\"vendor_default_log_retention_days\":{},\"monthly_vendor_default_log_cost_usd\":{:.2},\"monthly_datadog_30d_log_shipping_usd\":{:.2},\"monthly_datadog_90d_log_shipping_usd\":{:.2},\"monthly_splunk_30d_log_shipping_usd\":{:.2},\"monthly_infracost_loki_s3_usd\":{:.2}}},\n    \"cross_region_egress_cost\": {{\"infracost_delegated\":true,\"infracost_resources\":[\"aws_nat_gateway\",\"aws_vpc_endpoint\",\"google_compute_router_nat\",\"azurerm_nat_gateway\"],\"infracost_cloud_region\":\"{}\",\"est_transfer_gb_per_run\":{:.2},\"monthly_transfer_gb\":{:.2},\"infracost_aws_internet_egress_per_gb_usd\":{:.3},\"infracost_aws_nat_gateway_per_gb_usd\":{:.3},\"infracost_aws_cross_az_per_gb_usd\":{:.3},\"infracost_aws_cross_region_per_gb_usd\":{:.3},\"monthly_infracost_private_subnet_nat_worst_case_usd\":{:.2},\"monthly_infracost_cross_region_registry_usd\":{:.2},\"monthly_infracost_vpc_endpoint_cache_optimized_usd\":{:.2}}},\n    \"developer_wait_time_cost\": {{\"productivity_loss_factor\":{:.2},\"blended_fully_loaded_hourly_usd\":{:.2},\"monthly_wait_hours\":{:.2},\"monthly_productive_payroll_loss_usd\":{:.2},\"monthly_blended_100hr_productive_loss_usd\":{:.2},\"wait_to_compute_cost_ratio\":{:.2},\"lead_time_feedback_tier\":\"{}\"}},\n    \"failed_build_rerun_cost\": {{\"estimated_flake_rate_pct\":{:.1},\"has_job_level_auto_retry\":{},\"monthly_flaky_reruns\":{:.2},\"monthly_rerun_compute_cost_usd\":{:.2},\"avg_investigation_mins_per_flake\":{:.1},\"monthly_flake_investigation_hours\":{:.2},\"monthly_flake_investigation_payroll_usd\":{:.2},\"monthly_total_immediate_flake_cost_usd\":{:.2},\"monthly_savings_at_1pct_target_usd\":{:.2}}},\n    \"build_cache_savings\": {{\"stack_cache_profile\":\"{}\",\"realistic_saving_pct_min\":{:.1},\"realistic_saving_pct_max\":{:.1},\"jobs_with_cache\":{},\"jobs_missing_cache\":{},\"has_restore_keys_fallback\":{},\"has_docker_buildkit_cache\":{},\"estimated_cache_hit_rate_pct\":{:.1},\"vendor_cache_size_limit\":\"{}\",\"vendor_cache_eviction_policy\":\"{}\",\"monthly_uncached_compute_usd\":{:.2},\"monthly_unrealized_cache_savings_usd\":{:.2}}},\n    \"flaky_test_ci_cd_tax\": {{\"monthly_immediate_flake_cost_usd\":{:.2},\"deferred_velocity_drag_multiplier\":{:.1},\"monthly_deferred_velocity_drag_usd\":{:.2},\"monthly_combined_flake_tax_usd\":{:.2},\"deflake_project_est_cost_usd\":{:.2},\"deflake_payback_weeks\":{:.2}}},\n    \"branch_protection_cost\": {{\"required_checks_count\":{},\"monthly_required_check_executions\":{},\"workflows_with_concurrency_cancel\":{},\"workflows_missing_concurrency_cancel\":{},\"workflows_with_path_filters\":{},\"workflows_missing_path_filters\":{},\"has_affected_only_graph_tool\":{},\"slow_blocking_checks_over_10m\":{},\"monthly_superseded_run_waste_usd\":{:.2},\"monthly_unfiltered_check_savings_usd\":{:.2}}},\n    \"startup_stage_cost\": {{\"inferred_team_stage\":\"{}\",\"implied_active_devs\":{},\"free_tier_burn_pct\":{:.2},\"upgrade_trigger_80pct_reached\":{},\"premature_self_hosting_trap\":{},\"premature_multi_os_pr_matrix_trap\":{},\"monthly_multi_os_pr_to_nightly_savings_usd\":{:.2},\"mac_mini_hardware_payback_months\":{:.2}}},\n    \"scaleup_stage_cost\": {{\"self_hosted_breakeven_reached\":{},\"team_to_enterprise_seat_jump_monthly_usd\":{:.2},\"quarterly_required_check_audit_savings_usd\":{:.2},\"platform_engineer_monthly_fully_loaded_usd\":{:.2},\"recoverable_ci_and_wait_monthly_usd\":{:.2},\"platform_engineer_roi_coverage_pct\":{:.2}}},\n    \"enterprise_stage_cost\": {{\"detected_compliance_controls\":[{}],\"compliance_controls_count\":{},\"detected_cloud_regions\":[{}],\"regional_residency_multiplier\":{:.2},\"enterprise_250_seat_licence_monthly_usd\":{:.2},\"siem_1yr_audit_log_retention_monthly_usd\":{:.2},\"dedicated_tenancy_premium_pct_min\":{:.1},\"dedicated_tenancy_premium_pct_max\":{:.1}}},\n    \"monorepo_ci_cost\": {{\"detected_pipeline_shape\":\"{}\",\"detected_workspace_units_count\":{},\"detected_monorepo_tool\":\"{}\",\"recommended_affected_tool\":\"{}\",\"has_nightly_full_suite_safety_net\":{},\"affected_only_reduction_pct_min\":{:.1},\"affected_only_reduction_pct_max\":{:.1},\"monthly_affected_only_savings_usd\":{:.2}}},\n    \"microservices_ci_cost\": {{\"est_setup_overhead_sec_per_job\":{:.1},\"monthly_setup_overhead_hours\":{:.2},\"setup_overhead_share_pct\":{:.2},\"monthly_setup_overhead_compute_usd\":{:.2},\"monthly_shared_infra_setup_savings_usd\":{:.2},\"reusable_workflow_calls_count\":{},\"unpinned_template_refs_count\":{},\"cross_repo_triggers_count\":{},\"est_aggregate_cache_gb\":{:.2},\"exceeds_10gb_repo_cache_limit\":{}}}\n  }}",
             self.rounding_tax_mins_per_run,
             self.monthly_rounding_tax_usd,
             self.linux_mins_per_run,
@@ -348,7 +405,47 @@ impl CostComponentsBreakdown {
             self.has_affected_only_graph_tool,
             self.slow_blocking_checks_over_10m,
             self.monthly_superseded_run_waste_usd,
-            self.monthly_unfiltered_check_savings_usd
+            self.monthly_unfiltered_check_savings_usd,
+            json_escape(&self.inferred_team_stage),
+            self.implied_active_devs,
+            self.free_tier_burn_pct,
+            self.upgrade_trigger_80pct_reached,
+            self.premature_self_hosting_trap,
+            self.premature_multi_os_pr_matrix_trap,
+            self.monthly_multi_os_pr_to_nightly_savings_usd,
+            self.mac_mini_hardware_payback_months,
+            self.self_hosted_breakeven_reached,
+            self.team_to_enterprise_seat_jump_monthly_usd,
+            self.quarterly_required_check_audit_savings_usd,
+            self.platform_engineer_monthly_fully_loaded_usd,
+            self.recoverable_ci_and_wait_monthly_usd,
+            self.platform_engineer_roi_coverage_pct,
+            compliance_json,
+            self.compliance_controls_count,
+            regions_json,
+            self.regional_residency_multiplier,
+            self.enterprise_250_seat_licence_monthly_usd,
+            self.siem_1yr_audit_log_retention_monthly_usd,
+            self.dedicated_tenancy_premium_pct_min,
+            self.dedicated_tenancy_premium_pct_max,
+            json_escape(&self.detected_pipeline_shape),
+            self.detected_workspace_units_count,
+            json_escape(&self.detected_monorepo_tool),
+            json_escape(&self.recommended_affected_tool),
+            self.has_nightly_full_suite_safety_net,
+            self.affected_only_reduction_pct_min,
+            self.affected_only_reduction_pct_max,
+            self.monthly_affected_only_savings_usd,
+            self.est_setup_overhead_sec_per_job,
+            self.monthly_setup_overhead_hours,
+            self.setup_overhead_share_pct,
+            self.monthly_setup_overhead_compute_usd,
+            self.monthly_shared_infra_setup_savings_usd,
+            self.reusable_workflow_calls_count,
+            self.unpinned_template_refs_count,
+            self.cross_repo_triggers_count,
+            self.est_aggregate_cache_gb,
+            self.exceeds_10gb_repo_cache_limit
         )
     }
 }
@@ -1387,6 +1484,16 @@ struct WorkflowHygieneSignals {
     unfiltered_workflow_files: Vec<String>,
     uncancelled_workflow_files: Vec<String>,
     cached_workflow_files: Vec<String>,
+    // Team-stage & pipeline-shape dynamic signals
+    detected_monorepo_tool: String,
+    detected_workspace_units_count: usize,
+    has_nightly_schedule_workflow: bool,
+    pr_push_runs_multi_os_all_three: bool,
+    reusable_workflow_calls_count: usize,
+    unpinned_template_refs_count: usize,
+    cross_repo_triggers_count: usize,
+    detected_compliance_controls: Vec<String>,
+    detected_cloud_regions: Vec<String>,
 }
 
 fn is_pr_or_push_event_name(token: &str) -> bool {
@@ -1550,6 +1657,73 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
         }
     }
 
+    let mut pr_has_linux = false;
+    let mut pr_has_windows = false;
+    let mut pr_has_macos = false;
+    let mut discovered_units: Vec<String> = Vec::new();
+
+    // 1. Discover workspace manifests & subdirectories on disk (zero hardcoding)
+    if base_dir.join("nx.json").exists() {
+        sig.detected_monorepo_tool = "nx".to_string();
+    } else if base_dir.join("turbo.json").exists() {
+        sig.detected_monorepo_tool = "turborepo".to_string();
+    } else if base_dir.join("MODULE.bazel").exists()
+        || base_dir.join("WORKSPACE").exists()
+        || base_dir.join("WORKSPACE.bazel").exists()
+    {
+        sig.detected_monorepo_tool = "bazel".to_string();
+    } else if base_dir.join("pants.toml").exists() {
+        sig.detected_monorepo_tool = "pants".to_string();
+    } else if base_dir.join("pnpm-workspace.yaml").exists()
+        || base_dir.join("lerna.json").exists()
+        || base_dir.join("rush.json").exists()
+    {
+        sig.detected_monorepo_tool = "pnpm-workspace".to_string();
+    } else if base_dir.join("go.work").exists() {
+        sig.detected_monorepo_tool = "go-workspace".to_string();
+    } else if let Ok(cargo_raw) = fs::read_to_string(base_dir.join("Cargo.toml")) {
+        if cargo_raw.contains("[workspace]") {
+            sig.detected_monorepo_tool = "cargo-workspace".to_string();
+        }
+    }
+
+    for ws_root in [
+        "crates",
+        "packages",
+        "apps",
+        "services",
+        "libs",
+        "modules",
+        "microservices",
+        "cmd",
+        "components",
+        "functions",
+        "workers",
+    ] {
+        let dir_path = base_dir.join(ws_root);
+        if dir_path.is_dir() {
+            if let Ok(entries) = fs::read_dir(&dir_path) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_dir() {
+                        if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+                            if !name.starts_with('.')
+                                && name != "node_modules"
+                                && name != "target"
+                                && name != "dist"
+                            {
+                                let unit_key = format!("{}/{}", ws_root, name.to_ascii_lowercase());
+                                if !discovered_units.contains(&unit_key) {
+                                    discovered_units.push(unit_key);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     for (wf_name, raw_low) in &wf_files {
         let active_lines: Vec<&str> = raw_low
             .lines()
@@ -1561,6 +1735,21 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             .collect();
         let low = active_lines.join("\n");
         let triggers_pr_or_push = workflow_triggers_on_pr_or_push(raw_low);
+
+        if low.contains("schedule:") || low.contains("- cron:") || low.contains("cron:") {
+            sig.has_nightly_schedule_workflow = true;
+        }
+        if triggers_pr_or_push {
+            if low.contains("ubuntu") || low.contains("linux") || low.contains("blacksmith") {
+                pr_has_linux = true;
+            }
+            if low.contains("windows-") {
+                pr_has_windows = true;
+            }
+            if low.contains("macos-") {
+                pr_has_macos = true;
+            }
+        }
 
         if low.contains("pnpm") {
             sig.uses_pnpm = true;
@@ -1602,6 +1791,165 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             || low.contains("pants test")
         {
             sig.has_affected_only_graph_tool = true;
+            if sig.detected_monorepo_tool.is_empty() {
+                if low.contains("nx ") {
+                    sig.detected_monorepo_tool = "nx".to_string();
+                } else if low.contains("turbo ") {
+                    sig.detected_monorepo_tool = "turborepo".to_string();
+                } else if low.contains("bazel ") {
+                    sig.detected_monorepo_tool = "bazel".to_string();
+                } else if low.contains("pants ") {
+                    sig.detected_monorepo_tool = "pants".to_string();
+                }
+            }
+        }
+
+        // Discover workspace/service units from workflow `working-directory:` or `paths:` prefixes
+        for line in &active_lines {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("working-directory:") {
+                let wd = rest
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'' || c == '.' || c == '/');
+                if !wd.is_empty() && !wd.contains("${{") {
+                    let top = wd.split('/').take(2).collect::<Vec<_>>().join("/");
+                    if !top.is_empty() && !discovered_units.contains(&top) {
+                        discovered_units.push(top);
+                    }
+                }
+            } else if t.starts_with("- '") || t.starts_with("- \"") || t.starts_with("- ") {
+                let item = t
+                    .trim_start_matches('-')
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'');
+                for prefix in [
+                    "crates/",
+                    "packages/",
+                    "apps/",
+                    "services/",
+                    "libs/",
+                    "modules/",
+                    "web/",
+                    "api/",
+                    "backend/",
+                    "frontend/",
+                    "collector/",
+                    "worker/",
+                    "infra/",
+                    "terraform/",
+                ] {
+                    if item.starts_with(prefix) {
+                        let seg = item
+                            .trim_end_matches('*')
+                            .trim_end_matches('/')
+                            .split('/')
+                            .take(2)
+                            .collect::<Vec<_>>()
+                            .join("/");
+                        if !seg.is_empty() && !discovered_units.contains(&seg) {
+                            discovered_units.push(seg);
+                        }
+                    }
+                }
+            }
+            if t.starts_with("uses:") || t.starts_with("- uses:") {
+                let u = t
+                    .trim_start_matches('-')
+                    .trim()
+                    .strip_prefix("uses:")
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches(|c| c == '"' || c == '\'');
+                if u.contains("/.github/workflows/") || u.starts_with("./.github/workflows/") {
+                    sig.reusable_workflow_calls_count += 1;
+                }
+                if u.ends_with("@main")
+                    || u.ends_with("@master")
+                    || u.ends_with("@head")
+                    || u.ends_with("@latest")
+                {
+                    sig.unpinned_template_refs_count += 1;
+                }
+            }
+        }
+        if low.contains("workflow_call") || low.contains("include:") || low.contains("orbs:") {
+            sig.reusable_workflow_calls_count += 1;
+        }
+        if low.contains("repository_dispatch")
+            || low.contains("workflow_run")
+            || low.contains("peter-evans/repository-dispatch")
+            || low.contains("convictional/trigger-workflow-and-wait")
+        {
+            sig.cross_repo_triggers_count += 1;
+        }
+
+        // Compliance & security governance controls
+        let add_control = |vec: &mut Vec<String>, label: &str| {
+            if !vec.iter().any(|x| x == label) {
+                vec.push(label.to_string());
+            }
+        };
+        if low.contains("codeql-action") || low.contains("semgrep") || low.contains("sonarqube") {
+            add_control(&mut sig.detected_compliance_controls, "sast-codeql-semgrep");
+        }
+        if low.contains("trivy")
+            || low.contains("snyk")
+            || low.contains("grype")
+            || low.contains("dependency-review")
+            || low.contains("cargo-audit")
+            || low.contains("pip-audit")
+        {
+            add_control(
+                &mut sig.detected_compliance_controls,
+                "sca-container-vulnerability-scan",
+            );
+        }
+        if low.contains("gitleaks") || low.contains("trufflehog") {
+            add_control(&mut sig.detected_compliance_controls, "secret-scanning");
+        }
+        if low.contains("id-token: write")
+            || low.contains("configure-aws-credentials")
+            || low.contains("google-github-actions/auth")
+            || low.contains("azure/login")
+        {
+            add_control(&mut sig.detected_compliance_controls, "oidc-federated-auth");
+        }
+        if low.contains("environment:") {
+            add_control(
+                &mut sig.detected_compliance_controls,
+                "deployment-environment-approvals",
+            );
+        }
+        if low.contains("attest-build-provenance")
+            || low.contains("slsa")
+            || low.contains("sbom")
+            || low.contains("cosign")
+        {
+            add_control(&mut sig.detected_compliance_controls, "sbom-slsa-provenance");
+        }
+
+        // Cloud regions detection
+        for region in [
+            "us-east-1",
+            "us-east-2",
+            "us-west-1",
+            "us-west-2",
+            "eu-west-1",
+            "eu-west-2",
+            "eu-central-1",
+            "ap-southeast-1",
+            "ap-northeast-1",
+            "us-central1",
+            "us-east1",
+            "europe-west1",
+            "europe-west2",
+            "asia-east1",
+            "eastus",
+            "westeurope",
+        ] {
+            if low.contains(region) && !sig.detected_cloud_regions.iter().any(|r| r == region) {
+                sig.detected_cloud_regions.push(region.to_string());
+            }
         }
 
         let has_cache = active_lines.iter().any(|l| line_has_cache_signal(l));
@@ -1639,6 +1987,14 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
                 sig.unfiltered_workflow_files.push(wf_name.clone());
             }
         }
+    }
+
+    sig.pr_push_runs_multi_os_all_three = pr_has_linux && pr_has_windows && pr_has_macos;
+    sig.detected_workspace_units_count = discovered_units.len();
+    if sig.detected_monorepo_tool.is_empty() && sig.workflows_with_path_filters > 0 && sig.detected_workspace_units_count >= 2 {
+        sig.detected_monorepo_tool = "path-filters-only".to_string();
+    } else if sig.detected_monorepo_tool.is_empty() {
+        sig.detected_monorepo_tool = "none".to_string();
     }
 
     sig
@@ -2269,6 +2625,200 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         0.0
     };
 
+    // 12. Startup Stage Cost (1-15 Devs, Free-Tier Burn, Upgrade Triggers & Early Traps)
+    let free_tier_burn_pct = free_tier_quota_burn_pct;
+    let upgrade_trigger_80pct_reached = free_tier_burn_pct >= 80.0;
+    // Implied active contributors derived dynamically from monthly build minutes (~1,500-2,000 mins/dev/mo) & run frequency (~5 pushes/dev/day)
+    let runs_per_day = monthly_runs / 21.65;
+    let devs_from_runs = (runs_per_day / 5.0).ceil().max(1.0) as usize;
+    let devs_from_mins = (monthly_billed_mins / 1600.0).ceil().max(1.0) as usize;
+    let implied_active_devs = if jobs.is_empty() {
+        0
+    } else {
+        devs_from_runs.max(devs_from_mins)
+    };
+    let inferred_team_stage = if jobs.is_empty() {
+        "none (0 workflows)".to_string()
+    } else if monthly_billed_mins <= 3000.0 && gross_monthly_compute_cost_usd <= 50.0 {
+        "startup-pre-seed (1-5 devs)".to_string()
+    } else if monthly_billed_mins <= 25000.0 && gross_monthly_compute_cost_usd <= 500.0 {
+        "startup-seed-series-a (6-15 devs)".to_string()
+    } else if monthly_billed_mins <= 150000.0 && gross_monthly_compute_cost_usd <= 12000.0 {
+        "scaleup (25-100 devs)".to_string()
+    } else {
+        "enterprise (250+ devs)".to_string()
+    };
+    let premature_self_hosting_trap = self_hosted_or_microvm_jobs_per_run > 0
+        && monthly_billed_mins > 0.0
+        && monthly_billed_mins < 25000.0
+        && gross_monthly_compute_cost_usd < 500.0
+        && macos_mins_per_run == 0.0;
+    let premature_multi_os_pr_matrix_trap = hygiene.pr_push_runs_multi_os_all_three;
+    let mut pr_non_linux_run_cost_usd = 0.0_f64;
+    if premature_multi_os_pr_matrix_trap {
+        for j in &jobs {
+            let os_low = j.runner_label.to_ascii_lowercase();
+            if os_low.contains("windows") || os_low.contains("macos") {
+                pr_non_linux_run_cost_usd += j.run_compute_cost_usd;
+            }
+        }
+    }
+    let nightly_runs_per_month = 30.0_f64;
+    let shift_ratio = if monthly_runs > nightly_runs_per_month {
+        (monthly_runs - nightly_runs_per_month) / monthly_runs
+    } else {
+        0.0
+    };
+    let monthly_multi_os_pr_to_nightly_savings_usd =
+        ((pr_non_linux_run_cost_usd * monthly_runs * shift_ratio) * 100.0).round() / 100.0;
+    let mut monthly_macos_hosted_usd = 0.0_f64;
+    for j in &jobs {
+        if j.runner_label.to_ascii_lowercase().contains("macos") {
+            monthly_macos_hosted_usd += j.run_compute_cost_usd * monthly_runs;
+        }
+    }
+    // $700 Mac mini + $5/mo power replaces ~90% of hosted macOS CI spend
+    let mac_mini_net_monthly_saving = (monthly_macos_hosted_usd * 0.90) - 5.0;
+    let mac_mini_hardware_payback_months = if mac_mini_net_monthly_saving > 10.0 {
+        ((700.0 / mac_mini_net_monthly_saving) * 100.0).round() / 100.0
+    } else {
+        0.0
+    };
+
+    // 13. Scaleup Stage Cost (25-100 Devs, Tier-Crisis Decisions, Required-Check Audit & Platform Eng ROI)
+    let self_hosted_breakeven_reached =
+        gross_monthly_compute_cost_usd >= 500.0 || monthly_billed_mins >= 25000.0;
+    let scaleup_seat_count = implied_active_devs.max(25) as f64;
+    // Team ($4/user) -> Enterprise ($21/user) step = +$17/user/month
+    let team_to_enterprise_seat_jump_monthly_usd =
+        ((scaleup_seat_count * 17.0) * 100.0).round() / 100.0;
+    // Quarterly required-check audit removes 30-40% (35% midpoint) of accumulated low-signal checks when >6 checks exist
+    let quarterly_required_check_audit_savings_usd = if required_checks_count > 6 {
+        let audit_factor = if hygiene.workflows_with_path_filters > hygiene.workflows_missing_path_filters {
+            0.20
+        } else {
+            0.35
+        };
+        ((gross_monthly_compute_cost_usd * audit_factor) * 100.0).round() / 100.0
+    } else {
+        0.0
+    };
+    let platform_engineer_monthly_fully_loaded_usd = 16500.0_f64;
+    let recoverable_ci_and_wait_monthly_usd = ((monthly_unrealized_cache_savings_usd
+        + monthly_superseded_run_waste_usd
+        + monthly_unfiltered_check_savings_usd
+        + monthly_savings_at_1pct_target_usd
+        + (monthly_productive_payroll_loss_usd * 0.30))
+        * 100.0)
+        .round()
+        / 100.0;
+    let platform_engineer_roi_coverage_pct = if jobs.is_empty() {
+        0.0
+    } else {
+        (((recoverable_ci_and_wait_monthly_usd / platform_engineer_monthly_fully_loaded_usd) * 100.0)
+            * 100.0)
+            .round()
+            / 100.0
+    };
+
+    // 14. Enterprise Stage Cost (250+ Devs, Compliance Overhead, Regional Residency & Dedicated Tenancy)
+    let compliance_controls_count = hygiene.detected_compliance_controls.len();
+    let region_count = hygiene.detected_cloud_regions.len();
+    let regional_residency_multiplier = if region_count >= 3 {
+        2.75
+    } else if region_count == 2 {
+        1.80
+    } else {
+        1.00
+    };
+    let enterprise_250_seat_licence_monthly_usd = 5250.0_f64; // 250 seats * $21/user
+    // 1-year SIEM audit log retention (SOC 2 / ISO 27001) across 12-month rolling log window
+    let siem_1yr_audit_log_retention_monthly_usd =
+        ((monthly_log_volume_gb * 12.0 * 0.45 * regional_residency_multiplier) * 100.0).round()
+            / 100.0;
+    let dedicated_tenancy_premium_pct_min = 40.0_f64;
+    let dedicated_tenancy_premium_pct_max = 100.0_f64;
+
+    // 15. Monorepo CI Cost (Dynamic Workspace Detection, Unconstrained Blast Radius & Affected-Only Fix)
+    let detected_workspace_units_count = hygiene.detected_workspace_units_count;
+    let detected_pipeline_shape = if jobs.is_empty() {
+        "empty".to_string()
+    } else if hygiene.has_affected_only_graph_tool
+        || (hygiene.detected_monorepo_tool != "none"
+            && hygiene.detected_monorepo_tool != "path-filters-only")
+        || detected_workspace_units_count >= 3
+    {
+        "monorepo".to_string()
+    } else if workflow_count >= 4
+        && (hygiene.reusable_workflow_calls_count > 0
+            || hygiene.workflows_with_path_filters >= 2
+            || detected_workspace_units_count >= 2)
+    {
+        "multi-service-microservices".to_string()
+    } else {
+        "single-service".to_string()
+    };
+    let recommended_affected_tool = if detected_workspace_units_count >= 50 {
+        "bazel".to_string()
+    } else if detected_log_language_profile.contains("Node")
+        || detected_log_language_profile.contains("TypeScript")
+        || hygiene.uses_pnpm
+    {
+        "nx-or-turborepo".to_string()
+    } else if detected_log_language_profile.contains("Rust") {
+        "cargo-nextest-or-bazel".to_string()
+    } else if detected_log_language_profile.contains("Python") {
+        "pants-or-nx".to_string()
+    } else {
+        "dorny-paths-filter-or-bazel".to_string()
+    };
+    let affected_only_reduction_pct_min = 60.0_f64;
+    let affected_only_reduction_pct_max = 85.0_f64;
+    let monthly_affected_only_savings_usd = if detected_pipeline_shape == "monorepo"
+        && !hygiene.has_affected_only_graph_tool
+    {
+        let savings_ratio = if hygiene.workflows_with_path_filters > 0 {
+            0.35 // Coarse path filters already active; fine-grained dependency graph saves another ~35%
+        } else {
+            0.725 // 60-85% midpoint reduction on unconstrained monorepo runs
+        };
+        ((gross_monthly_compute_cost_usd * savings_ratio) * 100.0).round() / 100.0
+    } else {
+        0.0
+    };
+
+    // 16. Microservices CI Cost (Per-Service Setup Overhead, Reusable Templates, Pinning & Shared Cache)
+    // Per-pipeline setup overhead (container pull 30-90s + cache restore 30-60s + framework init 15-30s = 60-180s)
+    let est_setup_overhead_sec_per_job = if jobs.is_empty() {
+        0.0
+    } else if jobs_with_cache > jobs_missing_cache {
+        75.0
+    } else {
+        120.0
+    };
+    let setup_mins_per_run =
+        ((est_setup_overhead_sec_per_job / 60.0) * (total_expanded_matrix_jobs as f64))
+            .min(raw_duration_mins_per_run * 0.45);
+    let monthly_setup_overhead_hours =
+        (((setup_mins_per_run * monthly_runs) / 60.0) * 100.0).round() / 100.0;
+    let setup_overhead_share_pct = if raw_duration_mins_per_run > 0.0 {
+        (((setup_mins_per_run / raw_duration_mins_per_run) * 100.0) * 100.0).round() / 100.0
+    } else {
+        0.0
+    };
+    let monthly_setup_overhead_compute_usd =
+        ((gross_monthly_compute_cost_usd * (setup_overhead_share_pct / 100.0)) * 100.0).round()
+            / 100.0;
+    // Shared base images + pre-warmed runners + shared cache backend cut 25-40% setup overhead down to 10-15% (~60% reduction of overhead)
+    let monthly_shared_infra_setup_savings_usd =
+        ((monthly_setup_overhead_compute_usd * 0.60) * 100.0).round() / 100.0;
+    let effective_service_units = detected_workspace_units_count
+        .max(workflow_count)
+        .max(if jobs.is_empty() { 0 } else { 1 });
+    let est_aggregate_cache_gb =
+        (((effective_service_units as f64) * 0.50) * 100.0).round() / 100.0;
+    let exceeds_10gb_repo_cache_limit = est_aggregate_cache_gb > 10.0;
+
     let cost_components = CostComponentsBreakdown {
         rounding_tax_mins_per_run,
         monthly_rounding_tax_usd,
@@ -2370,6 +2920,46 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         slow_blocking_checks_over_10m,
         monthly_superseded_run_waste_usd,
         monthly_unfiltered_check_savings_usd,
+        inferred_team_stage,
+        implied_active_devs,
+        free_tier_burn_pct,
+        upgrade_trigger_80pct_reached,
+        premature_self_hosting_trap,
+        premature_multi_os_pr_matrix_trap,
+        monthly_multi_os_pr_to_nightly_savings_usd,
+        mac_mini_hardware_payback_months,
+        self_hosted_breakeven_reached,
+        team_to_enterprise_seat_jump_monthly_usd,
+        quarterly_required_check_audit_savings_usd,
+        platform_engineer_monthly_fully_loaded_usd,
+        recoverable_ci_and_wait_monthly_usd,
+        platform_engineer_roi_coverage_pct,
+        detected_compliance_controls: hygiene.detected_compliance_controls,
+        compliance_controls_count,
+        detected_cloud_regions: hygiene.detected_cloud_regions,
+        regional_residency_multiplier,
+        enterprise_250_seat_licence_monthly_usd,
+        siem_1yr_audit_log_retention_monthly_usd,
+        dedicated_tenancy_premium_pct_min,
+        dedicated_tenancy_premium_pct_max,
+        detected_pipeline_shape,
+        detected_workspace_units_count,
+        detected_monorepo_tool: hygiene.detected_monorepo_tool,
+        recommended_affected_tool,
+        has_nightly_full_suite_safety_net: hygiene.has_nightly_schedule_workflow,
+        affected_only_reduction_pct_min,
+        affected_only_reduction_pct_max,
+        monthly_affected_only_savings_usd,
+        est_setup_overhead_sec_per_job,
+        monthly_setup_overhead_hours,
+        setup_overhead_share_pct,
+        monthly_setup_overhead_compute_usd,
+        monthly_shared_infra_setup_savings_usd,
+        reusable_workflow_calls_count: hygiene.reusable_workflow_calls_count,
+        unpinned_template_refs_count: hygiene.unpinned_template_refs_count,
+        cross_repo_triggers_count: hygiene.cross_repo_triggers_count,
+        est_aggregate_cache_gb,
+        exceeds_10gb_repo_cache_limit,
     };
 
     let elapsed_us = t0.elapsed().as_micros().max(1);

@@ -273,8 +273,8 @@ def validate_single_repo_all_modes(
     )
     assert rc_df == 0, f"CLI diff failed on {repo_name}: {err_df}"
     df_data = json.loads(out_df_json)
-    assert "cost_components" in df_data and len(df_data["cost_components"]) == 11, (
-        f"CLI diff JSON missing 11 cost_components on {repo_name}"
+    assert "cost_components" in df_data and len(df_data["cost_components"]) == 16, (
+        f"CLI diff JSON missing 16 cost_components on {repo_name}"
     )
 
     for ext in ("html", "json", "csv", "md"):
@@ -315,7 +315,7 @@ def validate_single_repo_all_modes(
     assert len(mcp_lines) == 4, f"Expected 4 JSON-RPC responses on {repo_name}, got {len(mcp_lines)}"
     mcp_bd_payload = json.loads(mcp_lines[2]["result"]["content"][0]["text"])
     assert abs(float(mcp_bd_payload["gross_monthly_compute_cost_usd"]) - float(bd_data["gross_monthly_compute_cost_usd"])) < 0.01
-    assert "cost_components" in mcp_bd_payload and len(mcp_bd_payload["cost_components"]) == 11
+    assert "cost_components" in mcp_bd_payload and len(mcp_bd_payload["cost_components"]) == 16
 
     hook_payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "git push"}}) + "\n"
     rc_hk, out_hk, err_hk, wall_hk_ms = run_timed(
