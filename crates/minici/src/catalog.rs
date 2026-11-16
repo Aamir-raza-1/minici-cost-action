@@ -53,9 +53,72 @@ impl RunnerSkuSpec {
 
 pub const ARTIFACT_STORAGE_VENDOR_USD_PER_GB_MO: f64 = 0.25;
 pub const ARTIFACT_STORAGE_S3_USD_PER_GB_MO: f64 = 0.023;
+pub const ARTIFACT_STORAGE_S3_INTELLIGENT_USD_PER_GB_MO: f64 = 0.018;
 pub const NAT_GATEWAY_EGRESS_USD_PER_GB: f64 = 0.045;
+pub const AWS_INTERNET_EGRESS_USD_PER_GB: f64 = 0.090;
+pub const AWS_CROSS_AZ_USD_PER_GB: f64 = 0.010;
+pub const AWS_CROSS_REGION_USD_PER_GB: f64 = 0.020;
+pub const AWS_VPC_ENDPOINT_USD_PER_GB: f64 = 0.010;
 pub const SELF_HOSTED_VPS_BASE_MONTHLY_USD: f64 = 30.0;
 pub const SELF_HOSTED_BREAKEVEN_MINS_PER_MONTH: f64 = 5000.0;
+pub const SELF_HOSTED_C5_4XLARGE_SPOT_BREAKEVEN_MINS: f64 = 22000.0;
+
+/// Infracost-delegated regional AWS NAT Gateway (`aws_nat_gateway` / `NatGateway-Bytes`) rate per hour and per GB processed.
+/// Verified against AWS 2026 price list & https://cicdcost.com/cross-region-egress-cost.
+pub fn infracost_aws_nat_gateway_rate_usd(region: &str) -> f64 {
+    match region.trim().to_ascii_lowercase().as_str() {
+        "us-east-1" | "us-east-2" | "us-west-2" => 0.045,
+        "us-west-1" | "eu-west-1" => 0.048,
+        "eu-west-2" | "eu-west-3" => 0.050,
+        "eu-central-1" => 0.052,
+        "ap-south-1" => 0.056,
+        "ap-southeast-1" => 0.059,
+        "ap-northeast-1" => 0.062,
+        "sa-east-1" => 0.093,
+        _ => 0.045,
+    }
+}
+
+/// Infracost-delegated AWS EC2 (`aws_instance`) runner sizing profile (`instance_label, on_demand_hr_usd, on_demand_mo_usd, spot_hr_usd`).
+/// Verified against Infracost Cloud Pricing API & https://cicdcost.com/runner-cost.
+pub fn infracost_ec2_runner_profile(
+    max_vcpus: u32,
+    has_arm_only: bool,
+) -> (&'static str, f64, f64, f64) {
+    if has_arm_only && max_vcpus <= 4 {
+        ("m6g.xlarge (Arm 4 vCPU / 16 GB)", 0.154, 111.0, 0.046)
+    } else if max_vcpus <= 2 {
+        ("t3.medium (2 vCPU / 4 GB)", 0.0416, 30.0, 0.012)
+    } else if max_vcpus <= 4 {
+        ("m5.xlarge (4 vCPU / 16 GB)", 0.192, 138.0, 0.058)
+    } else if max_vcpus <= 8 {
+        ("c5.2xlarge (8 vCPU / 16 GB)", 0.34, 245.0, 0.10)
+    } else {
+        ("c5.4xlarge (16 vCPU / 32 GB)", 0.68, 490.0, 0.17)
+    }
+}
+
+/// Per-vendor OS free-tier minute multiplier per https://cicdcost.com/build-minutes-cost.
+pub fn vendor_os_free_tier_multiplier(provider: &str, os: &str) -> f64 {
+    let os_lower = os.to_ascii_lowercase();
+    if provider == "github-actions" {
+        if os_lower.contains("mac") {
+            10.0
+        } else if os_lower.contains("win") {
+            2.0
+        } else {
+            1.0
+        }
+    } else if provider == "gitlab-ci" {
+        if os_lower.contains("mac") {
+            6.0
+        } else {
+            1.0
+        }
+    } else {
+        1.0
+    }
+}
 
 pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
     // --- GitHub Actions Official 2026 SKUs (Synced with pricing/github.json & docs.github.com) ---
@@ -984,10 +1047,15 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         s
     } else if lower.starts_with("hf-jobs-") {
         let mut s = EMBEDDED_SKU_CATALOG[2].clone();
-        s.sku_label = "ubuntu-4core";
         s.vcpus = 4;
         s.ram_gb = 16.0;
-        s.rate_per_min_usd = if lower.contains("t4-medium") { 0.0160 } else { 0.0120 };
+        if lower.contains("t4-medium") {
+            s.sku_label = "hf-jobs-t4-medium";
+            s.rate_per_min_usd = 0.0160;
+        } else {
+            s.sku_label = "ubuntu-4core";
+            s.rate_per_min_usd = 0.0120;
+        }
         s
     } else if explicit_vcpus == Some(96) {
         let mut s = EMBEDDED_SKU_CATALOG[6].clone();

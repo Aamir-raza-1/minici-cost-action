@@ -254,7 +254,7 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         let spot_savings_usd =
             (r.gross_monthly_compute_cost_usd - r.monthly_self_hosted_spot_cost_usd).max(0.0);
         out.push_str(&format!(
-            " • Recommendation   : Switch to ARM64 / High-Speed Runners (${:.2}/mo, saves ${:.2}/mo) or Cloud Spot (${:.2}/mo, saves ${:.2}/mo)",
+            " • Recommendation   : Switch to ARM64 / High-Speed Runners (${:.2}/mo, saves ${:.2}/mo) or Cloud Spot (${:.2}/mo, saves ${:.2}/mo)\n",
             r.monthly_blacksmith_cost_usd,
             blacksmith_savings_usd,
             r.monthly_self_hosted_spot_cost_usd,
@@ -262,10 +262,55 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         ));
     } else {
         out.push_str(&format!(
-            " • Recommendation   : Stay on SaaS runners ({:.0} / 5,000 mins/mo self-hosted break-even threshold)",
+            " • Recommendation   : Stay on SaaS runners ({:.0} / 5,000 mins/mo self-hosted break-even threshold)\n",
             r.monthly_billed_mins
         ));
     }
+
+    let cc = &r.cost_components;
+    out.push_str(&format!(
+        "\n 6-COMPONENT CI/CD INVOICE BREAKDOWN (cicdcost.com + Infracost Cloud Delegated):\n\
+         1. Build Minutes   : {:.1}m billed/run ({:.1}m rounding tax = ${:.2}/mo) • OS-Weighted Free Quota: {:.0}m/mo • 10% Flake Retry Tax: +${:.2}/mo\n\
+         2. CI Runner [IC]  : Hosted ${:.2}/hr vs Infracost `{}` (${:.4}/hr On-Demand = ${:.0}/mo | ${:.3}/hr Spot + ${:.2}/mo gp3/CW)\n\
+         3. Artifact [IC]   : {} upload job(s) • {}d default (${:.2}/mo vendor vs ${:.2}/mo Infracost S3 Standard | 14d S3 Intelligent: ${:.2}/mo)\n\
+         4. Parallelism     : {} peak jobs ({} hosted / {} self-hosted-or-microVM) vs {}/{} cap • Tier-Upgrade Tax: ${:.2}/mo\n\
+         5. Log Retention   : {} • {:.1} MB/run ({:.2} GB/mo) • {}d default ($0) | Datadog 30d: ${:.2}/mo | Infracost Loki+S3: ${:.2}/mo\n\
+         6. Egress/NAT [IC] : {:.2} GB/mo ({}) • Private+NAT (${:.3}/GB): ${:.2}/mo | Cross-Region: ${:.2}/mo | VPC Endpoint+Cache: ${:.2}/mo",
+        r.billed_mins_per_run,
+        cc.rounding_tax_mins_per_run,
+        cc.monthly_rounding_tax_usd,
+        cc.monthly_os_weighted_free_tier_mins,
+        cc.monthly_flake_retry_10pct_overhead_usd,
+        cc.hosted_effective_hourly_rate_usd,
+        cc.infracost_recommended_ec2_instance,
+        cc.infracost_ec2_on_demand_hourly_usd,
+        cc.infracost_ec2_on_demand_monthly_usd,
+        cc.infracost_ec2_spot_hourly_usd,
+        cc.infracost_ec2_surrounding_overhead_monthly_usd,
+        cc.jobs_uploading_artifacts,
+        cc.default_retention_days,
+        cc.monthly_vendor_storage_90d_usd,
+        cc.monthly_infracost_s3_standard_90d_usd,
+        cc.monthly_infracost_s3_intelligent_14d_usd,
+        cc.peak_concurrent_jobs_per_run,
+        cc.hosted_concurrent_jobs_per_run,
+        cc.self_hosted_or_microvm_jobs_per_run,
+        cc.vendor_free_concurrent_cap,
+        cc.vendor_team_concurrent_cap,
+        cc.parallelism_tier_upgrade_tax_monthly_usd,
+        cc.detected_log_language_profile,
+        cc.est_log_mb_per_run,
+        cc.monthly_log_volume_gb,
+        cc.vendor_default_log_retention_days,
+        cc.monthly_datadog_30d_log_shipping_usd,
+        cc.monthly_infracost_loki_s3_usd,
+        cc.monthly_transfer_gb,
+        cc.infracost_cloud_region,
+        cc.infracost_aws_internet_egress_per_gb_usd + cc.infracost_aws_nat_gateway_per_gb_usd,
+        cc.monthly_infracost_private_subnet_nat_worst_case_usd,
+        cc.monthly_infracost_cross_region_registry_usd,
+        cc.monthly_infracost_vpc_endpoint_cache_optimized_usd
+    ));
 
     if !customer_mode {
         let catalog_state = crate::catalog::pricing_catalog_status();

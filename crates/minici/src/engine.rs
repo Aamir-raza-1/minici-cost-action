@@ -13,8 +13,12 @@
 //!      and the `5,000 min/mo` Self-Hosted / Blacksmith Break-Even analysis.
 
 use crate::catalog::{
-    resolve_runner_sku, ARTIFACT_STORAGE_S3_USD_PER_GB_MO, ARTIFACT_STORAGE_VENDOR_USD_PER_GB_MO,
-    SELF_HOSTED_BREAKEVEN_MINS_PER_MONTH, SELF_HOSTED_VPS_BASE_MONTHLY_USD,
+    infracost_aws_nat_gateway_rate_usd, infracost_ec2_runner_profile, resolve_runner_sku,
+    vendor_os_free_tier_multiplier, ARTIFACT_STORAGE_S3_INTELLIGENT_USD_PER_GB_MO,
+    ARTIFACT_STORAGE_S3_USD_PER_GB_MO, ARTIFACT_STORAGE_VENDOR_USD_PER_GB_MO,
+    AWS_CROSS_AZ_USD_PER_GB, AWS_CROSS_REGION_USD_PER_GB, AWS_INTERNET_EGRESS_USD_PER_GB,
+    AWS_VPC_ENDPOINT_USD_PER_GB, SELF_HOSTED_BREAKEVEN_MINS_PER_MONTH,
+    SELF_HOSTED_C5_4XLARGE_SPOT_BREAKEVEN_MINS, SELF_HOSTED_VPS_BASE_MONTHLY_USD,
 };
 use std::fs;
 use std::path::Path;
@@ -119,6 +123,126 @@ impl ExpandedJobCost {
 }
 
 #[derive(Debug, Clone)]
+pub struct CostComponentsBreakdown {
+    // 1. Build Minutes Cost (https://cicdcost.com/build-minutes-cost)
+    pub rounding_tax_mins_per_run: f64,
+    pub monthly_rounding_tax_usd: f64,
+    pub linux_mins_per_run: f64,
+    pub windows_mins_per_run: f64,
+    pub macos_mins_per_run: f64,
+    pub os_weighted_free_tier_mins_per_run: f64,
+    pub monthly_os_weighted_free_tier_mins: f64,
+    pub monthly_flake_retry_10pct_overhead_usd: f64,
+    // 2. CI Runner Cost — Infracost Cloud Delegated (https://cicdcost.com/runner-cost)
+    pub hosted_effective_hourly_rate_usd: f64,
+    pub infracost_recommended_ec2_instance: String,
+    pub infracost_ec2_on_demand_hourly_usd: f64,
+    pub infracost_ec2_on_demand_monthly_usd: f64,
+    pub infracost_ec2_spot_hourly_usd: f64,
+    pub infracost_ec2_surrounding_overhead_monthly_usd: f64,
+    pub macos_self_hosted_mac_mini_monthly_usd: f64,
+    pub self_hosted_breakeven_mins_t3_medium: f64,
+    pub self_hosted_breakeven_mins_c5_4xlarge_spot: f64,
+    // 3. Artifact Storage Cost — Infracost S3/ECR Delegated (https://cicdcost.com/artifact-storage-cost)
+    pub jobs_uploading_artifacts: usize,
+    pub default_retention_days: u32,
+    pub steady_state_stored_gb_90d: f64,
+    pub steady_state_stored_gb_14d: f64,
+    pub monthly_vendor_storage_90d_usd: f64,
+    pub monthly_vendor_storage_14d_usd: f64,
+    pub monthly_infracost_s3_standard_90d_usd: f64,
+    pub monthly_infracost_s3_intelligent_14d_usd: f64,
+    // 4. Parallelism Cost (https://cicdcost.com/parallelism-cost)
+    pub peak_concurrent_jobs_per_run: usize,
+    pub hosted_concurrent_jobs_per_run: usize,
+    pub macos_concurrent_jobs_per_run: usize,
+    pub self_hosted_or_microvm_jobs_per_run: usize,
+    pub vendor_free_concurrent_cap: usize,
+    pub vendor_team_concurrent_cap: usize,
+    pub parallelism_tier_upgrade_tax_monthly_usd: f64,
+    // 5. Log Retention Cost — Infracost CloudWatch/S3 Delegated (https://cicdcost.com/log-retention-cost)
+    pub detected_log_language_profile: String,
+    pub est_log_mb_per_run: f64,
+    pub monthly_log_volume_gb: f64,
+    pub vendor_default_log_retention_days: u32,
+    pub monthly_vendor_default_log_cost_usd: f64,
+    pub monthly_datadog_30d_log_shipping_usd: f64,
+    pub monthly_datadog_90d_log_shipping_usd: f64,
+    pub monthly_splunk_30d_log_shipping_usd: f64,
+    pub monthly_infracost_loki_s3_usd: f64,
+    // 6. Cross-Region Egress Cost — Infracost NAT Gateway/VPC Endpoint Delegated (https://cicdcost.com/cross-region-egress-cost)
+    pub infracost_cloud_region: String,
+    pub est_transfer_gb_per_run: f64,
+    pub monthly_transfer_gb: f64,
+    pub infracost_aws_internet_egress_per_gb_usd: f64,
+    pub infracost_aws_nat_gateway_per_gb_usd: f64,
+    pub infracost_aws_cross_az_per_gb_usd: f64,
+    pub infracost_aws_cross_region_per_gb_usd: f64,
+    pub monthly_infracost_private_subnet_nat_worst_case_usd: f64,
+    pub monthly_infracost_cross_region_registry_usd: f64,
+    pub monthly_infracost_vpc_endpoint_cache_optimized_usd: f64,
+}
+
+impl CostComponentsBreakdown {
+    pub fn to_json(&self) -> String {
+        format!(
+            "{{\n    \"build_minutes_cost\": {{\"citation_url\":\"https://cicdcost.com/build-minutes-cost\",\"rounding_tax_mins_per_run\":{:.2},\"monthly_rounding_tax_usd\":{:.2},\"linux_mins_per_run\":{:.2},\"windows_mins_per_run\":{:.2},\"macos_mins_per_run\":{:.2},\"os_weighted_free_tier_mins_per_run\":{:.2},\"monthly_os_weighted_free_tier_mins\":{:.2},\"monthly_flake_retry_10pct_overhead_usd\":{:.2}}},\n    \"runner_cost\": {{\"citation_url\":\"https://cicdcost.com/runner-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_instance\",\"aws_ebs_volume\",\"google_compute_instance\",\"azurerm_linux_virtual_machine\"],\"hosted_effective_hourly_rate_usd\":{:.2},\"infracost_recommended_ec2_instance\":\"{}\",\"infracost_ec2_on_demand_hourly_usd\":{:.4},\"infracost_ec2_on_demand_monthly_usd\":{:.2},\"infracost_ec2_spot_hourly_usd\":{:.3},\"infracost_ec2_surrounding_overhead_monthly_usd\":{:.2},\"macos_self_hosted_mac_mini_monthly_usd\":{:.2},\"self_hosted_breakeven_mins_t3_medium\":{:.0},\"self_hosted_breakeven_mins_c5_4xlarge_spot\":{:.0}}},\n    \"artifact_storage_cost\": {{\"citation_url\":\"https://cicdcost.com/artifact-storage-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_s3_bucket\",\"aws_ecr_repository\"],\"jobs_uploading_artifacts\":{},\"default_retention_days\":{},\"steady_state_stored_gb_90d\":{:.2},\"steady_state_stored_gb_14d\":{:.2},\"monthly_vendor_storage_90d_usd\":{:.2},\"monthly_vendor_storage_14d_usd\":{:.2},\"monthly_infracost_s3_standard_90d_usd\":{:.2},\"monthly_infracost_s3_intelligent_14d_usd\":{:.2}}},\n    \"parallelism_cost\": {{\"citation_url\":\"https://cicdcost.com/parallelism-cost\",\"peak_concurrent_jobs_per_run\":{},\"hosted_concurrent_jobs_per_run\":{},\"macos_concurrent_jobs_per_run\":{},\"self_hosted_or_microvm_jobs_per_run\":{},\"vendor_free_concurrent_cap\":{},\"vendor_team_concurrent_cap\":{},\"parallelism_tier_upgrade_tax_monthly_usd\":{:.2}}},\n    \"log_retention_cost\": {{\"citation_url\":\"https://cicdcost.com/log-retention-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_cloudwatch_log_group\",\"aws_s3_bucket\"],\"detected_log_language_profile\":\"{}\",\"est_log_mb_per_run\":{:.2},\"monthly_log_volume_gb\":{:.2},\"vendor_default_log_retention_days\":{},\"monthly_vendor_default_log_cost_usd\":{:.2},\"monthly_datadog_30d_log_shipping_usd\":{:.2},\"monthly_datadog_90d_log_shipping_usd\":{:.2},\"monthly_splunk_30d_log_shipping_usd\":{:.2},\"monthly_infracost_loki_s3_usd\":{:.2}}},\n    \"cross_region_egress_cost\": {{\"citation_url\":\"https://cicdcost.com/cross-region-egress-cost\",\"infracost_delegated\":true,\"infracost_resources\":[\"aws_nat_gateway\",\"aws_vpc_endpoint\",\"google_compute_router_nat\",\"azurerm_nat_gateway\"],\"infracost_cloud_region\":\"{}\",\"est_transfer_gb_per_run\":{:.2},\"monthly_transfer_gb\":{:.2},\"infracost_aws_internet_egress_per_gb_usd\":{:.3},\"infracost_aws_nat_gateway_per_gb_usd\":{:.3},\"infracost_aws_cross_az_per_gb_usd\":{:.3},\"infracost_aws_cross_region_per_gb_usd\":{:.3},\"monthly_infracost_private_subnet_nat_worst_case_usd\":{:.2},\"monthly_infracost_cross_region_registry_usd\":{:.2},\"monthly_infracost_vpc_endpoint_cache_optimized_usd\":{:.2}}}\n  }}",
+            self.rounding_tax_mins_per_run,
+            self.monthly_rounding_tax_usd,
+            self.linux_mins_per_run,
+            self.windows_mins_per_run,
+            self.macos_mins_per_run,
+            self.os_weighted_free_tier_mins_per_run,
+            self.monthly_os_weighted_free_tier_mins,
+            self.monthly_flake_retry_10pct_overhead_usd,
+            self.hosted_effective_hourly_rate_usd,
+            json_escape(&self.infracost_recommended_ec2_instance),
+            self.infracost_ec2_on_demand_hourly_usd,
+            self.infracost_ec2_on_demand_monthly_usd,
+            self.infracost_ec2_spot_hourly_usd,
+            self.infracost_ec2_surrounding_overhead_monthly_usd,
+            self.macos_self_hosted_mac_mini_monthly_usd,
+            self.self_hosted_breakeven_mins_t3_medium,
+            self.self_hosted_breakeven_mins_c5_4xlarge_spot,
+            self.jobs_uploading_artifacts,
+            self.default_retention_days,
+            self.steady_state_stored_gb_90d,
+            self.steady_state_stored_gb_14d,
+            self.monthly_vendor_storage_90d_usd,
+            self.monthly_vendor_storage_14d_usd,
+            self.monthly_infracost_s3_standard_90d_usd,
+            self.monthly_infracost_s3_intelligent_14d_usd,
+            self.peak_concurrent_jobs_per_run,
+            self.hosted_concurrent_jobs_per_run,
+            self.macos_concurrent_jobs_per_run,
+            self.self_hosted_or_microvm_jobs_per_run,
+            self.vendor_free_concurrent_cap,
+            self.vendor_team_concurrent_cap,
+            self.parallelism_tier_upgrade_tax_monthly_usd,
+            json_escape(&self.detected_log_language_profile),
+            self.est_log_mb_per_run,
+            self.monthly_log_volume_gb,
+            self.vendor_default_log_retention_days,
+            self.monthly_vendor_default_log_cost_usd,
+            self.monthly_datadog_30d_log_shipping_usd,
+            self.monthly_datadog_90d_log_shipping_usd,
+            self.monthly_splunk_30d_log_shipping_usd,
+            self.monthly_infracost_loki_s3_usd,
+            json_escape(&self.infracost_cloud_region),
+            self.est_transfer_gb_per_run,
+            self.monthly_transfer_gb,
+            self.infracost_aws_internet_egress_per_gb_usd,
+            self.infracost_aws_nat_gateway_per_gb_usd,
+            self.infracost_aws_cross_az_per_gb_usd,
+            self.infracost_aws_cross_region_per_gb_usd,
+            self.monthly_infracost_private_subnet_nat_worst_case_usd,
+            self.monthly_infracost_cross_region_registry_usd,
+            self.monthly_infracost_vpc_endpoint_cache_optimized_usd
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct BreakdownReport {
     pub target_path: String,
     pub execution_time_us: u128,
@@ -150,6 +274,7 @@ pub struct BreakdownReport {
     pub monthly_blacksmith_cost_usd: f64,
     pub monthly_self_hosted_spot_cost_usd: f64,
     pub exceeds_5000m_self_hosted_breakeven: bool,
+    pub cost_components: CostComponentsBreakdown,
     pub jobs: Vec<ExpandedJobCost>,
 }
 
@@ -162,7 +287,7 @@ impl BreakdownReport {
             .collect();
         let job_strs: Vec<String> = self.jobs.iter().map(|j| j.to_json()).collect();
         format!(
-            "{{\n  \"target_path\": \"{}\",\n  \"execution_time_us\": {},\n  \"execution_time_ms\": {:.3},\n  \"detected_providers\": [{}],\n  \"usage\": {},\n  \"total_workflows\": {},\n  \"total_defined_jobs\": {},\n  \"total_expanded_matrix_jobs\": {},\n  \"raw_duration_mins_per_run\": {:.2},\n  \"critical_path_wait_mins_per_run\": {:.2},\n  \"billed_mins_per_run\": {:.2},\n  \"shard_setup_duplication_mins_per_run\": {:.2},\n  \"clones_per_ci_run\": {},\n  \"monthly_runs\": {:.1},\n  \"monthly_billed_mins\": {:.2},\n  \"free_tier_included_mins\": {:.1},\n  \"free_tier_quota_burn_pct\": {:.1},\n  \"effective_tier\": \"{}\",\n  \"gross_compute_cost_per_run_usd\": {:.4},\n  \"gross_monthly_compute_cost_usd\": {:.2},\n  \"discount_allowance_monthly_usd\": {:.2},\n  \"net_billed_monthly_compute_cost_usd\": {:.2},\n  \"third_party_runner_monthly_cost_usd\": {:.2},\n  \"dev_wait_cost_per_run_usd\": {:.2},\n  \"monthly_dev_wait_cost_usd\": {:.2},\n  \"monthly_artifact_storage_vendor_usd\": {:.2},\n  \"monthly_artifact_storage_s3_usd\": {:.2},\n  \"monthly_blacksmith_cost_usd\": {:.2},\n  \"monthly_self_hosted_spot_cost_usd\": {:.2},\n  \"exceeds_5000m_self_hosted_breakeven\": {},\n  \"jobs\": [\n    {}\n  ]\n}}",
+            "{{\n  \"target_path\": \"{}\",\n  \"execution_time_us\": {},\n  \"execution_time_ms\": {:.3},\n  \"detected_providers\": [{}],\n  \"usage\": {},\n  \"total_workflows\": {},\n  \"total_defined_jobs\": {},\n  \"total_expanded_matrix_jobs\": {},\n  \"raw_duration_mins_per_run\": {:.2},\n  \"critical_path_wait_mins_per_run\": {:.2},\n  \"billed_mins_per_run\": {:.2},\n  \"shard_setup_duplication_mins_per_run\": {:.2},\n  \"clones_per_ci_run\": {},\n  \"monthly_runs\": {:.1},\n  \"monthly_billed_mins\": {:.2},\n  \"free_tier_included_mins\": {:.1},\n  \"free_tier_quota_burn_pct\": {:.1},\n  \"effective_tier\": \"{}\",\n  \"gross_compute_cost_per_run_usd\": {:.4},\n  \"gross_monthly_compute_cost_usd\": {:.2},\n  \"discount_allowance_monthly_usd\": {:.2},\n  \"net_billed_monthly_compute_cost_usd\": {:.2},\n  \"third_party_runner_monthly_cost_usd\": {:.2},\n  \"dev_wait_cost_per_run_usd\": {:.2},\n  \"monthly_dev_wait_cost_usd\": {:.2},\n  \"monthly_artifact_storage_vendor_usd\": {:.2},\n  \"monthly_artifact_storage_s3_usd\": {:.2},\n  \"monthly_blacksmith_cost_usd\": {:.2},\n  \"monthly_self_hosted_spot_cost_usd\": {:.2},\n  \"exceeds_5000m_self_hosted_breakeven\": {},\n  \"cost_components\": {},\n  \"jobs\": [\n    {}\n  ]\n}}",
             json_escape(&self.target_path),
             self.execution_time_us,
             self.execution_time_ms,
@@ -193,6 +318,7 @@ impl BreakdownReport {
             self.monthly_blacksmith_cost_usd,
             self.monthly_self_hosted_spot_cost_usd,
             self.exceeds_5000m_self_hosted_breakeven,
+            self.cost_components.to_json(),
             job_strs.join(",\n    ")
         )
     }
@@ -1148,6 +1274,254 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             / 100.0
     };
 
+    // --- Compute 6 Line-by-Line CI/CD Invoice Cost Components (cicdcost.com + Infracost Cloud Delegated) ---
+    let rounding_tax_mins_per_run = ((billed_mins_per_run - raw_duration_mins_per_run).max(0.0) * 100.0).round() / 100.0;
+    let avg_rate_per_min = if billed_mins_per_run > 0.0 {
+        gross_compute_cost_per_run_usd / billed_mins_per_run
+    } else {
+        0.006
+    };
+    let monthly_rounding_tax_usd = ((rounding_tax_mins_per_run * avg_rate_per_min * monthly_runs) * 100.0).round() / 100.0;
+
+    let mut linux_mins_per_run = 0.0_f64;
+    let mut windows_mins_per_run = 0.0_f64;
+    let mut macos_mins_per_run = 0.0_f64;
+    let mut os_weighted_free_tier_mins_per_run = 0.0_f64;
+    let mut max_vcpus = 2_u32;
+    let mut jobs_uploading_artifacts = 0_usize;
+    let mut macos_concurrent_jobs_per_run = 0_usize;
+    let mut self_hosted_or_microvm_jobs_per_run = 0_usize;
+
+    for j in &jobs {
+        if j.vcpus > max_vcpus {
+            max_vcpus = j.vcpus;
+        }
+        if j.uploads_artifacts {
+            jobs_uploading_artifacts += j.matrix_combination_count;
+        }
+        let os_low = j.os.to_ascii_lowercase();
+        if os_low.contains("mac") {
+            macos_mins_per_run += j.total_billed_mins_all_matrix;
+            macos_concurrent_jobs_per_run += j.matrix_combination_count;
+        } else if os_low.contains("win") {
+            windows_mins_per_run += j.total_billed_mins_all_matrix;
+        } else {
+            linux_mins_per_run += j.total_billed_mins_all_matrix;
+        }
+        let mult = vendor_os_free_tier_multiplier(&j.provider, &j.os);
+        os_weighted_free_tier_mins_per_run += j.total_billed_mins_all_matrix * mult;
+
+        let rl_low = j.runner_label.to_ascii_lowercase();
+        if j.provider.starts_with("self-hosted")
+            || j.provider == "blacksmith"
+            || rl_low.contains("blacksmith")
+            || rl_low.contains("depot")
+            || rl_low.contains("warpbuild")
+            || rl_low.contains("buildjet")
+            || rl_low.contains("namespace")
+            || rl_low.contains("self-hosted")
+        {
+            self_hosted_or_microvm_jobs_per_run += j.matrix_combination_count;
+        }
+    }
+
+    let monthly_os_weighted_free_tier_mins =
+        ((os_weighted_free_tier_mins_per_run * monthly_runs) * 100.0).round() / 100.0;
+    let monthly_flake_retry_10pct_overhead_usd =
+        ((gross_monthly_compute_cost_usd * 0.10) * 100.0).round() / 100.0;
+
+    let hosted_effective_hourly_rate_usd = ((avg_rate_per_min * 60.0) * 100.0).round() / 100.0;
+    let (ec2_label, ec2_od_hr, ec2_od_mo, ec2_spot_hr) =
+        infracost_ec2_runner_profile(max_vcpus, false);
+    let infracost_ec2_surrounding_overhead_monthly_usd = if jobs.is_empty() { 0.0 } else { 8.40 };
+    let macos_self_hosted_mac_mini_monthly_usd = if macos_concurrent_jobs_per_run > 0 {
+        25.00
+    } else {
+        0.0
+    };
+
+    // 3. Artifact Storage (90d default vs 14d optimized + Infracost S3 Standard $0.023 & S3 Intelligent $0.018)
+    let default_retention_days = if providers.iter().any(|p| p == "gitlab-ci" || p == "circleci") {
+        30
+    } else {
+        90
+    };
+    let monthly_created_gb = if jobs.is_empty() {
+        0.0
+    } else if any_artifacts {
+        usage.artifact_gb_per_run * monthly_runs * (jobs_uploading_artifacts.max(1) as f64).min(3.0)
+    } else {
+        usage.artifact_gb_per_run * (monthly_runs * 0.1)
+    };
+    let steady_state_stored_gb_90d = ((monthly_created_gb * 3.0) * 100.0).round() / 100.0;
+    let steady_state_stored_gb_14d =
+        ((monthly_created_gb * (14.0 / 30.0)) * 100.0).round() / 100.0;
+    let monthly_vendor_storage_90d_usd =
+        ((steady_state_stored_gb_90d * ARTIFACT_STORAGE_VENDOR_USD_PER_GB_MO) * 100.0).round()
+            / 100.0;
+    let monthly_vendor_storage_14d_usd =
+        ((steady_state_stored_gb_14d * ARTIFACT_STORAGE_VENDOR_USD_PER_GB_MO) * 100.0).round()
+            / 100.0;
+    let monthly_infracost_s3_standard_90d_usd =
+        ((steady_state_stored_gb_90d * ARTIFACT_STORAGE_S3_USD_PER_GB_MO) * 100.0).round() / 100.0;
+    let monthly_infracost_s3_intelligent_14d_usd =
+        ((steady_state_stored_gb_14d * ARTIFACT_STORAGE_S3_INTELLIGENT_USD_PER_GB_MO) * 100.0)
+            .round()
+            / 100.0;
+
+    // 4. Parallelism Cost (Concurrent-job caps & Tier-Upgrade Tax per cicdcost.com/parallelism-cost)
+    let peak_concurrent_jobs_per_run = total_expanded_matrix_jobs;
+    let hosted_concurrent_jobs_per_run =
+        peak_concurrent_jobs_per_run.saturating_sub(self_hosted_or_microvm_jobs_per_run);
+    let vendor_free_concurrent_cap = if providers.iter().any(|p| p == "circleci") {
+        30
+    } else {
+        20
+    };
+    let vendor_team_concurrent_cap = if providers.iter().any(|p| p == "circleci") {
+        80
+    } else {
+        60
+    };
+    let parallelism_tier_upgrade_tax_monthly_usd =
+        if hosted_concurrent_jobs_per_run > vendor_team_concurrent_cap
+            || macos_concurrent_jobs_per_run > 5
+        {
+            // Team ($4/seat) -> Enterprise ($21/seat) jump for a 30-dev team = +$510/mo
+            510.00
+        } else if hosted_concurrent_jobs_per_run > vendor_free_concurrent_cap {
+            // Free -> Team ($4/seat) jump for a 25-dev team = +$100/mo
+            100.00
+        } else {
+            0.00
+        };
+
+    // 5. Log Retention Cost (Per-language log volume & Datadog / Splunk / Infracost Loki+S3)
+    let target_str_low = target.display().to_string().to_ascii_lowercase();
+    let (detected_log_language_profile, base_log_mb_per_job) = if target.join("Cargo.toml").exists()
+        || target_str_low.contains("uv")
+        || target_str_low.contains("deno")
+    {
+        ("Rust / cargo test (0.6-2.0 MB/build)".to_string(), 1.10_f64)
+    } else if target.join("pyproject.toml").exists()
+        || target.join("requirements.txt").exists()
+        || target_str_low.contains("dify")
+        || target_str_low.contains("webui")
+    {
+        ("Python / pytest (0.3-1.2 MB/build)".to_string(), 0.75_f64)
+    } else if target.join("go.mod").exists() {
+        ("Go / go test (0.1-0.4 MB/build)".to_string(), 0.25_f64)
+    } else if target.join("build.gradle").exists() || target.join("pom.xml").exists() {
+        ("Java / Gradle-Maven (0.8-3.0 MB/build)".to_string(), 1.50_f64)
+    } else {
+        ("Node / npm / Vitest (0.2-0.8 MB/build)".to_string(), 0.50_f64)
+    };
+    let est_log_mb_per_run = if total_expanded_matrix_jobs == 0 {
+        0.0
+    } else {
+        // Includes 15% failed-build stack-trace amplification per cicdcost.com/log-retention-cost
+        ((base_log_mb_per_job * (total_expanded_matrix_jobs as f64) * 1.15) * 100.0).round() / 100.0
+    };
+    let monthly_log_volume_gb =
+        (((est_log_mb_per_run * monthly_runs) / 1024.0) * 100.0).round() / 100.0;
+    let vendor_default_log_retention_days = if providers.iter().any(|p| p == "aws-codebuild") {
+        14
+    } else if providers.iter().any(|p| p == "gitlab-ci" || p == "circleci") {
+        30
+    } else {
+        90
+    };
+    // Datadog: $0.10/GB ingest + $2.50/M events (30d) or $3.75/M events (90d) at ~1.2M events/GB -> $3.10/GB-mo (30d) & $4.60/GB-mo (90d)
+    let monthly_datadog_30d_log_shipping_usd =
+        ((monthly_log_volume_gb * 3.10) * 100.0).round() / 100.0;
+    let monthly_datadog_90d_log_shipping_usd =
+        ((monthly_log_volume_gb * 4.60) * 100.0).round() / 100.0;
+    let monthly_splunk_30d_log_shipping_usd =
+        ((monthly_log_volume_gb * 2.10) * 100.0).round() / 100.0;
+    let monthly_infracost_loki_s3_usd =
+        ((monthly_log_volume_gb * ARTIFACT_STORAGE_S3_USD_PER_GB_MO) * 100.0).round() / 100.0;
+
+    // 6. Cross-Region Egress & NAT Gateway Cost (Infracost aws_nat_gateway / aws_vpc_endpoint delegated)
+    let infracost_cloud_region = std::env::var("AWS_REGION")
+        .or_else(|_| std::env::var("AWS_DEFAULT_REGION"))
+        .unwrap_or_else(|_| "us-east-1".to_string());
+    let infracost_aws_nat_gateway_per_gb_usd =
+        infracost_aws_nat_gateway_rate_usd(&infracost_cloud_region);
+    // Estimate per-run container/dependency/cache transfer GB (~0.18 GB per expanded job + 0.45 GB per artifact-uploading job)
+    let est_transfer_gb_per_run = if total_expanded_matrix_jobs == 0 {
+        0.0
+    } else {
+        (((total_expanded_matrix_jobs as f64) * 0.18 + (jobs_uploading_artifacts as f64) * 0.35)
+            * 100.0)
+            .round()
+            / 100.0
+    };
+    let monthly_transfer_gb = ((est_transfer_gb_per_run * monthly_runs) * 100.0).round() / 100.0;
+    let worst_case_rate_per_gb =
+        AWS_INTERNET_EGRESS_USD_PER_GB + infracost_aws_nat_gateway_per_gb_usd;
+    let monthly_infracost_private_subnet_nat_worst_case_usd =
+        ((monthly_transfer_gb * worst_case_rate_per_gb) * 100.0).round() / 100.0;
+    let monthly_infracost_cross_region_registry_usd =
+        ((monthly_transfer_gb * AWS_CROSS_REGION_USD_PER_GB) * 100.0).round() / 100.0;
+    // With S3/ECR VPC Endpoints ($0.01/GB) + 70% cache hit rate (only 30% cold pull volume):
+    let monthly_infracost_vpc_endpoint_cache_optimized_usd =
+        ((monthly_transfer_gb * 0.30 * AWS_VPC_ENDPOINT_USD_PER_GB) * 100.0).round() / 100.0;
+
+    let cost_components = CostComponentsBreakdown {
+        rounding_tax_mins_per_run,
+        monthly_rounding_tax_usd,
+        linux_mins_per_run: (linux_mins_per_run * 100.0).round() / 100.0,
+        windows_mins_per_run: (windows_mins_per_run * 100.0).round() / 100.0,
+        macos_mins_per_run: (macos_mins_per_run * 100.0).round() / 100.0,
+        os_weighted_free_tier_mins_per_run: (os_weighted_free_tier_mins_per_run * 100.0).round()
+            / 100.0,
+        monthly_os_weighted_free_tier_mins,
+        monthly_flake_retry_10pct_overhead_usd,
+        hosted_effective_hourly_rate_usd,
+        infracost_recommended_ec2_instance: ec2_label.to_string(),
+        infracost_ec2_on_demand_hourly_usd: ec2_od_hr,
+        infracost_ec2_on_demand_monthly_usd: ec2_od_mo,
+        infracost_ec2_spot_hourly_usd: ec2_spot_hr,
+        infracost_ec2_surrounding_overhead_monthly_usd,
+        macos_self_hosted_mac_mini_monthly_usd,
+        self_hosted_breakeven_mins_t3_medium: SELF_HOSTED_BREAKEVEN_MINS_PER_MONTH,
+        self_hosted_breakeven_mins_c5_4xlarge_spot: SELF_HOSTED_C5_4XLARGE_SPOT_BREAKEVEN_MINS,
+        jobs_uploading_artifacts,
+        default_retention_days,
+        steady_state_stored_gb_90d,
+        steady_state_stored_gb_14d,
+        monthly_vendor_storage_90d_usd,
+        monthly_vendor_storage_14d_usd,
+        monthly_infracost_s3_standard_90d_usd,
+        monthly_infracost_s3_intelligent_14d_usd,
+        peak_concurrent_jobs_per_run,
+        hosted_concurrent_jobs_per_run,
+        macos_concurrent_jobs_per_run,
+        self_hosted_or_microvm_jobs_per_run,
+        vendor_free_concurrent_cap,
+        vendor_team_concurrent_cap,
+        parallelism_tier_upgrade_tax_monthly_usd,
+        detected_log_language_profile,
+        est_log_mb_per_run,
+        monthly_log_volume_gb,
+        vendor_default_log_retention_days,
+        monthly_vendor_default_log_cost_usd: 0.0,
+        monthly_datadog_30d_log_shipping_usd,
+        monthly_datadog_90d_log_shipping_usd,
+        monthly_splunk_30d_log_shipping_usd,
+        monthly_infracost_loki_s3_usd,
+        infracost_cloud_region,
+        est_transfer_gb_per_run,
+        monthly_transfer_gb,
+        infracost_aws_internet_egress_per_gb_usd: AWS_INTERNET_EGRESS_USD_PER_GB,
+        infracost_aws_nat_gateway_per_gb_usd,
+        infracost_aws_cross_az_per_gb_usd: AWS_CROSS_AZ_USD_PER_GB,
+        infracost_aws_cross_region_per_gb_usd: AWS_CROSS_REGION_USD_PER_GB,
+        monthly_infracost_private_subnet_nat_worst_case_usd,
+        monthly_infracost_cross_region_registry_usd,
+        monthly_infracost_vpc_endpoint_cache_optimized_usd,
+    };
+
     let elapsed_us = t0.elapsed().as_micros().max(1);
 
     BreakdownReport {
@@ -1182,6 +1556,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         monthly_self_hosted_spot_cost_usd,
         exceeds_5000m_self_hosted_breakeven: monthly_billed_mins
             >= SELF_HOSTED_BREAKEVEN_MINS_PER_MONTH,
+        cost_components,
         jobs,
     }
 }

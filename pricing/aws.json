@@ -13,8 +13,49 @@
       "aws_codebuild_project",
       "aws_s3_bucket",
       "aws_ecr_repository",
-      "aws_instance"
+      "aws_instance",
+      "aws_ebs_volume",
+      "aws_nat_gateway",
+      "aws_vpc_endpoint",
+      "aws_cloudwatch_log_group"
     ],
+    "infracost_cloud_components": {
+      "ec2_runner_instances": {
+        "t3.medium": { "vcpus": 2, "ram_gb": 4, "on_demand_hr_usd": 0.0416, "on_demand_mo_usd": 30.0, "spot_hr_usd": 0.012 },
+        "m5.large": { "vcpus": 2, "ram_gb": 8, "on_demand_hr_usd": 0.096, "on_demand_mo_usd": 69.0, "spot_hr_usd": 0.029 },
+        "m5.xlarge": { "vcpus": 4, "ram_gb": 16, "on_demand_hr_usd": 0.192, "on_demand_mo_usd": 138.0, "spot_hr_usd": 0.058 },
+        "c5.2xlarge": { "vcpus": 8, "ram_gb": 16, "on_demand_hr_usd": 0.34, "on_demand_mo_usd": 245.0, "spot_hr_usd": 0.10 },
+        "c5.4xlarge": { "vcpus": 16, "ram_gb": 32, "on_demand_hr_usd": 0.68, "on_demand_mo_usd": 490.0, "spot_hr_usd": 0.17 },
+        "m6g.xlarge": { "vcpus": 4, "ram_gb": 16, "on_demand_hr_usd": 0.154, "on_demand_mo_usd": 111.0, "spot_hr_usd": 0.046 },
+        "mac1.metal": { "vcpus": 12, "ram_gb": 32, "on_demand_hr_usd": 1.083, "on_demand_mo_usd": 792.0, "spot_hr_usd": 1.083 }
+      },
+      "s3_storage": {
+        "standard_gb_month_usd": 0.023,
+        "intelligent_tiering_gb_month_usd": 0.018,
+        "ecr_standard_gb_month_usd": 0.10
+      },
+      "nat_gateway_regional_usd_per_gb": {
+        "us-east-1": 0.045,
+        "us-east-2": 0.045,
+        "us-west-2": 0.045,
+        "us-west-1": 0.048,
+        "eu-west-1": 0.048,
+        "eu-west-2": 0.050,
+        "eu-west-3": 0.050,
+        "eu-central-1": 0.052,
+        "ap-south-1": 0.056,
+        "ap-southeast-1": 0.059,
+        "ap-northeast-1": 0.062,
+        "sa-east-1": 0.093
+      },
+      "data_transfer_usd_per_gb": {
+        "internet_egress_first_10tb": 0.090,
+        "internet_egress_next_40tb": 0.085,
+        "cross_az": 0.010,
+        "cross_region": 0.020,
+        "vpc_endpoint": 0.010
+      }
+    },
     "region": "us-east-1",
     "public_repo_standard_free": false,
     "minutes_rollover": false,

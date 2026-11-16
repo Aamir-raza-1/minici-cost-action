@@ -187,6 +187,22 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
     if expected_monthly_cost > 0:
         cost_delta_pct = abs(reported_monthly_cost - expected_monthly_cost) / expected_monthly_cost * 100.0
 
+    # Verify all 6 cicdcost.com cost_components + Infracost delegation
+    cc = breakdown_json.get("cost_components", {})
+    for comp_key in (
+        "build_minutes_cost",
+        "runner_cost",
+        "artifact_storage_cost",
+        "parallelism_cost",
+        "log_retention_cost",
+        "cross_region_egress_cost",
+    ):
+        if comp_key not in cc:
+            canonical_drifts.append(f"Missing cost_components.{comp_key} in JSON output")
+    for ic_key in ("runner_cost", "artifact_storage_cost", "log_retention_cost", "cross_region_egress_cost"):
+        if not cc.get(ic_key, {}).get("infracost_delegated"):
+            canonical_drifts.append(f"Missing infracost_delegated=true on cost_components.{ic_key}")
+
     return {
         "canonical_drifts": canonical_drifts,
         "custom_label_warnings": sorted(set(custom_label_warnings)),

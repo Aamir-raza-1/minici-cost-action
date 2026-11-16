@@ -1456,4 +1456,41 @@ jobs:
 
         let _ = fs::remove_dir_all(&empty_dir);
     }
+
+    #[test]
+    fn test_six_cicdcost_components_and_infracost_delegation() {
+        let dir = std::env::temp_dir().join("minici_6components_test");
+        let _ = fs::remove_dir_all(&dir);
+        let wf_dir = dir.join(".github").join("workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(
+            wf_dir.join("ci.yml"),
+            "name: CI\non: push\njobs:\n  build:\n    runs-on: macos-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/upload-artifact@v4\n      - run: npm test\n",
+        )
+        .unwrap();
+
+        let rep = analyze_path(&dir, None);
+        let js = rep.to_json();
+        assert!(js.contains("\"cost_components\":"));
+        assert!(js.contains("\"build_minutes_cost\":"));
+        assert!(js.contains("\"runner_cost\":"));
+        assert!(js.contains("\"artifact_storage_cost\":"));
+        assert!(js.contains("\"parallelism_cost\":"));
+        assert!(js.contains("\"log_retention_cost\":"));
+        assert!(js.contains("\"cross_region_egress_cost\":"));
+        assert!(js.contains("\"infracost_delegated\":true"));
+        // macOS 10x free-tier multiplier check
+        assert!(rep.cost_components.os_weighted_free_tier_mins_per_run >= rep.billed_mins_per_run * 9.9);
+        assert_eq!(rep.cost_components.macos_self_hosted_mac_mini_monthly_usd, 25.0);
+        assert_eq!(
+            crate::catalog::infracost_aws_nat_gateway_rate_usd("eu-west-2"),
+            0.050
+        );
+        assert_eq!(
+            crate::catalog::infracost_aws_nat_gateway_rate_usd("sa-east-1"),
+            0.093
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
