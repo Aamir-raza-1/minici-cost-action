@@ -25,7 +25,7 @@ fn print_help() {
 }
 
 pub fn help_text() -> &'static str {
-    "minici 0.2.0 — MiniCI (Skipwise): Sub-Millisecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine\n\
+    "minici 0.2.0 — MiniCI: Sub-Millisecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine\n\
 Author: Aamir Raza <raza.aamir01@gmail.com>\n\n\
 USAGE:\n  \
   minici <COMMAND> [OPTIONS]\n\n\

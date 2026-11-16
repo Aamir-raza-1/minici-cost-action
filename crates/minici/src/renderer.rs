@@ -370,8 +370,9 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
 }
 
 pub fn render_cli_compact_diff(d: &DiffReport) -> String {
-    let sign = if d.delta_monthly_compute_usd >= 0.0 { "+" } else { "" };
-    let wait_sign = if d.delta_monthly_dev_wait_usd >= 0.0 { "+" } else { "" };
+    let sign = if d.delta_monthly_compute_usd >= 0.0 { "+" } else { "-" };
+    let pct_sign = if d.delta_monthly_compute_pct >= 0.0 { "+" } else { "" };
+    let wait_sign = if d.delta_monthly_dev_wait_usd >= 0.0 { "+" } else { "-" };
     let top_change = d
         .job_changes
         .first()
@@ -380,7 +381,7 @@ pub fn render_cli_compact_diff(d: &DiffReport) -> String {
 
     format!(
         "+====================================================================================+\n\
-         | MINICI (SKIPWISE) — PULL REQUEST COST DIFF ({} µs • Exit Code 0 Informational)     |\n\
+         | MINICI — PULL REQUEST COST DIFF ({} µs • Exit Code 0 Informational)                |\n\
          +====================================================================================+\n\
            Comparing            : `{}` (Base) -> `{}` (PR Head)\n\
            1. Matrix Jobs       : {} jobs -> {} jobs ({:+} jobs)\n\
@@ -401,13 +402,13 @@ pub fn render_cli_compact_diff(d: &DiffReport) -> String {
         d.base_monthly_compute_usd,
         d.head_monthly_compute_usd,
         sign,
-        d.delta_monthly_compute_usd,
-        sign,
+        d.delta_monthly_compute_usd.abs(),
+        pct_sign,
         d.delta_monthly_compute_pct,
         d.base_monthly_dev_wait_usd,
         d.head_monthly_dev_wait_usd,
         wait_sign,
-        d.delta_monthly_dev_wait_usd,
+        d.delta_monthly_dev_wait_usd.abs(),
         top_change,
         d.job_changes.len()
     )
