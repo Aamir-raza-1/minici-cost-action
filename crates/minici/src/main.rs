@@ -519,6 +519,12 @@ fn main() {
                             i += 1;
                         }
                     }
+                    "--region" => {
+                        if i + 1 < rest.len() {
+                            env::set_var("AWS_REGION", &rest[i + 1]);
+                            i += 1;
+                        }
+                    }
                     "--benchmark" => benchmark = true,
                     "--quiet" | "-q" => quiet = true,
                     "--customer-mode" | "--hide-internal" => {
@@ -672,6 +678,12 @@ fn main() {
                             i += 1;
                         }
                     }
+                    "--region" => {
+                        if i + 1 < rest.len() {
+                            env::set_var("AWS_REGION", &rest[i + 1]);
+                            i += 1;
+                        }
+                    }
                     "--quiet" => quiet = true,
                     _ => {}
                 }
@@ -726,6 +738,12 @@ fn main() {
                     "--out-file" => {
                         if i + 1 < rest.len() {
                             out_file = Some(PathBuf::from(&rest[i + 1]));
+                            i += 1;
+                        }
+                    }
+                    "--region" => {
+                        if i + 1 < rest.len() {
+                            env::set_var("AWS_REGION", &rest[i + 1]);
                             i += 1;
                         }
                     }
