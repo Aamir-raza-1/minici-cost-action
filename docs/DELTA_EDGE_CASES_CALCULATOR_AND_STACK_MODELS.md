@@ -981,3 +981,64 @@ In `crates/minici/src/catalog.rs` around line `1091` (after the `windows` branch
    - `ggml-org/llama.cpp`: `"cpp-cmake-ninja"` with `"ccache-remote-storage-and-ninja-larger-runners"` and `"compile-heavy"` Amdahl profile.
    - `flutter/flutter`: `"flutter-dart-mobile"` with `"pub-cache-gradle-deriveddata-and-codemagic-m2-flat-plan"`.
 4. **0.00% Golden Baseline Deviation:** Because `detect_language_and_iac_signals()` is untouched, all 16 locked KPI groups (`c1..c6`, `h1..h5`, `s1..s5`) in `tests/golden_baseline_10_repos.json` pass with **0.00% deviation**.
+
+
+---
+
+## Session 4 Audit: Primary-Source Verified Caching, Matrix, Ephemeral Runner & Spot Instance Edge-Case Protections
+
+**Audited Implementation Range:** `crates/minici/src/engine.rs` (lines `2045–2100` and `2790–3240`)
+**Code Modification Status:** Zero Rust defects found; `tests/golden_baseline_10_repos.json` remains locked at **`0.00%` KPI deviation**.
+
+### 1. Ephemeral Runner & Spot Instance Economics (`engine.rs:2076–2089`, `2794–2852`, `3092–3133`)
+
+- **`always_on_runner_utilization_pct` & `ephemeral_runner_recommended_mode` (`engine.rs:2795–2831`):**
+  - Computes active runner hours `active_runner_hours_per_month = monthly_billed_mins / 60.0` and sizes the baseline always-on fleet at `1` node per `500` active hours/month (`fleet_nodes = ((active_runner_hours_per_month / 500.0).ceil() as usize).max(1)`, or `0` when `jobs.is_empty()`).
+  - Utilization is bounded cleanly within `[0.0%, 100.0%]` against `fleet_nodes * 720.0` wall-clock hours/month.
+  - Mode recommendation enforces a 4-way boundary guard:
+    1. `"none"` when `jobs.is_empty() == true` (`0`-workflow repos).
+    2. `"hosted-saas"` below the self-hosted break-even threshold (`monthly_billed_mins < 1800.0 && gross_monthly_compute_cost_usd < 150.0`).
+    3. When `always_on_runner_utilization_pct < 45.0%`: selects `"hybrid-warm-pool-plus-ephemeral-spot"` if the 90-second slow-path cold-start wait tax (`10%` burst runs at `40%` DORA productivity factor) reaches `>= $25.00/mo` or `monthly_billed_mins >= 15,000`, otherwise `"ephemeral-arc-karpenter"`.
+    4. `"always-on-horizontal"` only when sustained volume hits `active_runner_hours_per_month >= 700.0` at `>= 65.0%` utilization; otherwise defaults to `"hybrid-warm-pool-plus-ephemeral-spot"`.
+- **Mixed CI/Deploy Workflow Guard for `spot_ineligible_jobs_count` (`engine.rs:2076–2089`, `3092–3116`):**
+  - **Edge Case Protected:** A single `.github/workflows/ci.yml` file often contains both a multi-cell matrix test job (e.g., `test (ubuntu-latest, node 18/20/22)`) and a single-cell release/deploy job containing `terraform apply`, `kubectl apply`, `cargo publish`, or `npm publish`.
+  - **Protection Mechanism:** While `detect_workflow_hygiene_signals` flags the workflow file in `sig.spot_ineligible_workflow_files` (`lines 2076–2089`), the per-job loop (`lines 3095–3116`) only inherits workflow-level ineligibility when `j.matrix_combination_count == 1` (`j.matrix_combination_count == 1 && hygiene.spot_ineligible_workflow_files.iter().any(|wf| wf == &j.workflow_file)`), unless the job itself has `est_raw_duration_mins_per_job > 30.0` or its job ID / workflow filename explicitly contains `"release" | "deploy" | "publish" | "apply" | "migrate"`.
+  - **Result:** Multi-cell matrix unit-test jobs inside mixed CI/deploy workflows are never falsely marked Spot-ineligible.
+- **`hybrid_spot_plus_on_demand_monthly_usd` (`engine.rs:3117–3133`):**
+  - Computes `ineligible_share = (spot_ineligible_mins_per_run / billed_mins_per_run).clamp(0.0, 1.0)` (`0.0` when `billed_mins_per_run == 0.0`) and blends Spot compute (`monthly_self_hosted_spot_cost_usd + spot_retry_overhead_monthly_usd`, using AWS Live Spot Advisor `1.25%` Graviton/AMD vs. `2.5%` single-family x86 retry factors) for `(1.0 - ineligible_share)` with On-Demand compute (`on_demand_active_monthly_usd`) for `ineligible_share`.
+
+### 2. Matrix Build Cost Strategy & Schedule-Only Nightly Guard (`engine.rs:2090–2097`, `3135–3174`)
+
+- **Schedule-Only Nightly Matrix Protection for `pr_unconditional_matrix_cells` (`engine.rs:2090–2097`):**
+  - **Edge Case Protected:** Many repositories run exhaustive cross-OS or multi-version matrices only on `schedule` (nightly cron) or `workflow_dispatch`, while keeping PR workflows lean—or already guard matrix fan-out with `github.event_name == 'pull_request'` / `github.event_name != 'pull_request'`.
+  - **Protection Mechanism:** `sig.pr_unconditional_matrix_workflow_files` only records a workflow if all three conditions hold:
+    1. `triggers_pr_or_push == true` (the workflow actually triggers on `pull_request`, `pull_request_target`, or `push`),
+    2. `low.contains("matrix:")`, and
+    3. `!low.contains("github.event_name ==") && !low.contains("github.event_name !=")`.
+  - **Result:** Schedule-only nightly matrix workflows and event-guarded matrices never inflate `pr_unconditional_matrix_cells` or `conditional_pr_matrix_monthly_savings_usd`.
+- **`conditional_pr_matrix_monthly_savings_usd` & `detected_repo_matrix_profile` (`engine.rs:3140–3174`):**
+  - For each unguarded PR/push matrix job (`j.matrix_combination_count > 1`), computes the single primary cell cost `single_cell_cost = j.run_compute_cost_usd / (j.matrix_combination_count as f64)` and the excess PR matrix cost `j.run_compute_cost_usd - single_cell_cost`.
+  - Applies the `80%` PR-traffic share (`pr_excess_matrix_run_cost_usd * monthly_runs * 0.80`) representing running `1` primary cell on PRs and full `N` cells on merge/nightly.
+  - Classifies `detected_repo_matrix_profile` into `"none"` (empty repo), `"single-target-application"` (`matrix_jobs_count == 0` or `< 4` unconditional cells on a non-library), `"multi-target-library-or-sdk"` (when `has_library_release_signals` such as `cibuildwheel`/`maturin`/`goreleaser`/`cargo publish`/`npm publish`/`twine upload` are present, or 3-OS matrix without deploy steps, or `>= 6` unconditional cells in Rust/C++/Go/Flutter), or `"application-with-excess-matrix"` (`>= 4` unconditional PR cells on an application repo).
+
+### 3. 7-Layer Caching Strategy Ordering & PR Cache Poisoning Guard (`engine.rs:2049–2065`, `3176–3240`)
+
+- **`next_recommended_caching_layer` (`engine.rs:3177–3201`):**
+  - Evaluates a strict 7-layer priority DAG so repositories only receive the next missing high-ROI caching layer:
+    1. `"layer-1-dependency-cache"` when `jobs_missing_cache > 0` (jobs `> 2.0m` lacking dependency cache).
+    2. `"layer-2-docker-buildkit-registry-cache"` when Docker build/push steps exist without BuildKit `cache-from`/`cache-to` (`type=gha` / `type=registry`).
+    3. `"layer-4-compiler-artifact-cache-sccache-ccache"` for compiled stacks (`Rust`, `Java`, `iOS`, `Android`, `C++/CMake`, `Flutter/Dart`) lacking remote compile caching (`sccache`, `ccache`, `Swatinem/rust-cache`, Gradle build cache).
+    4. `"layer-5-distributed-remote-cache"` when `detected_workspace_units_count >= 3` without an affected-graph / monorepo cache tool.
+    5. `"layer-6-ecr-pull-through-base-image-mirror"` when Docker build/push steps exist without an ECR pull-through or registry mirror.
+    6. `"layer-3-test-result-cache"` when `total_expanded_matrix_jobs >= 5` without test sharding/splitting.
+    7. `"layer-7-package-registry-mirror"` when high-volume pipelines (`monthly_billed_mins >= 50,000`) lack a registry mirror (`verdaccio`, `artifactory`, `nexus`, `ecr-pull-through`).
+    8. `"all-applicable-layers-active"` once all applicable layers are satisfied.
+- **`distributed_remote_cache_monthly_infra_usd` (`engine.rs:3205–3220`):**
+  - Anchored to primary-source vendor pricing: `$0.00/mo` for Vercel Turborepo Remote Cache (free tier up to `100 GB` Hobby / `1 TB` Pro with `$0` egress) or non-compiled `pnpm` repos; `$125.00/mo` for Bazel, Nx, or large monorepos (`>= 10` workspace units); `$15.00/mo` for S3-backed `sccache`/`ccache`/Gradle remote cache on compiled stacks.
+- **`container_base_image_mirror_monthly_savings_usd` (`engine.rs:3221–3236`):**
+  - Strictly gated on `hygiene.has_docker_build_or_push_steps && !hygiene.has_ecr_or_registry_mirror`.
+  - Combines a `15%` pull reduction on the `18%` Docker build phase (`gross_monthly_compute_cost_usd * 0.18 * 0.15`) plus `25%` of avoidable NAT Gateway egress **only** when `true_self_hosted_jobs_per_run > 0` (`$0.00` egress component on standard SaaS runners, honoring the Strict Applicability Rule).
+- **Read-Only PR Cache Guard for `pr_cache_poisoning_risk_jobs` (`engine.rs:2049–2055`, `3237–3240`):**
+  - **Edge Case Protected:** Unprivileged PR workflows that write to shared cache keys risk cache poisoning or thrashing downstream `main` branch caches unless configured for read-only lookup on PRs.
+  - **Protection Mechanism:** `detect_workflow_hygiene_signals` scans workflow definitions for `lookup-only: true`, parameterized `lookup-only: ${{`, `save-always: false`, or `cache-read-only` (`lines 2049–2055`), setting `sig.has_pr_cache_write_guard = true`.
+  - **Result:** When `hygiene.has_pr_cache_write_guard` is `true`, `pr_cache_poisoning_risk_jobs` is immediately cleared to `0` (`lines 3237–3240`); otherwise it reports `jobs_with_cache`.
