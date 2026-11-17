@@ -1,4 +1,4 @@
-# Delta & Edge-Case Audit: 5 Team-Stage & Pipeline-Shape Models (`v0.4.0` • Commit `677a722`)
+# Delta & Edge-Case Audit: 5 Team-Stage & Pipeline-Shape Models (`v0.5.0` • Commits `677a722..7c5eb2a`)
 
 > **Auditor:** Session 4 (`Delta & Edge-Case Auditor`)
 > **Target Engine:** `/Users/araza/personal/minici-cost-action/crates/minici/src/engine.rs` (`detect_workflow_hygiene_signals` & `analyze_path`)

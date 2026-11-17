@@ -1,6 +1,6 @@
 # Customer Impact & Multi-Repository Analysis: 5 Team-Stage & Pipeline-Shape Cost Models
 
-**Repository:** `/Users/araza/personal/minici-cost-action` (`v0.3.0` • commit `677a722`)  
+**Repository:** `/Users/araza/personal/minici-cost-action` (`v0.5.0` • commit `7c5eb2a`)  
 **Engine:** `minici` Zero-Dependency Rust Static FinOps Engine (`< 3.5 ms` execution per repository)  
 **Scope:** 13 Representative Production & World-Scale Repositories across Startup, Scaleup, and Enterprise Team Stages (`single-service`, `monorepo`, and `multi-service-microservices` pipeline shapes), validated against the full 27-repository benchmark.
 
@@ -54,16 +54,16 @@ The table below summarizes the deterministic outputs produced by `/Users/araza/.
 | **`check_Eazy-Ops__multi-cloud-finops-mcp-server`** | Startup | 1 / 1 (1) | 866.0m | $5.20 | **$0.00** | $866.00 | `startup-pre-seed (1-5 devs)` | 4 | `single-service` | 0 (`none`) |
 | **`02_mgjartproject__FineArts-BE`** | Startup | 2 / 6 (6) | 7,794.0m | $46.76 | $46.76 | $2,979.04 | `startup-seed-series-a (6-15 devs)` | 5 | `single-service` | 0 (`none`) |
 | **`03_Eazy-Ops__Backend`** | Startup | 5 / 5 (5) | 12,124.0m | $72.74 | $72.74 | $8,374.22 | `startup-seed-series-a (6-15 devs)` | 8 | `single-service` | 0 (`none`) |
-| **`check_MaximVote__tf`** | Startup | 6 / 8 (8) | 11,691.0m | $70.15 | $70.15 | $1,688.70 | `startup-seed-series-a (6-15 devs)` | 8 | `monorepo` | 3 (`path-filters-only`) |
-| **`01_MaximVote__maxim`** | Scaleup | 41 / 45 (57) | 84,435.0m | $1,009.41 | $1,009.41 | $4,269.38 | `scaleup (25-100 devs)` | 53 | `monorepo` | 10 (`turborepo`) |
-| **`07_immich-app__immich`** | Scaleup | 27 / 76 (85) | 116,477.0m | $819.67 | $819.67 | $4,879.91 | `scaleup (25-100 devs)` | 73 | `monorepo` | 17 (`path-filters-only`) |
-| **`08_langgenius__dify`** | Scaleup | 41 / 84 (117) | 170,385.5m | $1,153.51 | $1,153.51 | $4,853.93 | `enterprise (250+ devs)` | 107 | `monorepo` | 45 (`path-filters-only`) |
-| **`10_mendableai__firecrawl`** | Scaleup | 36 / 71 (86) | 271,426.1m | $1,978.81 | $1,978.81 | $39,615.17 | `enterprise (250+ devs)` | 170 | `monorepo` | 16 (`path-filters-only`) |
-| **`fresh_05_vercel__next.js`** | Enterprise | 5 / 38 (45) | 57,156.0m | $919.69 | $919.69 | $2,511.40 | `scaleup (25-100 devs)` | 36 | `single-service` | 0 (`none`) |
-| **`06_ggml-org__llama.cpp`** | Enterprise | 62 / 121 (152) | 199,115.1m | $1,930.75 | $1,930.75 | $6,378.09 | `enterprise (250+ devs)` | 125 | `multi-service-microservices` | 1 (`none`) |
+| **`check_MaximVote__tf`** | Startup | 6 / 8 (8) | 11,691.0m | $70.15 | $70.15 | $1,688.70 | `startup-seed-series-a (6-15 devs)` | 8 | `monorepo` | 6 (`path-filters-only`) |
+| **`01_MaximVote__maxim`** | Scaleup | 41 / 45 (57) | 84,435.0m | $1,009.41 | $1,009.41 | $4,269.38 | `scaleup (25-100 devs)` | 53 | `monorepo` | 9 (`turborepo`) |
+| **`07_immich-app__immich`** | Scaleup | 27 / 76 (85) | 116,477.0m | $819.67 | $819.67 | $4,879.91 | `scaleup (25-100 devs)` | 73 | `monorepo` | 20 (`path-filters-only`) |
+| **`08_langgenius__dify`** | Scaleup | 41 / 84 (117) | 170,385.5m | $1,153.51 | $1,153.51 | $4,853.93 | `scaleup (25-100 devs)` | 107 | `monorepo` | 67 (`path-filters-only`) |
+| **`10_mendableai__firecrawl`** | Scaleup | 36 / 71 (86) | 271,426.1m | $1,978.81 | $1,978.81 | $39,615.17 | `scaleup (25-100 devs)` | 170 | `monorepo` | 16 (`path-filters-only`) |
+| **`fresh_05_vercel__next.js`** | Enterprise | 5 / 38 (45) | 57,156.0m | $919.69 | $919.69 | $2,511.40 | `scaleup (25-100 devs)` | 36 | `monorepo` | 5 (`turborepo`) |
+| **`06_ggml-org__llama.cpp`** | Enterprise | 62 / 121 (152) | 199,115.1m | $1,930.75 | $1,930.75 | $6,378.09 | `scaleup (25-100 devs)` | 125 | `multi-service-microservices` | 2 (`path-filters-only`) |
 | **`04_astral-sh__uv`** | Enterprise | 47 / 223 (243) | 323,126.3m | $3,464.00 | $3,464.00 | $6,122.62 | `enterprise (250+ devs)` | 202 | `monorepo` | 5 (`path-filters-only`) |
-| **`fresh_10_pydantic__pydantic`** | Enterprise | 12 / 66 (175) | 402,993.1m | $4,759.88 | $4,759.88 | $5,958.08 | `enterprise (250+ devs)` | 252 | `monorepo` | 8 (`none`) |
-| **`05_denoland__deno`** | Enterprise | 11 / 59 (162) | 805,380.0m | $20,206.81 | $20,206.81 | $13,015.98 | `enterprise (250+ devs)` | 504 | `multi-service-microservices` | 1 (`none`) |
+| **`fresh_10_pydantic__pydantic`** | Enterprise | 12 / 66 (175) | 402,993.1m | $4,759.88 | $4,759.88 | $5,958.08 | `enterprise (250+ devs)` | 252 | `single-service` | 1 (`none`) |
+| **`05_denoland__deno`** | Enterprise | 11 / 59 (162) | 805,380.0m | $20,206.81 | $20,206.81 | $13,015.98 | `enterprise (250+ devs)` | 504 | `single-service` | 0 (`none`) |
 
 ---
 
@@ -134,7 +134,7 @@ The table below summarizes the deterministic outputs produced by `/Users/araza/.
 | **`06_ggml-org__llama.cpp`** | 1 | `oidc-federated-auth` | `[]` | `1.0x` | $5,250.00 | **$1,796.15/mo** |
 | **`03_Eazy-Ops__Backend`** | 2 | `sast-codeql-semgrep`, `sca-container-vulnerability-scan` | `us-central1` | `1.0x` | $5,250.00 | $6.59/mo |
 | **`check_MaximVote__tf`** | 2 | `oidc-federated-auth`, `deployment-environment-approvals` | `us-west-1` | `1.0x` | $5,250.00 | $23.11/mo |
-| **`01_MaximVote__maxim`** | 2 | `oidc-federated-auth`, `deployment-environment-approvals` | `us-east-1`, `us-west-1` | **`1.8x`** | $5,250.00 | **$134.72/mo** |
+| **`01_MaximVote__maxim`** | 2 | `oidc-federated-auth`, `deployment-environment-approvals` | `us-east-1`, `us-west-1`, `us-west1` | **`2.75x`** | $5,250.00 | **$205.82/mo** |
 | **`10_mendableai__firecrawl`** | 2 | `deployment-environment-approvals`, `oidc-federated-auth` | `[]` | `1.0x` | $5,250.00 | $248.40/mo |
 | **`05_denoland__deno`** | 2 | `oidc-federated-auth`, `deployment-environment-approvals` | `[]` | `1.0x` | $5,250.00 | $467.91/mo |
 | **`fresh_10_pydantic__pydantic`** | 2 | `oidc-federated-auth`, `deployment-environment-approvals` | `[]` | `1.0x` | $5,250.00 | **$505.49/mo** |

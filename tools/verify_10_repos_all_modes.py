@@ -215,7 +215,7 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
     if expected_monthly_cost > 0:
         cost_delta_pct = abs(reported_monthly_cost - expected_monthly_cost) / expected_monthly_cost * 100.0
 
-    # Verify all 11 MiniCI cost_components (6 invoice components + 5 hidden payroll & pipeline cost models)
+    # Verify all 16 MiniCI cost_components (6 invoice + 5 hidden payroll/pipeline + 5 team-stage/pipeline-shape models)
     cc = breakdown_json.get("cost_components", {})
     for comp_key in (
         "build_minutes_cost",
@@ -229,6 +229,11 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
         "build_cache_savings",
         "flaky_test_ci_cd_tax",
         "branch_protection_cost",
+        "startup_stage_cost",
+        "scaleup_stage_cost",
+        "enterprise_stage_cost",
+        "monorepo_ci_cost",
+        "microservices_ci_cost",
     ):
         if comp_key not in cc:
             canonical_drifts.append(f"Missing cost_components.{comp_key} in JSON output")
@@ -377,6 +382,22 @@ def validate_single_repo_all_modes(
         "h5_superseded_run_waste_usd": cc["branch_protection_cost"]["monthly_superseded_run_waste_usd"],
         "h5_missing_path_filter_wf": cc["branch_protection_cost"]["workflows_missing_path_filters"],
         "h5_unfiltered_check_savings_usd": cc["branch_protection_cost"]["monthly_unfiltered_check_savings_usd"],
+        "s1_inferred_team_stage": cc["startup_stage_cost"]["inferred_team_stage"],
+        "s1_implied_active_devs": cc["startup_stage_cost"]["implied_active_devs"],
+        "s1_mac_mini_payback_months": cc["startup_stage_cost"]["mac_mini_hardware_payback_months"],
+        "s2_self_hosted_breakeven": cc["scaleup_stage_cost"]["self_hosted_breakeven_reached"],
+        "s2_recoverable_ci_and_wait_usd": cc["scaleup_stage_cost"]["recoverable_ci_and_wait_monthly_usd"],
+        "s2_platform_eng_roi_pct": cc["scaleup_stage_cost"]["platform_engineer_roi_coverage_pct"],
+        "s3_compliance_controls_count": cc["enterprise_stage_cost"]["compliance_controls_count"],
+        "s3_regional_residency_multiplier": cc["enterprise_stage_cost"]["regional_residency_multiplier"],
+        "s3_siem_1yr_retention_usd": cc["enterprise_stage_cost"]["siem_1yr_audit_log_retention_monthly_usd"],
+        "s4_detected_pipeline_shape": cc["monorepo_ci_cost"]["detected_pipeline_shape"],
+        "s4_workspace_units_count": cc["monorepo_ci_cost"]["detected_workspace_units_count"],
+        "s4_detected_monorepo_tool": cc["monorepo_ci_cost"]["detected_monorepo_tool"],
+        "s4_affected_only_savings_usd": cc["monorepo_ci_cost"]["monthly_affected_only_savings_usd"],
+        "s5_setup_overhead_share_pct": cc["microservices_ci_cost"]["setup_overhead_share_pct"],
+        "s5_shared_infra_setup_savings_usd": cc["microservices_ci_cost"]["monthly_shared_infra_setup_savings_usd"],
+        "s5_unpinned_template_refs_count": cc["microservices_ci_cost"]["unpinned_template_refs_count"],
         "engine_time_us": engine_us,
         "engine_time_ms": engine_ms,
         "cli_wall_ms": round(wall_bd_ms, 2),
@@ -397,9 +418,9 @@ def write_markdown_baseline_doc(
     fresh_results: list[dict],
 ) -> None:
     lines = [
-        "# Locked 27-Repository Golden Baseline: KPIs, 11 Unified CI/CD Cost Models & 3-Mode Latency (`v0.4.0`)",
+        "# Locked 27-Repository Golden Baseline: KPIs, 16 Unified CI/CD Cost Models & 3-Mode Latency (`v0.5.0`)",
         "",
-        "**Locked Version:** `minici 0.4.0` (`tag: v0.4.0`)  ",
+        "**Locked Version:** `minici 0.5.0` (`tag: v0.5.0`)  ",
         "**Total Repositories Locked:** `27` (`10` Primary + `7` Internal Edge-Case + `10` Fresh World-Scale OSS)  ",
         "**Execution Modes Verified on Every Repo:** `Mode 1: CLI` • `Mode 2: GitHub Action Workflow` • `Mode 3: MCP JSON-RPC 2.0 + Shift-Left Hook`  ",
         "**Machine-Readable Companion Lock:** [`tests/golden_baseline_10_repos.json`](../tests/golden_baseline_10_repos.json)",
@@ -414,7 +435,7 @@ def write_markdown_baseline_doc(
         "python3 tools/verify_10_repos_all_modes.py",
         "```",
         "",
-        "If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or any of the 11 unified CI/CD cost models (`6` invoice components + `5` hidden payroll & pipeline cost models) on any of the 27 repositories, `verify_10_repos_all_modes.py` exits non-zero and prints the exact field delta.",
+        "If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or any of the 16 unified CI/CD cost models (`6` invoice components + `5` hidden payroll/pipeline models + `5` team-stage & pipeline-shape models) on any of the 27 repositories, `verify_10_repos_all_modes.py` exits non-zero and prints the exact field delta.",
         "",
         "---",
         "",
@@ -456,6 +477,22 @@ def write_markdown_baseline_doc(
             f"| **`{r['repo']}`** | `${r['h1_productive_payroll_loss_usd']:,.2f}/mo` | `${r['h2_immediate_flake_cost_usd']:,.2f}/mo` "
             f"| `{r['h3_cached_jobs']}/{r['expanded_jobs']}` (`${r['h3_unrealized_cache_savings_usd']:,.2f}/mo`) | `${r['h4_combined_flake_tax_usd']:,.2f}/mo` "
             f"| `{r['h5_missing_cancel_wf']}` wf (`${r['h5_superseded_run_waste_usd']:,.2f}/mo`) | `{r['h5_missing_path_filter_wf']}` wf (`${r['h5_unfiltered_check_savings_usd']:,.2f}/mo`) |"
+        )
+
+    lines.extend([
+        "",
+        "### Part 1D: 10 Primary Repositories — 5 Dynamic Team-Stage & Pipeline-Shape Cost Models",
+        "",
+        "| Repository | S1: Inferred Team Stage (`Devs` • `Mac mini Payback`) | S2: Recoverable Waste (`Platform Eng ROI %`) | S3: Compliance Controls (`Residency` • `1yr SIEM`) | S4: Pipeline Shape (`Units` • `Tool` • `Affected Savings`) | S5: Setup Share (`Shared Base Savings` • `Unpinned`) |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: |",
+    ])
+    for r in ten_results:
+        lines.append(
+            f"| **`{r['repo']}`** | `{r['s1_inferred_team_stage']}` (`{r['s1_implied_active_devs']}` devs • `{r['s1_mac_mini_payback_months']:.2f}m`) "
+            f"| `${r['s2_recoverable_ci_and_wait_usd']:,.2f}/mo` (`{r['s2_platform_eng_roi_pct']:.2f}%`) "
+            f"| `{r['s3_compliance_controls_count']}` (`{r['s3_regional_residency_multiplier']:.2f}x` • `${r['s3_siem_1yr_retention_usd']:,.2f}/mo`) "
+            f"| `{r['s4_detected_pipeline_shape']}` (`{r['s4_workspace_units_count']}` • `{r['s4_detected_monorepo_tool']}` • `${r['s4_affected_only_savings_usd']:,.2f}/mo`) "
+            f"| `{r['s5_setup_overhead_share_pct']:.1f}%` (`${r['s5_shared_infra_setup_savings_usd']:,.2f}/mo` • `{r['s5_unpinned_template_refs_count']}`) |"
         )
 
     lines.extend([
@@ -504,6 +541,22 @@ def write_markdown_baseline_doc(
 
     lines.extend([
         "",
+        "### Part 2D: 10 Fresh World-Scale Repositories — 5 Dynamic Team-Stage & Pipeline-Shape Cost Models",
+        "",
+        "| Repository | S1: Inferred Team Stage (`Devs` • `Mac mini Payback`) | S2: Recoverable Waste (`Platform Eng ROI %`) | S3: Compliance Controls (`Residency` • `1yr SIEM`) | S4: Pipeline Shape (`Units` • `Tool` • `Affected Savings`) | S5: Setup Share (`Shared Base Savings` • `Unpinned`) |",
+        "| :--- | :---: | :---: | :---: | :---: | :---: |",
+    ])
+    for r in fresh_results:
+        lines.append(
+            f"| **`{r['repo']}`** | `{r['s1_inferred_team_stage']}` (`{r['s1_implied_active_devs']}` devs • `{r['s1_mac_mini_payback_months']:.2f}m`) "
+            f"| `${r['s2_recoverable_ci_and_wait_usd']:,.2f}/mo` (`{r['s2_platform_eng_roi_pct']:.2f}%`) "
+            f"| `{r['s3_compliance_controls_count']}` (`{r['s3_regional_residency_multiplier']:.2f}x` • `${r['s3_siem_1yr_retention_usd']:,.2f}/mo`) "
+            f"| `{r['s4_detected_pipeline_shape']}` (`{r['s4_workspace_units_count']}` • `{r['s4_detected_monorepo_tool']}` • `${r['s4_affected_only_savings_usd']:,.2f}/mo`) "
+            f"| `{r['s5_setup_overhead_share_pct']:.1f}%` (`${r['s5_shared_infra_setup_savings_usd']:,.2f}/mo` • `{r['s5_unpinned_template_refs_count']}`) |"
+        )
+
+    lines.extend([
+        "",
         "---",
         "",
         "## Part 3: 7 Internal Edge-Case Repositories — KPIs & Latency",
@@ -544,7 +597,7 @@ def main():
     edge_case_results = []
 
     print("=" * 118)
-    print(" MINICI-COST-ACTION (v0.4.0) — 27-REPOSITORY (17 EXISTING + 10 FRESH) x 3-MODE PARALLEL VALIDATION & GOLDEN LOCK")
+    print(" MINICI-COST-ACTION (v0.5.0) — 27-REPOSITORY (17 EXISTING + 10 FRESH) x 3-MODE PARALLEL VALIDATION & GOLDEN LOCK")
     print("=" * 118)
 
     with tempfile.TemporaryDirectory(prefix="minici-27repo-reports-") as tmp_rep_dir:
@@ -577,7 +630,7 @@ def main():
 
         if fresh_results:
             print("-" * 118)
-            print(" 10 FRESH WORLD-SCALE GITHUB REPOSITORIES (CLI + WORKFLOW + MCP 4-RPC + 11 COST MODELS):")
+            print(" 10 FRESH WORLD-SCALE GITHUB REPOSITORIES (CLI + WORKFLOW + MCP 4-RPC + 16 COST MODELS):")
             for row in fresh_results:
                 warn_tag = f"⚠️ {len(row['math_audit']['custom_label_warnings'])} custom-label note(s)" if row["math_audit"]["custom_label_warnings"] else "✅ 0.00% drift"
                 print(
@@ -643,14 +696,30 @@ def main():
             "h5_superseded_run_waste_usd": r["h5_superseded_run_waste_usd"],
             "h5_missing_path_filter_wf": r["h5_missing_path_filter_wf"],
             "h5_unfiltered_check_savings_usd": r["h5_unfiltered_check_savings_usd"],
+            "s1_inferred_team_stage": r["s1_inferred_team_stage"],
+            "s1_implied_active_devs": r["s1_implied_active_devs"],
+            "s1_mac_mini_payback_months": r["s1_mac_mini_payback_months"],
+            "s2_self_hosted_breakeven": r["s2_self_hosted_breakeven"],
+            "s2_recoverable_ci_and_wait_usd": r["s2_recoverable_ci_and_wait_usd"],
+            "s2_platform_eng_roi_pct": r["s2_platform_eng_roi_pct"],
+            "s3_compliance_controls_count": r["s3_compliance_controls_count"],
+            "s3_regional_residency_multiplier": r["s3_regional_residency_multiplier"],
+            "s3_siem_1yr_retention_usd": r["s3_siem_1yr_retention_usd"],
+            "s4_detected_pipeline_shape": r["s4_detected_pipeline_shape"],
+            "s4_workspace_units_count": r["s4_workspace_units_count"],
+            "s4_detected_monorepo_tool": r["s4_detected_monorepo_tool"],
+            "s4_affected_only_savings_usd": r["s4_affected_only_savings_usd"],
+            "s5_setup_overhead_share_pct": r["s5_setup_overhead_share_pct"],
+            "s5_shared_infra_setup_savings_usd": r["s5_shared_infra_setup_savings_usd"],
+            "s5_unpinned_template_refs_count": r["s5_unpinned_template_refs_count"],
         }
 
     # Golden Locked Baseline Write or Verification
     golden_path = Path(args.golden_baseline)
     md_path = Path(args.markdown_baseline)
     locked_deterministic = {
-        "schema_version": "1.2.0",
-        "minici_version": "0.4.0",
+        "schema_version": "1.3.0",
+        "minici_version": "0.5.0",
         "repos": {r["repo"]: extract_locked_kpi(r) for r in results},
         "fresh_10_repos": {r["repo"]: extract_locked_kpi(r) for r in fresh_results},
         "edge_case_repos": {
@@ -682,8 +751,13 @@ def main():
                     if k not in exp_vals:
                         deviations.append(f"{section_key}[{repo_name}].{k}: missing in locked golden baseline")
                         continue
-                    if abs(float(v) - float(exp_vals.get(k, -999999))) > 1e-4:
-                        deviations.append(f"{section_key}[{repo_name}].{k}: expected {exp_vals.get(k)}, got {v}")
+                    exp_v = exp_vals.get(k)
+                    if isinstance(v, (int, float)) and not isinstance(v, bool):
+                        if abs(float(v) - float(exp_v)) > 1e-4:
+                            deviations.append(f"{section_key}[{repo_name}].{k}: expected {exp_v}, got {v}")
+                    else:
+                        if v != exp_v:
+                            deviations.append(f"{section_key}[{repo_name}].{k}: expected {exp_v}, got {v}")
         if deviations:
             print("❌ GOLDEN LOCKED BASELINE DEVIATION DETECTED:", file=sys.stderr)
             for d in deviations:
@@ -701,7 +775,7 @@ def main():
     summary_payload = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "binary": str(MINICI_BIN),
-        "minici_version": "0.4.0",
+        "minici_version": "0.5.0",
         "ten_repos": results,
         "fresh_10_repos": fresh_results,
         "edge_case_repos": edge_case_results,

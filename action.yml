@@ -70,6 +70,24 @@ outputs:
   monthly_unfiltered_check_savings_usd:
     description: "Monthly selective check savings from workflows missing path filters (USD)"
     value: ${{ steps.minici.outputs.monthly_unfiltered_check_savings_usd }}
+  inferred_team_stage:
+    description: "Dynamically inferred team stage from monthly CI volume and compute spend"
+    value: ${{ steps.minici.outputs.inferred_team_stage }}
+  detected_pipeline_shape:
+    description: "Dynamically detected pipeline architecture shape (single-service, monorepo, multi-service-microservices)"
+    value: ${{ steps.minici.outputs.detected_pipeline_shape }}
+  detected_workspace_units_count:
+    description: "Number of workspace or service units discovered in manifests and workflows"
+    value: ${{ steps.minici.outputs.detected_workspace_units_count }}
+  monthly_affected_only_savings_usd:
+    description: "Monthly savings from adopting affected-only dependency graph execution on monorepos (USD)"
+    value: ${{ steps.minici.outputs.monthly_affected_only_savings_usd }}
+  recoverable_ci_and_wait_monthly_usd:
+    description: "Total monthly recoverable CI compute and developer wait-time waste for Platform Engineer ROI (USD)"
+    value: ${{ steps.minici.outputs.recoverable_ci_and_wait_monthly_usd }}
+  monthly_shared_infra_setup_savings_usd:
+    description: "Monthly per-job setup overhead savings from shared base images and pre-warmed caches (USD)"
+    value: ${{ steps.minici.outputs.monthly_shared_infra_setup_savings_usd }}
 
 runs:
   using: "composite"
@@ -133,5 +151,11 @@ runs:
             f.write(f"monthly_combined_flake_tax_usd={cc.get(\"flaky_test_ci_cd_tax\", {}).get(\"monthly_combined_flake_tax_usd\", 0.0):.2f}\n")
             f.write(f"monthly_superseded_run_waste_usd={cc.get(\"branch_protection_cost\", {}).get(\"monthly_superseded_run_waste_usd\", 0.0):.2f}\n")
             f.write(f"monthly_unfiltered_check_savings_usd={cc.get(\"branch_protection_cost\", {}).get(\"monthly_unfiltered_check_savings_usd\", 0.0):.2f}\n")
+            f.write(f"inferred_team_stage={cc.get(\"startup_stage_cost\", {}).get(\"inferred_team_stage\", \"\")}\n")
+            f.write(f"detected_pipeline_shape={cc.get(\"monorepo_ci_cost\", {}).get(\"detected_pipeline_shape\", \"\")}\n")
+            f.write(f"detected_workspace_units_count={cc.get(\"monorepo_ci_cost\", {}).get(\"detected_workspace_units_count\", 0)}\n")
+            f.write(f"monthly_affected_only_savings_usd={cc.get(\"monorepo_ci_cost\", {}).get(\"monthly_affected_only_savings_usd\", 0.0):.2f}\n")
+            f.write(f"recoverable_ci_and_wait_monthly_usd={cc.get(\"scaleup_stage_cost\", {}).get(\"recoverable_ci_and_wait_monthly_usd\", 0.0):.2f}\n")
+            f.write(f"monthly_shared_infra_setup_savings_usd={cc.get(\"microservices_ci_cost\", {}).get(\"monthly_shared_infra_setup_savings_usd\", 0.0):.2f}\n")
         '
         fi

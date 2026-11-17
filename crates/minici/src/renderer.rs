@@ -512,6 +512,27 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
         ));
     }
     let mut hygiene_items = Vec::new();
+    if cc.detected_pipeline_shape == "monorepo" && cc.detected_workspace_units_count >= 2 {
+        if !cc.has_affected_only_graph_tool && cc.monthly_affected_only_savings_usd >= 10.0 {
+            hygiene_items.push(format!(
+                "Monorepo ({} units, {} affected-only saves ~${:.2}/mo)",
+                cc.detected_workspace_units_count,
+                cc.recommended_affected_tool,
+                cc.monthly_affected_only_savings_usd
+            ));
+        } else {
+            hygiene_items.push(format!(
+                "Monorepo ({} units • {})",
+                cc.detected_workspace_units_count, cc.detected_monorepo_tool
+            ));
+        }
+    } else if cc.detected_pipeline_shape == "multi-service-microservices" {
+        hygiene_items.push(format!(
+            "Multi-service ({} units, {:.0}% setup overhead)",
+            cc.detected_workspace_units_count.max(r.total_workflows),
+            cc.setup_overhead_share_pct
+        ));
+    }
     if cc.jobs_missing_cache > 0 && cc.monthly_unrealized_cache_savings_usd >= 1.0 {
         hygiene_items.push(format!(
             "Cache {}/{} jobs (caching {} uncached saves ~${:.2}/mo)",
@@ -531,6 +552,12 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
         hygiene_items.push(format!(
             "Path filters missing on {} wf (~${:.2}/mo selective savings)",
             cc.workflows_missing_path_filters, cc.monthly_unfiltered_check_savings_usd
+        ));
+    }
+    if cc.unpinned_template_refs_count > 0 {
+        hygiene_items.push(format!(
+            "{} unpinned @main/@master ref(s)",
+            cc.unpinned_template_refs_count
         ));
     }
     if !hygiene_items.is_empty() {
@@ -651,6 +678,28 @@ fn render_applicable_summary_notes_markdown(r: &BreakdownReport) -> String {
             cc.parallelism_tier_upgrade_tax_monthly_usd
         ));
     }
+    if cc.detected_pipeline_shape == "monorepo" && cc.detected_workspace_units_count >= 2 {
+        if !cc.has_affected_only_graph_tool && cc.monthly_affected_only_savings_usd >= 10.0 {
+            notes.push(format!(
+                "- **Monorepo Topology:** `{}` workspace units detected; adopting `{}` affected-only execution saves **`~${:.2}/mo`**",
+                cc.detected_workspace_units_count,
+                cc.recommended_affected_tool,
+                cc.monthly_affected_only_savings_usd
+            ));
+        } else {
+            notes.push(format!(
+                "- **Monorepo Topology:** `{}` workspace units (`{}` active)",
+                cc.detected_workspace_units_count, cc.detected_monorepo_tool
+            ));
+        }
+    } else if cc.detected_pipeline_shape == "multi-service-microservices" {
+        notes.push(format!(
+            "- **Multi-Service Topology:** `{}` service units (`{:.0}%` per-job setup overhead; shared base image saves `~${:.2}/mo`)",
+            cc.detected_workspace_units_count.max(r.total_workflows),
+            cc.setup_overhead_share_pct,
+            cc.monthly_shared_infra_setup_savings_usd
+        ));
+    }
     if cc.jobs_missing_cache > 0 && cc.monthly_unrealized_cache_savings_usd >= 1.0 {
         notes.push(format!(
             "- **Build Cache Opportunity:** `{}/{}` jobs cached; caching remaining `{}` job(s) saves **`~${:.2}/mo`** (`{:.0}-{:.0}%` typical for `{}`)",
@@ -675,6 +724,12 @@ fn render_applicable_summary_notes_markdown(r: &BreakdownReport) -> String {
             "- **Selective PR Checks:** `{}` workflow(s) run on all pushes without `paths:` filters (`~${:.2}/mo` savings with path filtering)",
             cc.workflows_missing_path_filters,
             cc.monthly_unfiltered_check_savings_usd
+        ));
+    }
+    if cc.unpinned_template_refs_count > 0 {
+        notes.push(format!(
+            "- **Template Pinning:** `{}` unpinned `@main`/`@master` reference(s) detected",
+            cc.unpinned_template_refs_count
         ));
     }
     notes.push(format!("- **Recommendation:** {}", build_contextual_recommendation(r)));
