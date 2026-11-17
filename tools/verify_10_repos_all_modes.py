@@ -215,7 +215,7 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
     if expected_monthly_cost > 0:
         cost_delta_pct = abs(reported_monthly_cost - expected_monthly_cost) / expected_monthly_cost * 100.0
 
-    # Verify all 16 MiniCI cost_components (6 invoice + 5 hidden payroll/pipeline + 5 team-stage/pipeline-shape models)
+    # Verify all 20 MiniCI cost_components (6 invoice + 5 hidden payroll/pipeline + 5 team-stage/pipeline-shape + 4 calculator/stack intelligence models)
     cc = breakdown_json.get("cost_components", {})
     for comp_key in (
         "build_minutes_cost",
@@ -234,6 +234,10 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
         "enterprise_stage_cost",
         "monorepo_ci_cost",
         "microservices_ci_cost",
+        "vendor_tco_comparison",
+        "build_phase_breakdown",
+        "compute_class_explorer",
+        "stack_specific_economics",
     ):
         if comp_key not in cc:
             canonical_drifts.append(f"Missing cost_components.{comp_key} in JSON output")
@@ -278,8 +282,8 @@ def validate_single_repo_all_modes(
     )
     assert rc_df == 0, f"CLI diff failed on {repo_name}: {err_df}"
     df_data = json.loads(out_df_json)
-    assert "cost_components" in df_data and len(df_data["cost_components"]) == 16, (
-        f"CLI diff JSON missing 16 cost_components on {repo_name}"
+    assert "cost_components" in df_data and len(df_data["cost_components"]) == 20, (
+        f"CLI diff JSON missing 20 cost_components on {repo_name}"
     )
 
     for ext in ("html", "json", "csv", "md"):
@@ -320,7 +324,7 @@ def validate_single_repo_all_modes(
     assert len(mcp_lines) == 4, f"Expected 4 JSON-RPC responses on {repo_name}, got {len(mcp_lines)}"
     mcp_bd_payload = json.loads(mcp_lines[2]["result"]["content"][0]["text"])
     assert abs(float(mcp_bd_payload["gross_monthly_compute_cost_usd"]) - float(bd_data["gross_monthly_compute_cost_usd"])) < 0.01
-    assert "cost_components" in mcp_bd_payload and len(mcp_bd_payload["cost_components"]) == 16
+    assert "cost_components" in mcp_bd_payload and len(mcp_bd_payload["cost_components"]) == 20
 
     hook_payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "git push"}}) + "\n"
     rc_hk, out_hk, err_hk, wall_hk_ms = run_timed(

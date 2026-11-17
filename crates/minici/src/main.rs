@@ -1667,4 +1667,44 @@ jobs:
         assert!(json_out.contains("\"microservices_ci_cost\":"));
         let _ = fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn test_four_calculator_and_stack_intelligence_pillars() {
+        let dir = std::env::temp_dir().join("minici_4_calculator_stack_test");
+        let _ = fs::remove_dir_all(&dir);
+        let wf_dir = dir.join(".github").join("workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(dir.join("build.gradle.kts"), "plugins { id(\"com.android.application\") }").unwrap();
+
+        fs::write(
+            wf_dir.join("android-ci.yml"),
+            "name: Android Emulator CI\non:\n  pull_request:\njobs:\n  unit-and-lint:\n    runs-on: ubuntu-4-core\n    est-minutes: 8.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./gradlew testDebugUnitTest\n  emulator-e2e:\n    runs-on: ubuntu-8-core\n    est-minutes: 14.0\n    steps:\n      - uses: actions/checkout@v4\n      - uses: reactivecircus/android-emulator-runner@v2\n      - run: ./gradlew connectedAndroidTest\n  docker-publish:\n    runs-on: ubuntu-latest\n    est-minutes: 6.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: docker build -t app:latest .\n",
+        )
+        .unwrap();
+
+        let rep = analyze_path(&dir, None);
+        let cc = &rep.cost_components;
+        assert!(!cc.cheapest_vendor_platform.is_empty());
+        assert!(cc.github_actions_team_monthly_tco_usd > 0.0);
+        assert!(cc.gitlab_ci_premium_monthly_tco_usd > 0.0);
+        assert!(cc.circleci_performance_monthly_tco_usd > 0.0);
+        assert!(cc.buildkite_pro_monthly_tco_usd > 0.0);
+        assert!(cc.jenkins_self_hosted_monthly_tco_usd > 0.0);
+        assert!(cc.migration_estimated_hours >= 44.0);
+        assert!(cc.phase_docker_build_push_share_pct > 0.0);
+        assert!(cc.monthly_total_reducible_phase_savings_usd > 0.0);
+        assert!(!cc.best_first_optimization_phase.is_empty());
+        assert_eq!(cc.larger_runners_detected_count, 2);
+        assert!(cc.larger_runners_bypass_free_minutes_tax_usd > 0.0);
+        assert!(cc.arm64_migration_monthly_savings_usd > 0.0);
+        assert_eq!(cc.detected_stack_archetype, "android-gradle-emulator");
+        assert!(cc.android_emulator_jobs_count >= 1);
+        assert!(cc.stack_specific_monthly_savings_usd > 0.0);
+        let json_out = rep.to_json();
+        assert!(json_out.contains("\"vendor_tco_comparison\":"));
+        assert!(json_out.contains("\"build_phase_breakdown\":"));
+        assert!(json_out.contains("\"compute_class_explorer\":"));
+        assert!(json_out.contains("\"stack_specific_economics\":"));
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

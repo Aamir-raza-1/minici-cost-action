@@ -351,6 +351,21 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
             cc.unpinned_template_refs_count
         ));
     }
+    if cc.larger_runners_detected_count > 0 && cc.larger_runners_bypass_free_minutes_tax_usd >= 1.0 {
+        hygiene_parts.push(format!(
+            "{} larger runner job(s) (${:.2}/mo metered from 1st sec; never draw free mins)",
+            cc.larger_runners_detected_count, cc.larger_runners_bypass_free_minutes_tax_usd
+        ));
+    }
+    if cc.best_first_optimization_monthly_savings_usd >= 5.0 {
+        hygiene_parts.push(format!(
+            "Top ROI phase: {} (~{:.0}h effort saves ~${:.2}/mo, {:.1}m payback)",
+            cc.best_first_optimization_phase,
+            cc.best_first_optimization_effort_hours,
+            cc.best_first_optimization_monthly_savings_usd,
+            cc.best_first_optimization_payback_months
+        ));
+    }
     if !hygiene_parts.is_empty() {
         out.push_str(&format!(
             " • Pipeline Hygiene : {}\n",
@@ -560,6 +575,21 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
             cc.unpinned_template_refs_count
         ));
     }
+    if cc.larger_runners_detected_count > 0 && cc.larger_runners_bypass_free_minutes_tax_usd >= 1.0 {
+        hygiene_items.push(format!(
+            "{} larger runner job(s) (${:.2}/mo metered from 1st sec; never draw free mins)",
+            cc.larger_runners_detected_count, cc.larger_runners_bypass_free_minutes_tax_usd
+        ));
+    }
+    if cc.best_first_optimization_monthly_savings_usd >= 5.0 {
+        hygiene_items.push(format!(
+            "Top ROI phase: {} (~{:.0}h effort saves ~${:.2}/mo, {:.1}m payback)",
+            cc.best_first_optimization_phase,
+            cc.best_first_optimization_effort_hours,
+            cc.best_first_optimization_monthly_savings_usd,
+            cc.best_first_optimization_payback_months
+        ));
+    }
     if !hygiene_items.is_empty() {
         extra_summary.push_str(&format!(
             "<p style=\"margin:6px 0 0\"><strong>Pipeline Hygiene:</strong> {}</p>",
@@ -730,6 +760,22 @@ fn render_applicable_summary_notes_markdown(r: &BreakdownReport) -> String {
         notes.push(format!(
             "- **Template Pinning:** `{}` unpinned `@main`/`@master` reference(s) detected",
             cc.unpinned_template_refs_count
+        ));
+    }
+    if cc.larger_runners_detected_count > 0 && cc.larger_runners_bypass_free_minutes_tax_usd >= 1.0 {
+        notes.push(format!(
+            "- **Larger Runners Billing:** `{}` larger runner job(s) (`${:.2}/mo` metered from first second; never consume included free minutes)",
+            cc.larger_runners_detected_count, cc.larger_runners_bypass_free_minutes_tax_usd
+        ));
+    }
+    if cc.best_first_optimization_monthly_savings_usd >= 5.0 {
+        notes.push(format!(
+            "- **Best First Optimization (`{}`):** `~{:.0}h` effort reclaims **`~${:.2}/mo`** (`{:.1} mo` payback; `${:.2}/mo` total reducible across phases)",
+            cc.best_first_optimization_phase,
+            cc.best_first_optimization_effort_hours,
+            cc.best_first_optimization_monthly_savings_usd,
+            cc.best_first_optimization_payback_months,
+            cc.monthly_total_reducible_phase_savings_usd
         ));
     }
     notes.push(format!("- **Recommendation:** {}", build_contextual_recommendation(r)));
