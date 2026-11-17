@@ -1601,6 +1601,9 @@ struct WorkflowHygieneSignals {
     has_maven_parallel_flag: bool,
     has_flutter_or_dart: bool,
     has_cpp_or_cmake: bool,
+    has_rust_or_cargo: bool,
+    has_go_or_gomod: bool,
+    has_python_or_pytest: bool,
     has_gradle_multi_module: bool,
     has_jenkinsfile: bool,
 }
@@ -1699,15 +1702,20 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
     if base_dir.join("poetry.lock").exists() || base_dir.join("uv.lock").exists() {
         sig.uses_poetry = true;
     }
-    let target_str_low = target.display().to_string().to_ascii_lowercase();
-    if base_dir.join("pubspec.yaml").exists() || target_str_low.contains("flutter") {
+    if base_dir.join("pubspec.yaml").exists() {
         sig.has_flutter_or_dart = true;
     }
-    if base_dir.join("CMakeLists.txt").exists()
-        || base_dir.join("meson.build").exists()
-        || target_str_low.contains("llama.cpp")
-    {
+    if base_dir.join("CMakeLists.txt").exists() || base_dir.join("meson.build").exists() {
         sig.has_cpp_or_cmake = true;
+    }
+    if base_dir.join("Cargo.toml").exists() {
+        sig.has_rust_or_cargo = true;
+    }
+    if base_dir.join("go.mod").exists() {
+        sig.has_go_or_gomod = true;
+    }
+    if base_dir.join("pyproject.toml").exists() || base_dir.join("requirements.txt").exists() {
+        sig.has_python_or_pytest = true;
     }
     if base_dir.join("settings.gradle").exists() || base_dir.join("settings.gradle.kts").exists() {
         sig.has_gradle_multi_module = true;
@@ -1972,7 +1980,7 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             sig.has_maven_parallel_flag = true;
         }
         if low.contains("flutter ")
-            || low.contains("flutter-action")
+            || low.contains("flutter-")
             || low.contains("dart test")
             || low.contains("pub get")
         {
@@ -1984,6 +1992,24 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
             || low.contains("ninja ")
         {
             sig.has_cpp_or_cmake = true;
+        }
+        if low.contains("cargo build")
+            || low.contains("cargo test")
+            || low.contains("cargo nextest")
+            || low.contains("cargo clippy")
+            || low.contains("swatinem/rust-cache")
+        {
+            sig.has_rust_or_cargo = true;
+        }
+        if low.contains("actions/setup-go")
+            || low.contains("golangci-lint")
+            || low.contains("\ngo test")
+            || low.contains(" go test")
+        {
+            sig.has_go_or_gomod = true;
+        }
+        if low.contains("pytest") || low.contains("astral-sh/setup-uv") {
+            sig.has_python_or_pytest = true;
         }
         if low.contains("playwright")
             || low.contains("cypress")
@@ -3743,9 +3769,12 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             (0.0, 0.0, 0.0)
         };
 
-        let is_primary_ios_macos = detected_log_language_profile.contains("iOS")
-            || (macos_mins_per_run > 0.0
-                && macos_mins_per_run >= (linux_mins_per_run + windows_mins_per_run));
+        let is_primary_ios_macos = !hygiene.has_flutter_or_dart
+            && !hygiene.has_cpp_or_cmake
+            && !hygiene.has_rust_or_cargo
+            && !hygiene.has_go_or_gomod
+            && macos_mins_per_run > 0.0
+            && macos_mins_per_run >= (linux_mins_per_run + windows_mins_per_run);
 
         if is_primary_ios_macos {
             let lever = if monthly_mac_mins >= 4000.0 {
@@ -3817,7 +3846,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
                 jvm_sav,
                 lever.to_string(),
             )
-        } else if hygiene.has_cpp_or_cmake && !detected_log_language_profile.contains("Rust") {
+        } else if hygiene.has_cpp_or_cmake && !hygiene.has_rust_or_cargo {
             let cpp_sav = if hygiene.has_remote_compile_cache {
                 ((gross_monthly_compute_cost_usd * 0.18) * 100.0).round() / 100.0
             } else {
@@ -3833,7 +3862,9 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
                 cpp_sav,
                 "ccache-remote-storage-and-ninja-larger-runners".to_string(),
             )
-        } else if detected_log_language_profile.contains("Rust") {
+        } else if detected_log_language_profile.contains("Rust")
+            || (detected_log_language_profile.contains("iOS") && hygiene.has_rust_or_cargo)
+        {
             let rust_sav = if hygiene.has_remote_compile_cache {
                 ((gross_monthly_compute_cost_usd * 0.15) * 100.0).round() / 100.0
             } else {
@@ -3870,20 +3901,9 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
                 iac_sav,
                 "terraform-plugin-cache-and-changed-module-plan".to_string(),
             )
-        } else if detected_log_language_profile.contains("Python") {
-            let py_sav = monthly_unrealized_cache_savings_usd
-                .max(((gross_monthly_compute_cost_usd * 0.25) * 100.0).round() / 100.0);
-            (
-                "python-uv-pytest".to_string(),
-                cm_annual_mo,
-                bk_mac_tco,
-                0,
-                0.0,
-                0.0,
-                py_sav,
-                "uv-cache-and-pytest-xdist-sharding".to_string(),
-            )
-        } else if detected_log_language_profile.contains("Go") {
+        } else if detected_log_language_profile.contains("Go")
+            || (detected_log_language_profile.contains("iOS") && hygiene.has_go_or_gomod)
+        {
             let go_sav = monthly_unrealized_cache_savings_usd
                 .max(((gross_monthly_compute_cost_usd * 0.30) * 100.0).round() / 100.0);
             (
@@ -3895,6 +3915,21 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
                 0.0,
                 go_sav,
                 "go-build-mod-cache-and-arm64-runners".to_string(),
+            )
+        } else if detected_log_language_profile.contains("Python")
+            || (detected_log_language_profile.contains("iOS") && hygiene.has_python_or_pytest)
+        {
+            let py_sav = monthly_unrealized_cache_savings_usd
+                .max(((gross_monthly_compute_cost_usd * 0.25) * 100.0).round() / 100.0);
+            (
+                "python-uv-pytest".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                0,
+                0.0,
+                0.0,
+                py_sav,
+                "uv-cache-and-pytest-xdist-sharding".to_string(),
             )
         } else {
             let node_sav = monthly_unrealized_cache_savings_usd

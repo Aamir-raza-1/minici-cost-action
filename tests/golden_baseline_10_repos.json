@@ -329,8 +329,8 @@
       "p3_larger_runners_detected_count": 25,
       "p3_arm64_migration_savings_usd": 248.72,
       "p3_recommended_runner_tier": "larger-4-core",
-      "p4_detected_stack_archetype": "ios-macos-xcode",
-      "p4_stack_specific_savings_usd": 177.57
+      "p4_detected_stack_archetype": "cpp-cmake-ninja",
+      "p4_stack_specific_savings_usd": 347.54
     },
     "immich-app/immich": {
       "workflows": 27,
@@ -384,8 +384,8 @@
       "p3_larger_runners_detected_count": 2,
       "p3_arm64_migration_savings_usd": 119.42,
       "p3_recommended_runner_tier": "larger-8-core",
-      "p4_detected_stack_archetype": "ios-macos-xcode",
-      "p4_stack_specific_savings_usd": 0.0
+      "p4_detected_stack_archetype": "flutter-dart-mobile",
+      "p4_stack_specific_savings_usd": 286.88
     },
     "langgenius/dify": {
       "workflows": 41,
@@ -716,8 +716,8 @@
       "p3_larger_runners_detected_count": 3,
       "p3_arm64_migration_savings_usd": 81.39,
       "p3_recommended_runner_tier": "larger-4-core",
-      "p4_detected_stack_archetype": "cpp-cmake-ninja",
-      "p4_stack_specific_savings_usd": 227.9
+      "p4_detected_stack_archetype": "go-mod-build-cache",
+      "p4_stack_specific_savings_usd": 379.83
     },
     "huggingface/transformers": {
       "workflows": 7,
@@ -771,8 +771,8 @@
       "p3_larger_runners_detected_count": 0,
       "p3_arm64_migration_savings_usd": 93.96,
       "p3_recommended_runner_tier": "larger-8-core",
-      "p4_detected_stack_archetype": "cpp-cmake-ninja",
-      "p4_stack_specific_savings_usd": 253.7
+      "p4_detected_stack_archetype": "python-uv-pytest",
+      "p4_stack_specific_savings_usd": 140.94
     },
     "vercel/next.js": {
       "workflows": 5,
@@ -826,8 +826,8 @@
       "p3_larger_runners_detected_count": 15,
       "p3_arm64_migration_savings_usd": 249.36,
       "p3_recommended_runner_tier": "larger-4-core",
-      "p4_detected_stack_archetype": "cpp-cmake-ninja",
-      "p4_stack_specific_savings_usd": 165.54
+      "p4_detected_stack_archetype": "node-typescript-vitest",
+      "p4_stack_specific_savings_usd": 275.91
     },
     "langchain-ai/langchain": {
       "workflows": 27,
