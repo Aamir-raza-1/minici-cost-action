@@ -357,6 +357,13 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
             cc.larger_runners_detected_count, cc.larger_runners_bypass_free_minutes_tax_usd
         ));
     }
+    if cc.pr_unconditional_matrix_cells >= 4 && cc.conditional_pr_matrix_monthly_savings_usd >= 10.0
+    {
+        hygiene_parts.push(format!(
+            "PR matrix ({} unconditional cells; 1-cell PR + full main/nightly saves ~${:.2}/mo)",
+            cc.pr_unconditional_matrix_cells, cc.conditional_pr_matrix_monthly_savings_usd
+        ));
+    }
     if cc.best_first_optimization_monthly_savings_usd >= 5.0 {
         hygiene_parts.push(format!(
             "Top ROI phase: {} (~{:.0}h effort saves ~${:.2}/mo, {:.1}m payback)",
@@ -766,6 +773,15 @@ fn render_applicable_summary_notes_markdown(r: &BreakdownReport) -> String {
         notes.push(format!(
             "- **Larger Runners Billing:** `{}` larger runner job(s) (`${:.2}/mo` metered from first second; never consume included free minutes)",
             cc.larger_runners_detected_count, cc.larger_runners_bypass_free_minutes_tax_usd
+        ));
+    }
+    if cc.pr_unconditional_matrix_cells >= 4 && cc.conditional_pr_matrix_monthly_savings_usd >= 10.0
+    {
+        notes.push(format!(
+            "- **Conditional PR Matrix (`{}`):** `{}` matrix cells run on every PR; running `1` cell on PRs and full matrix on `main`/nightly saves **`~${:.2}/mo`**",
+            cc.detected_repo_matrix_profile,
+            cc.pr_unconditional_matrix_cells,
+            cc.conditional_pr_matrix_monthly_savings_usd
         ));
     }
     if cc.best_first_optimization_monthly_savings_usd >= 5.0 {

@@ -1757,4 +1757,53 @@ jobs:
         assert!(fl_rep.cost_components.ios_codemagic_annual_m2_monthly_usd > 0.0);
         let _ = fs::remove_dir_all(&fl_dir);
     }
+
+    #[test]
+    fn test_caching_matrix_ephemeral_and_spot_primary_source_models() {
+        let dir = std::env::temp_dir().join("minici_caching_matrix_ephemeral_spot_test");
+        let _ = fs::remove_dir_all(&dir);
+        let wf_dir = dir.join(".github").join("workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(dir.join("turbo.json"), "{}").unwrap();
+        fs::write(dir.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'").unwrap();
+
+        fs::write(
+            wf_dir.join("ci-matrix.yml"),
+            "name: App CI\non:\n  pull_request:\n  push:\njobs:\n  unit-matrix:\n    runs-on: ubuntu-24.04-arm\n    est-minutes: 8.0\n    strategy:\n      matrix:\n        node: [18, 20, 22]\n        shard: [1, 2]\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/cache@v4\n      - run: pnpm test\n  prod-deploy:\n    runs-on: ubuntu-24.04-arm\n    est-minutes: 35.0\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/cache@v4\n      - run: docker build -t app:latest . && terraform apply -auto-approve\n",
+        )
+        .unwrap();
+
+        let rep = analyze_path(&dir, None);
+        let cc = &rep.cost_components;
+        // 1. Ephemeral & Spot Primary-Source Models (Graviton ARM64 -> 5-10% interruption band, Spot-ineligible deploy/>30m job detected)
+        assert!(cc.always_on_runner_utilization_pct > 0.0);
+        assert!(!cc.ephemeral_runner_recommended_mode.is_empty());
+        assert!(cc.ephemeral_cold_start_wait_tax_monthly_usd > 0.0);
+        assert!(cc.spot_interruption_band_pct.contains("5-10%"));
+        assert!(cc.spot_retry_overhead_monthly_usd > 0.0);
+        assert_eq!(cc.spot_ineligible_jobs_count, 1);
+        assert!(cc.hybrid_spot_plus_on_demand_monthly_usd > rep.monthly_self_hosted_spot_cost_usd);
+
+        // 2. Matrix Build Strategy (6 unconditional PR matrix cells on an application repo -> 80% conditional PR matrix savings)
+        assert_eq!(cc.matrix_jobs_count, 1);
+        assert_eq!(cc.pr_unconditional_matrix_cells, 6);
+        assert_eq!(cc.detected_repo_matrix_profile, "application-with-excess-matrix");
+        assert!(cc.conditional_pr_matrix_monthly_savings_usd > 0.0);
+
+        // 3. 7-Layer Caching Strategy (All jobs have dependency cache, Docker build lacks BuildKit registry cache -> layer-2 recommended; Turborepo remote cache infra is $0/mo)
+        assert_eq!(
+            cc.next_recommended_caching_layer,
+            "layer-2-docker-buildkit-registry-cache"
+        );
+        assert_eq!(cc.distributed_remote_cache_monthly_infra_usd, 0.0);
+        assert!(cc.container_base_image_mirror_monthly_savings_usd > 0.0);
+        assert_eq!(cc.pr_cache_poisoning_risk_jobs, 7);
+
+        let json_out = rep.to_json();
+        assert!(json_out.contains("\"always_on_runner_utilization_pct\":"));
+        assert!(json_out.contains("\"spot_ineligible_jobs_count\":1"));
+        assert!(json_out.contains("\"conditional_pr_matrix_monthly_savings_usd\":"));
+        assert!(json_out.contains("\"next_recommended_caching_layer\":\"layer-2-docker-buildkit-registry-cache\""));
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
