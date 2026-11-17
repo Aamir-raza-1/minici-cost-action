@@ -25,7 +25,7 @@ fn print_help() {
 }
 
 pub fn help_text() -> &'static str {
-    "minici 0.5.0 — MiniCI: Sub-Millisecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine\n\
+    "minici 0.6.0 — MiniCI: Sub-Millisecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine\n\
 Author: Aamir Raza <raza.aamir01@gmail.com>\n\n\
 USAGE:\n  \
   minici <COMMAND> [OPTIONS]\n\n\
@@ -79,7 +79,7 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
 
     match method.as_str() {
         "initialize" => Some(format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"minici\",\"version\":\"0.5.0\"}}}}}}",
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"minici\",\"version\":\"0.6.0\"}}}}}}",
             id
         )),
         "notifications/initialized" | "initialized" => None,
@@ -426,7 +426,7 @@ fn main() {
         return;
     }
     if args[0] == "--version" || args[0] == "-V" {
-        println!("minici 0.5.0");
+        println!("minici 0.6.0");
         return;
     }
 
@@ -1183,7 +1183,13 @@ jobs:
         );
 
         assert_eq!(rep.total_expanded_matrix_jobs, 12);
-        assert!(rep.execution_time_ms < 5.0);
+        let max_ms = if cfg!(debug_assertions) { 50.0 } else { 5.0 };
+        assert!(
+            rep.execution_time_ms < max_ms,
+            "execution_time_ms={} exceeded {}",
+            rep.execution_time_ms,
+            max_ms
+        );
         assert!(rep.gross_compute_cost_per_run_usd > 0.0);
         assert!(rep.dev_wait_cost_per_run_usd > 0.0);
         assert!(rep.monthly_artifact_storage_vendor_usd > rep.monthly_artifact_storage_s3_usd);

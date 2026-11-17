@@ -27,10 +27,10 @@ echo "▶ [1/3] Checking 2026 Canonical SKU Sync (catalog.rs <-> pricing/*.json)
 python3 "${REPO_ROOT}/tools/sync_rust_sku_catalog.py" --check
 
 echo ""
-echo "▶ [2/3] Running 10-Repository x 3-Mode Validation (CLI, GitHub Workflow, MCP/Agent + Head-to-Head vs cicdcost.com & Infracost)..."
+echo "▶ [2/3] Running 27-Repository x 3-Mode Validation (CLI, GitHub Workflow, MCP/Agent + 20 Unified Cost Models)..."
 python3 "${REPO_ROOT}/tools/verify_10_repos_all_modes.py" --cache-dir "${CACHE_DIR}"
 
 echo ""
 echo "▶ [3/3] Verifying CLI Catalog & Benchmark Subcommands..."
 "${REPO_ROOT}/target/release/minici" catalog | head -n 18
-echo "✓ All 10 repositories validated across CLI, GitHub Workflow, and AI Agent (MCP/Hook) modes."
+echo "✓ All 27 repositories validated across CLI, GitHub Workflow, and AI Agent (MCP/Hook) modes."

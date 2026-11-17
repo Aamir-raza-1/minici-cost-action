@@ -1,6 +1,6 @@
-# Locked 27-Repository Golden Baseline: KPIs, 20 Unified CI/CD Cost Models & 3-Mode Latency (`v0.5.0`)
+# Locked 27-Repository Golden Baseline: KPIs, 20 Unified CI/CD Cost Models & 3-Mode Latency (`v0.6.0`)
 
-**Locked Version:** `minici 0.5.0` (`tag: v0.5.0`)  
+**Locked Version:** `minici 0.6.0` (`tag: v0.6.0`)  
 **Total Repositories Locked:** `27` (`10` Primary + `7` Internal Edge-Case + `10` Fresh World-Scale OSS)  
 **Execution Modes Verified on Every Repo:** `Mode 1: CLI` • `Mode 2: GitHub Action Workflow` • `Mode 3: MCP JSON-RPC 2.0 + Shift-Left Hook`  
 **Machine-Readable Companion Lock:** [`tests/golden_baseline_10_repos.json`](../tests/golden_baseline_10_repos.json)
@@ -23,16 +23,16 @@ If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or a
 
 | Repository | Category | WF / Def / Exp Jobs | Billed Mins/Run | Gross Monthly Compute | Free-Tier Burn % | Monthly Dev Wait (`$65/hr`) | Engine (`ms`) | CLI (`ms`) | Workflow (`ms`) | MCP 4-RPC (`ms`) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **`MaximVote/maxim`** | Internal (MaximVote • Private) | `41` / `45` / `57` | `195.00m` | **`$1,009.41/mo`** | `4221.8%` | `$4,269.38/mo` (`9.1m`) | `10.03` | `29.78` | `14.20` | `104.78` |
-| **`mgjartproject/FineArts-BE`** | Internal (Grassy Fine Arts • Private) | `2` / `6` / `6` | `18.00m` | **`$46.76/mo`** | `389.7%` | `$2,979.04/mo` (`6.35m`) | `1.59` | `21.00` | `7.73` | `59.20` |
-| **`Eazy-Ops/Backend`** | Internal (Eazy-Ops • Private) | `5` / `5` / `5` | `28.00m` | **`$72.74/mo`** | `606.2%` | `$8,374.22/mo` (`17.85m`) | `2.11` | `21.67` | `9.03` | `58.51` |
-| **`astral-sh/uv`** | Fresh OSS (Rust/Python Packaging) | `47` / `223` / `243` | `746.25m` | **`$3,464.00/mo`** | `16156.3%` | `$6,122.62/mo` (`13.05m`) | `22.31` | `41.18` | `28.78` | `134.56` |
-| **`denoland/deno`** | Fresh OSS (JS/TS Runtime) | `11` / `59` / `162` | `1860.00m` | **`$20,206.81/mo`** | `40269.0%` | `$13,015.98/mo` (`27.75m`) | `15.93` | `32.90` | `17.34` | `107.73` |
-| **`ggml-org/llama.cpp`** | Fresh OSS (C++ LLM Inference) | `62` / `121` / `152` | `459.85m` | **`$1,930.75/mo`** | `9955.8%` | `$6,378.09/mo` (`13.6m`) | `15.04` | `31.39` | `24.52` | `118.54` |
-| **`immich-app/immich`** | Fresh OSS (Photo/Video Cloud) | `27` / `76` / `85` | `269.00m` | **`$819.67/mo`** | `5823.9%` | `$4,879.91/mo` (`10.4m`) | `7.81` | `24.07` | `13.46` | `101.09` |
-| **`langgenius/dify`** | Fresh OSS (Agentic AI Platform) | `41` / `84` / `117` | `393.50m` | **`$1,153.51/mo`** | `8519.3%` | `$4,853.93/mo` (`10.35m`) | `11.86` | `27.25` | `18.81` | `110.46` |
-| **`open-webui/open-webui`** | Fresh OSS (AI Web Interface) | `7` / `13` / `18` | `87.00m` | **`$226.03/mo`** | `1883.6%` | `$4,455.57/mo` (`9.5m`) | `3.27` | `8.69` | `8.04` | `64.03` |
-| **`mendableai/firecrawl`** | Fresh OSS (AI Web Scraper) | `36` / `71` / `86` | `626.85m` | **`$1,978.81/mo`** | `13571.3%` | `$39,615.17/mo` (`84.45m`) | `7.07` | `14.29` | `15.57` | `83.74` |
+| **`MaximVote/maxim`** | Internal (MaximVote • Private) | `41` / `45` / `57` | `195.00m` | **`$1,009.41/mo`** | `4221.8%` | `$4,269.38/mo` (`9.1m`) | `14.89` | `23.64` | `11.88` | `84.96` |
+| **`mgjartproject/FineArts-BE`** | Internal (Grassy Fine Arts • Private) | `2` / `6` / `6` | `18.00m` | **`$46.76/mo`** | `389.7%` | `$2,979.04/mo` (`6.35m`) | `2.03` | `9.83` | `6.85` | `54.27` |
+| **`Eazy-Ops/Backend`** | Internal (Eazy-Ops • Private) | `5` / `5` / `5` | `28.00m` | **`$72.74/mo`** | `606.2%` | `$8,374.22/mo` (`17.85m`) | `2.00` | `8.42` | `6.74` | `59.54` |
+| **`astral-sh/uv`** | Fresh OSS (Rust/Python Packaging) | `47` / `223` / `243` | `746.25m` | **`$3,464.00/mo`** | `16156.3%` | `$6,122.62/mo` (`13.05m`) | `25.57` | `31.48` | `28.83` | `124.47` |
+| **`denoland/deno`** | Fresh OSS (JS/TS Runtime) | `11` / `59` / `162` | `1860.00m` | **`$20,206.81/mo`** | `40269.0%` | `$13,015.98/mo` (`27.75m`) | `12.67` | `21.40` | `16.31` | `97.15` |
+| **`ggml-org/llama.cpp`** | Fresh OSS (C++ LLM Inference) | `62` / `121` / `152` | `459.85m` | **`$1,930.75/mo`** | `9955.8%` | `$6,378.09/mo` (`13.6m`) | `20.42` | `26.75` | `18.65` | `107.49` |
+| **`immich-app/immich`** | Fresh OSS (Photo/Video Cloud) | `27` / `76` / `85` | `269.00m` | **`$819.67/mo`** | `5823.9%` | `$4,879.91/mo` (`10.4m`) | `10.76` | `16.18` | `12.07` | `77.47` |
+| **`langgenius/dify`** | Fresh OSS (Agentic AI Platform) | `41` / `84` / `117` | `393.50m` | **`$1,153.51/mo`** | `8519.3%` | `$4,853.93/mo` (`10.35m`) | `15.51` | `20.24` | `14.31` | `94.59` |
+| **`open-webui/open-webui`** | Fresh OSS (AI Web Interface) | `7` / `13` / `18` | `87.00m` | **`$226.03/mo`** | `1883.6%` | `$4,455.57/mo` (`9.5m`) | `2.63` | `7.64` | `8.56` | `54.26` |
+| **`mendableai/firecrawl`** | Fresh OSS (AI Web Scraper) | `36` / `71` / `86` | `626.85m` | **`$1,978.81/mo`** | `13571.3%` | `$39,615.17/mo` (`84.45m`) | `10.72` | `16.32` | `14.09` | `80.99` |
 
 ### Part 1B: 10 Primary Repositories — 6 Core CI/CD Invoice Components (`$/mo`)
 
@@ -100,16 +100,16 @@ If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or a
 
 | Repository | Category | WF / Def / Exp Jobs | Billed Mins/Run | Gross Monthly Compute | Free-Tier Burn % | Monthly Dev Wait (`$65/hr`) | Engine (`ms`) | CLI (`ms`) | Workflow (`ms`) | MCP 4-RPC (`ms`) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **`microsoft/vscode`** | World-Scale OSS (VS Code IDE) | `5` / `26` / `36` | `127.00m` | **`$2,103.51/mo`** | `2749.6%` | `$3,680.50/mo` (`7.85m`) | `1.39` | `7.79` | `5.99` | `43.20` |
-| **`flutter/flutter`** | World-Scale OSS (Flutter SDK) | `6` / `11` / `11` | `20.00m` | **`$76.21/mo`** | `433.0%` | `$1,337.97/mo` (`2.85m`) | `0.73` | `6.92` | `7.89` | `40.29` |
-| **`ollama/ollama`** | World-Scale OSS (Local LLM Runner) | `4` / `18` / `47` | `149.00m` | **`$1,266.09/mo`** | `3225.9%` | `$3,563.59/mo` (`7.6m`) | `1.20` | `10.93` | `6.39` | `37.23` |
-| **`huggingface/transformers`** | World-Scale OSS (ML Transformers) | `7` / `37` / `57` | `217.00m` | **`$563.77/mo`** | `4698.1%` | `$3,563.59/mo` (`7.6m`) | `2.35` | `8.30` | `6.39` | `44.23` |
-| **`vercel/next.js`** | World-Scale OSS (Next.js Framework) | `5` / `38` / `45` | `132.00m` | **`$919.69/mo`** | `2857.8%` | `$2,511.40/mo` (`5.35m`) | `1.25` | `9.00` | `8.50` | `38.70` |
-| **`langchain-ai/langchain`** | World-Scale OSS (Agentic Framework) | `27` / `41` / `43` | `105.00m` | **`$272.79/mo`** | `2273.3%` | `$3,095.95/mo` (`6.6m`) | `8.58` | `16.54` | `11.71` | `47.46` |
-| **`n8n-io/n8n`** | World-Scale OSS (Workflow Automation) | `12` / `38` / `44` | `198.85m` | **`$636.25/mo`** | `4305.1%` | `$4,853.93/mo` (`10.35m`) | `2.03` | `7.33` | `5.45` | `35.85` |
-| **`supabase/supabase`** | World-Scale OSS (Postgres Cloud) | `12` / `17` / `25` | `68.85m` | **`$268.46/mo`** | `1490.6%` | `$2,554.70/mo` (`5.45m`) | `1.18` | `9.32` | `6.26` | `33.96` |
-| **`home-assistant/core`** | World-Scale OSS (Home Automation) | `19` / `66` / `87` | `561.00m` | **`$1,403.79/mo`** | `12145.7%` | `$22,139.29/mo` (`47.2m`) | `12.94` | `19.58` | `15.92` | `56.16` |
-| **`pydantic/pydantic`** | World-Scale OSS (Python Validation) | `12` / `66` / `175` | `930.70m` | **`$4,759.88/mo`** | `20149.7%` | `$5,958.08/mo` (`12.7m`) | `3.94` | `11.75` | `10.01` | `38.45` |
+| **`microsoft/vscode`** | World-Scale OSS (VS Code IDE) | `5` / `26` / `36` | `127.00m` | **`$2,103.51/mo`** | `2749.6%` | `$3,680.50/mo` (`7.85m`) | `3.19` | `8.08` | `7.05` | `38.16` |
+| **`flutter/flutter`** | World-Scale OSS (Flutter SDK) | `6` / `11` / `11` | `20.00m` | **`$76.21/mo`** | `433.0%` | `$1,337.97/mo` (`2.85m`) | `1.86` | `6.66` | `6.05` | `37.80` |
+| **`ollama/ollama`** | World-Scale OSS (Local LLM Runner) | `4` / `18` / `47` | `149.00m` | **`$1,266.09/mo`** | `3225.9%` | `$3,563.59/mo` (`7.6m`) | `1.63` | `9.38` | `8.66` | `35.17` |
+| **`huggingface/transformers`** | World-Scale OSS (ML Transformers) | `7` / `37` / `57` | `217.00m` | **`$563.77/mo`** | `4698.1%` | `$3,563.59/mo` (`7.6m`) | `1.75` | `7.08` | `8.74` | `38.32` |
+| **`vercel/next.js`** | World-Scale OSS (Next.js Framework) | `5` / `38` / `45` | `132.00m` | **`$919.69/mo`** | `2857.8%` | `$2,511.40/mo` (`5.35m`) | `2.06` | `6.90` | `9.27` | `35.92` |
+| **`langchain-ai/langchain`** | World-Scale OSS (Agentic Framework) | `27` / `41` / `43` | `105.00m` | **`$272.79/mo`** | `2273.3%` | `$3,095.95/mo` (`6.6m`) | `13.82` | `21.34` | `11.99` | `43.39` |
+| **`n8n-io/n8n`** | World-Scale OSS (Workflow Automation) | `12` / `38` / `44` | `198.85m` | **`$636.25/mo`** | `4305.1%` | `$4,853.93/mo` (`10.35m`) | `4.90` | `11.65` | `6.71` | `34.35` |
+| **`supabase/supabase`** | World-Scale OSS (Postgres Cloud) | `12` / `17` / `25` | `68.85m` | **`$268.46/mo`** | `1490.6%` | `$2,554.70/mo` (`5.45m`) | `2.60` | `8.31` | `5.56` | `31.40` |
+| **`home-assistant/core`** | World-Scale OSS (Home Automation) | `19` / `66` / `87` | `561.00m` | **`$1,403.79/mo`** | `12145.7%` | `$22,139.29/mo` (`47.2m`) | `16.52` | `21.39` | `16.46` | `55.69` |
+| **`pydantic/pydantic`** | World-Scale OSS (Python Validation) | `12` / `66` / `175` | `930.70m` | **`$4,759.88/mo`** | `20149.7%` | `$5,958.08/mo` (`12.7m`) | `5.21` | `10.63` | `7.60` | `39.30` |
 
 ### Part 2B: 10 Fresh World-Scale Repositories — 6 Core CI/CD Invoice Components (`$/mo`)
 
@@ -177,10 +177,10 @@ If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or a
 
 | Repository | Edge-Case Scenario | WF / Exp Jobs | Gross Monthly Compute | Net Billed Monthly | CLI Latency (`ms`) |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| **`MaximVote/tf`** | Internal (6 Terragrunt VPN/GCP workflows) | `6` / `8` | `$70.15/mo` | **`$70.15/mo`** | `6.56` |
-| **`mgjartproject/gfa-data-pipelines`** | Internal (17x matrix scraper pipeline) | `2` / `23` | `$127.30/mo` | **`$127.30/mo`** | `5.86` |
-| **`mgjartproject/frontend`** | Internal (GFA Frontend WIF + Security) | `2` / `6` | `$44.17/mo` | **`$44.17/mo`** | `5.11` |
-| **`mgjartproject/FineArt_AI_Pipeline`** | Internal Edge Case (0 workflows) | `0` / `0` | `$0.00/mo` | **`$0.00/mo`** | `4.90` |
-| **`Eazy-Ops/frontend`** | Internal (Eazy-Ops Frontend Docker) | `2` / `2` | `$20.78/mo` | **`$20.78/mo`** | `5.15` |
-| **`Eazy-Ops/multi-cloud-finops-mcp-server`** | Internal (Within 2,000m Free Tier -> $0 net) | `1` / `1` | `$5.20/mo` | **`$0.00/mo`** | `4.86` |
-| **`Eazy-Ops/Automation`** | Internal Edge Case (Nested cron/.github/workflows) | `0` / `0` | `$0.00/mo` | **`$0.00/mo`** | `4.84` |
+| **`MaximVote/tf`** | Internal (6 Terragrunt VPN/GCP workflows) | `6` / `8` | `$70.15/mo` | **`$70.15/mo`** | `7.57` |
+| **`mgjartproject/gfa-data-pipelines`** | Internal (17x matrix scraper pipeline) | `2` / `23` | `$127.30/mo` | **`$127.30/mo`** | `6.88` |
+| **`mgjartproject/frontend`** | Internal (GFA Frontend WIF + Security) | `2` / `6` | `$44.17/mo` | **`$44.17/mo`** | `6.10` |
+| **`mgjartproject/FineArt_AI_Pipeline`** | Internal Edge Case (0 workflows) | `0` / `0` | `$0.00/mo` | **`$0.00/mo`** | `5.41` |
+| **`Eazy-Ops/frontend`** | Internal (Eazy-Ops Frontend Docker) | `2` / `2` | `$20.78/mo` | **`$20.78/mo`** | `6.24` |
+| **`Eazy-Ops/multi-cloud-finops-mcp-server`** | Internal (Within 2,000m Free Tier -> $0 net) | `1` / `1` | `$5.20/mo` | **`$0.00/mo`** | `5.67` |
+| **`Eazy-Ops/Automation`** | Internal Edge Case (Nested cron/.github/workflows) | `0` / `0` | `$0.00/mo` | **`$0.00/mo`** | `4.75` |

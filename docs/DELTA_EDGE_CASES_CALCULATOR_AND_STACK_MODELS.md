@@ -1,4 +1,4 @@
-# Delta & Edge-Case Audit: 4 Calculator & Stack Intelligence Pillars (`v0.5.0`)
+# Delta & Edge-Case Audit: 4 Calculator & Stack Intelligence Pillars (`v0.6.0` • Commits `b9f35f2..5e04008`)
 
 **Audited Files:**
 - `crates/minici/src/engine.rs` (lines `987–1031`, `1435–2435`, `3157–3700`)

@@ -88,6 +88,33 @@ outputs:
   monthly_shared_infra_setup_savings_usd:
     description: "Monthly per-job setup overhead savings from shared base images and pre-warmed caches (USD)"
     value: ${{ steps.minici.outputs.monthly_shared_infra_setup_savings_usd }}
+  cheapest_vendor_platform:
+    description: "Lowest monthly TCO CI/CD platform across the 9-vendor comparison engine"
+    value: ${{ steps.minici.outputs.cheapest_vendor_platform }}
+  cheapest_vendor_monthly_tco_usd:
+    description: "Monthly TCO on the lowest-cost CI/CD platform including seats and overage (USD)"
+    value: ${{ steps.minici.outputs.cheapest_vendor_monthly_tco_usd }}
+  migration_worth_it_2x_annual_rule:
+    description: "Whether annual CI TCO savings exceed 2x the estimated engineering migration cost"
+    value: ${{ steps.minici.outputs.migration_worth_it_2x_annual_rule }}
+  best_first_optimization_phase:
+    description: "Highest-ROI build phase to optimize first based on effort vs monthly savings payback"
+    value: ${{ steps.minici.outputs.best_first_optimization_phase }}
+  monthly_total_reducible_phase_savings_usd:
+    description: "Total monthly reducible compute waste across all 6 build phases (USD)"
+    value: ${{ steps.minici.outputs.monthly_total_reducible_phase_savings_usd }}
+  detected_workload_compute_profile:
+    description: "Detected Amdahl compute scaling profile (compile-heavy, test-heavy, balanced-web-backend, io-bound)"
+    value: ${{ steps.minici.outputs.detected_workload_compute_profile }}
+  arm64_migration_monthly_savings_usd:
+    description: "Monthly compute savings from migrating eligible Linux x64 jobs to ARM64 runners (USD)"
+    value: ${{ steps.minici.outputs.arm64_migration_monthly_savings_usd }}
+  detected_stack_archetype:
+    description: "Detected language and build-tool stack archetype from repository manifests and workflow AST"
+    value: ${{ steps.minici.outputs.detected_stack_archetype }}
+  stack_specific_monthly_savings_usd:
+    description: "Monthly savings from applying the primary stack-native CI optimization lever (USD)"
+    value: ${{ steps.minici.outputs.stack_specific_monthly_savings_usd }}
 
 runs:
   using: "composite"
@@ -137,25 +164,36 @@ runs:
         d = json.load(open(".minici_breakdown.json"))
         cc = d.get("cost_components", {})
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-            f.write(f"gross_monthly_compute_cost_usd={d.get(\"gross_monthly_compute_cost_usd\", 0.0):.2f}\n")
-            f.write(f"net_billed_monthly_compute_cost_usd={d.get(\"net_billed_monthly_compute_cost_usd\", 0.0):.2f}\n")
-            f.write(f"monthly_rounding_tax_usd={cc.get(\"build_minutes_cost\", {}).get(\"monthly_rounding_tax_usd\", 0.0):.2f}\n")
-            f.write(f"recommended_ec2_instance={cc.get(\"runner_cost\", {}).get(\"infracost_recommended_ec2_instance\", \"\")}\n")
-            f.write(f"artifact_storage_90d_usd={cc.get(\"artifact_storage_cost\", {}).get(\"monthly_vendor_storage_90d_usd\", 0.0):.2f}\n")
-            f.write(f"parallelism_tier_upgrade_tax_usd={cc.get(\"parallelism_cost\", {}).get(\"parallelism_tier_upgrade_tax_monthly_usd\", 0.0):.2f}\n")
-            f.write(f"datadog_90d_log_shipping_usd={cc.get(\"log_retention_cost\", {}).get(\"monthly_datadog_90d_log_shipping_usd\", 0.0):.2f}\n")
-            f.write(f"nat_egress_worst_case_usd={cc.get(\"cross_region_egress_cost\", {}).get(\"monthly_infracost_private_subnet_nat_worst_case_usd\", 0.0):.2f}\n")
-            f.write(f"monthly_productive_payroll_loss_usd={cc.get(\"developer_wait_time_cost\", {}).get(\"monthly_productive_payroll_loss_usd\", 0.0):.2f}\n")
-            f.write(f"monthly_total_immediate_flake_cost_usd={cc.get(\"failed_build_rerun_cost\", {}).get(\"monthly_total_immediate_flake_cost_usd\", 0.0):.2f}\n")
-            f.write(f"monthly_unrealized_cache_savings_usd={cc.get(\"build_cache_savings\", {}).get(\"monthly_unrealized_cache_savings_usd\", 0.0):.2f}\n")
-            f.write(f"monthly_combined_flake_tax_usd={cc.get(\"flaky_test_ci_cd_tax\", {}).get(\"monthly_combined_flake_tax_usd\", 0.0):.2f}\n")
-            f.write(f"monthly_superseded_run_waste_usd={cc.get(\"branch_protection_cost\", {}).get(\"monthly_superseded_run_waste_usd\", 0.0):.2f}\n")
-            f.write(f"monthly_unfiltered_check_savings_usd={cc.get(\"branch_protection_cost\", {}).get(\"monthly_unfiltered_check_savings_usd\", 0.0):.2f}\n")
-            f.write(f"inferred_team_stage={cc.get(\"startup_stage_cost\", {}).get(\"inferred_team_stage\", \"\")}\n")
-            f.write(f"detected_pipeline_shape={cc.get(\"monorepo_ci_cost\", {}).get(\"detected_pipeline_shape\", \"\")}\n")
-            f.write(f"detected_workspace_units_count={cc.get(\"monorepo_ci_cost\", {}).get(\"detected_workspace_units_count\", 0)}\n")
-            f.write(f"monthly_affected_only_savings_usd={cc.get(\"monorepo_ci_cost\", {}).get(\"monthly_affected_only_savings_usd\", 0.0):.2f}\n")
-            f.write(f"recoverable_ci_and_wait_monthly_usd={cc.get(\"scaleup_stage_cost\", {}).get(\"recoverable_ci_and_wait_monthly_usd\", 0.0):.2f}\n")
-            f.write(f"monthly_shared_infra_setup_savings_usd={cc.get(\"microservices_ci_cost\", {}).get(\"monthly_shared_infra_setup_savings_usd\", 0.0):.2f}\n")
+            wf = lambda k, v: f.write(f"{k}={float(v):.2f}\n")
+            ws = lambda k, v: f.write(f"{k}={v}\n")
+            wf("gross_monthly_compute_cost_usd", d.get("gross_monthly_compute_cost_usd", 0.0))
+            wf("net_billed_monthly_compute_cost_usd", d.get("net_billed_monthly_compute_cost_usd", 0.0))
+            wf("monthly_rounding_tax_usd", cc.get("build_minutes_cost", {}).get("monthly_rounding_tax_usd", 0.0))
+            ws("recommended_ec2_instance", cc.get("runner_cost", {}).get("infracost_recommended_ec2_instance", ""))
+            wf("artifact_storage_90d_usd", cc.get("artifact_storage_cost", {}).get("monthly_vendor_storage_90d_usd", 0.0))
+            wf("parallelism_tier_upgrade_tax_usd", cc.get("parallelism_cost", {}).get("parallelism_tier_upgrade_tax_monthly_usd", 0.0))
+            wf("datadog_90d_log_shipping_usd", cc.get("log_retention_cost", {}).get("monthly_datadog_90d_log_shipping_usd", 0.0))
+            wf("nat_egress_worst_case_usd", cc.get("cross_region_egress_cost", {}).get("monthly_infracost_private_subnet_nat_worst_case_usd", 0.0))
+            wf("monthly_productive_payroll_loss_usd", cc.get("developer_wait_time_cost", {}).get("monthly_productive_payroll_loss_usd", 0.0))
+            wf("monthly_total_immediate_flake_cost_usd", cc.get("failed_build_rerun_cost", {}).get("monthly_total_immediate_flake_cost_usd", 0.0))
+            wf("monthly_unrealized_cache_savings_usd", cc.get("build_cache_savings", {}).get("monthly_unrealized_cache_savings_usd", 0.0))
+            wf("monthly_combined_flake_tax_usd", cc.get("flaky_test_ci_cd_tax", {}).get("monthly_combined_flake_tax_usd", 0.0))
+            wf("monthly_superseded_run_waste_usd", cc.get("branch_protection_cost", {}).get("monthly_superseded_run_waste_usd", 0.0))
+            wf("monthly_unfiltered_check_savings_usd", cc.get("branch_protection_cost", {}).get("monthly_unfiltered_check_savings_usd", 0.0))
+            ws("inferred_team_stage", cc.get("startup_stage_cost", {}).get("inferred_team_stage", ""))
+            ws("detected_pipeline_shape", cc.get("monorepo_ci_cost", {}).get("detected_pipeline_shape", ""))
+            ws("detected_workspace_units_count", cc.get("monorepo_ci_cost", {}).get("detected_workspace_units_count", 0))
+            wf("monthly_affected_only_savings_usd", cc.get("monorepo_ci_cost", {}).get("monthly_affected_only_savings_usd", 0.0))
+            wf("recoverable_ci_and_wait_monthly_usd", cc.get("scaleup_stage_cost", {}).get("recoverable_ci_and_wait_monthly_usd", 0.0))
+            wf("monthly_shared_infra_setup_savings_usd", cc.get("microservices_ci_cost", {}).get("monthly_shared_infra_setup_savings_usd", 0.0))
+            ws("cheapest_vendor_platform", cc.get("vendor_tco_comparison", {}).get("cheapest_vendor_platform", ""))
+            wf("cheapest_vendor_monthly_tco_usd", cc.get("vendor_tco_comparison", {}).get("cheapest_vendor_monthly_tco_usd", 0.0))
+            ws("migration_worth_it_2x_annual_rule", str(cc.get("vendor_tco_comparison", {}).get("migration_worth_it_2x_annual_rule", False)).lower())
+            ws("best_first_optimization_phase", cc.get("build_phase_breakdown", {}).get("best_first_optimization_phase", ""))
+            wf("monthly_total_reducible_phase_savings_usd", cc.get("build_phase_breakdown", {}).get("monthly_total_reducible_phase_savings_usd", 0.0))
+            ws("detected_workload_compute_profile", cc.get("compute_class_explorer", {}).get("detected_workload_compute_profile", ""))
+            wf("arm64_migration_monthly_savings_usd", cc.get("compute_class_explorer", {}).get("arm64_migration_monthly_savings_usd", 0.0))
+            ws("detected_stack_archetype", cc.get("stack_specific_economics", {}).get("detected_stack_archetype", ""))
+            wf("stack_specific_monthly_savings_usd", cc.get("stack_specific_economics", {}).get("stack_specific_monthly_savings_usd", 0.0))
         '
         fi

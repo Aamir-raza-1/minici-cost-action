@@ -1,6 +1,6 @@
 # Customer Impact & Multi-Repository Analysis: 4 Calculation & Stack Intelligence Pillars (Models 17–20 across the 20-Model Unified Engine)
 
-**Repository:** `/Users/araza/personal/minici-cost-action` (`v0.5.0` • commit `b9f35f2`)  
+**Repository:** `/Users/araza/personal/minici-cost-action` (`v0.6.0` • 20-Model Locked Release)  
 **Engine:** `minici` Zero-Dependency Rust Static FinOps Engine (`< 3.5 ms` median execution per repository)  
 **Scope:** 12 Representative Production & World-Scale Repositories from `/Users/araza/.minici/10-repos-cache` (`01_MaximVote__maxim`, `02_mgjartproject__FineArts-BE`, `04_astral-sh__uv`, `05_denoland__deno`, `07_immich-app__immich`, `08_langgenius__dify`, `check_MaximVote__tf`) and `/Users/araza/personal/top10-github-repos` (`01-microsoft-vscode`, `02-flutter-flutter`, `05-vercel-nextjs`, `08-supabase-supabase`, `10-pydantic-pydantic`), cross-validated against the full 27-repository benchmark.
 
@@ -51,40 +51,40 @@ Most teams compare CI/CD vendors using per-minute Linux rates alone, ignoring **
 
 * **`github_actions_team_monthly_tco_usd`:** `$4/seat` + `3,000` included standard Linux mins (`$0.006/min` Linux overage, `$0.010/min` Windows, `$0.062/min` macOS) + `larger_runner_monthly_usd` (metered from the 1st second without drawing free quota).
 * **`gitlab_ci_premium_monthly_tco_usd`:** `$29/seat` + `10,000` namespace mins (`$0.010/min` Linux/Windows overage, `$0.060/min` macOS).
-* **`circleci_performance_monthly_tco_usd`:** `$15` base (`5` users + `30,000` credits) + `$15/extra seat` + credits at `$0.0006/credit` (`10` credits/min Linux, `40`/min Windows, `200`/min macOS M4 Pro).
-* **`bitbucket_premium_monthly_tco_usd`:** `$8/seat` + `3,500` workspace mins (`$0.010/min` overage) + `$28/mo` self-hosted macOS node allowance per `8,500` macOS mins.
-* **`buildkite_pro_monthly_tco_usd`:** Free for `<= 5` devs & `<= 3` agents; otherwise `$30/seat` + `min(peak_concurrent_jobs, 16) * $30/agent`.
+* **`circleci_performance_monthly_tco_usd`:** `$15` base (`5` users + `30,000` credits) + `$15/extra seat` + vCPU-scaled credits at `$0.0006/credit` (`10` credits/min per 2 Linux vCPUs, `40`/min Windows, `200`/min macOS M4 Pro).
+* **`bitbucket_premium_monthly_tco_usd`:** `$8/seat` + `3,500` workspace mins (`$0.010/min` overage) + `$28/mo` self-hosted macOS node allowance per `8,500` macOS mins (disqualified from `cheapest_vendor_platform` on macOS workloads since Bitbucket lacks native hosted macOS runners).
+* **`buildkite_pro_monthly_tco_usd`:** Free for `<= 5` devs & `<= 10` concurrent jobs; otherwise `$30/seat` + sustained agent fleet sizing (`ceil(monthly_billed_mins / 8500) * $30/agent`, bounded by peak concurrency).
 * **`jenkins_self_hosted_monthly_tco_usd`:** `$0` license + `$70/mo` controller + `agents * $30/mo` + operator maintenance allowance (`$450/mo` for `<= 10` devs; `$800/mo` for `> 10` devs).
 * **`aws_codebuild_monthly_tco_usd`:** `$0` seats + `100` free mins + `$0.005/min` Linux + `$0.016/min` Windows + `$0.065/min` macOS.
 * **`gcp_cloud_build_monthly_tco_usd`:** `$0` seats + `2,500` free mins + `$0.003/min` `e2-medium` Linux + `$0.010/min` Windows + `$0.062/min` macOS.
 * **`azure_pipelines_monthly_tco_usd`:** `1` free hosted lane (`1,800` mins) + `$40/mo` per additional parallel lane (`max(ceil(monthly_billed_mins / 7500), 2)`).
-* **Migration Engineering Cost & 2x Annual Rule:** Estimates `40h + 4h * workflow_count` at `$100/hr` blended rate (`migration_estimated_cost_usd`). `migration_worth_it_2x_annual_rule` is `true` **only** when `(current_tco - cheapest_tco) * 12 >= 2.0 * migration_estimated_cost_usd` (i.e., `migration_payback_months <= 6.0`).
+* **Migration Engineering Cost & 2x Annual Rule:** Path-aware migration effort (`60h + 6h/wf` from Jenkins, `50h + 5h/wf` to BYO agent fleet, `40h + 4h/wf` YAML-to-YAML, `0h` when already on cheapest vendor) at `$100/hr` blended rate (`migration_estimated_cost_usd`). `migration_worth_it_2x_annual_rule` is `true` **only** when `(current_tco - cheapest_tco) * 12 >= 2.0 * migration_estimated_cost_usd` (i.e., `migration_payback_months <= 6.0`).
 
 #### 12-Repository Multi-Vendor TCO Comparison Table
 
 | Repository | GH Actions Team (`$/mo`) | GitLab Premium (`$/mo`) | CircleCI Perf (`$/mo`) | Bitbucket Prem (`$/mo`) | Buildkite Pro (`$/mo`) | Jenkins Self-Host (`$/mo`) | AWS CodeBuild (`$/mo`) | GCP Cloud Build (`$/mo`) | Azure Pipelines (`$/mo`) | Cheapest Platform (`$/mo`) | Migration Cost (`Hours` / `$`) | Payback (`Mo`) / Worth 2x Rule? |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- | :---: | :---: |
-| **`01_MaximVote__maxim`** | $700.61 | $2,281.35 | $1,223.61 | $1,233.35 | $2,070.00 | $1,350.00 | $421.67 | **$245.80** | $440.00 | `gcp-cloud-build` ($245.80) | 204h / $20,400 | 26.72m / **`false`** |
-| **`02_mgjartproject__FineArts-BE`** | $48.76 | $145.00 | $43.76 | $82.94 | $330.00 | $700.00 | $38.47 | **$15.88** | $40.00 | `gcp-cloud-build` ($15.88) | 48h / $4,800 | 120.00m / **`false`** |
-| **`04_astral-sh__uv`** | $5,175.03 | $9,974.34 | $8,043.95 | $4,699.25 | $6,540.00 | $1,350.00 | $3,351.63 | $2,477.08 | **$1,720.00** | `azure-pipelines` ($1,720.00) | 228h / $22,800 | 6.60m / **`false`** |
-| **`05_denoland__deno`** | $41,005.67 | $35,668.05 | $46,784.54 | $10,299.15 | $15,600.00 | $1,350.00 | $22,559.23 | $19,655.90 | **$4,280.00** | `azure-pipelines` ($4,280.00) | 84h / $8,400 | **0.23m** / **`true`** |
-| **`07_immich-app__immich`** | $1,249.55 | $3,290.02 | $2,001.64 | $1,720.12 | $2,670.00 | $1,350.00 | $735.60 | **$484.82** | $600.00 | `gcp-cloud-build` ($484.82) | 148h / $14,800 | 19.35m / **`false`** |
-| **`08_langgenius__dify`** | $1,775.25 | $4,836.76 | $2,892.25 | $2,526.88 | $3,690.00 | $1,350.00 | $1,035.89 | **$675.12** | $880.00 | `gcp-cloud-build` ($675.12) | 204h / $20,400 | 18.54m / **`false`** |
-| **`check_MaximVote__tf`** | $84.15 | $248.91 | $112.15 | $145.91 | $480.00 | $760.00 | $57.96 | **$27.57** | $40.00 | `gcp-cloud-build` ($27.57) | 64h / $6,400 | 113.11m / **`false`** |
-| **`01-microsoft-vscode`** | $2,867.03 | $1,854.61 | $1,946.05 | $744.97 | $1,530.00 | $1,350.00 | $913.56 | $726.44 | **$280.00** | `azure-pipelines` ($280.00) | 60h / $6,000 | **2.32m** / **`true`** |
-| **`02-flutter-flutter`** | $109.05 | $199.98 | $113.32 | $123.27 | $510.00 | $850.00 | $68.78 | $44.03 | **$40.00** | `azure-pipelines` ($40.00) | 64h / $6,400 | 92.69m / **`false`** |
-| **`05-vercel-nextjs`** | $1,214.56 | $1,515.56 | $1,108.90 | $824.56 | $1,560.00 | $1,350.00 | $471.04 | $282.18 | **$280.00** | `azure-pipelines` ($280.00) | 60h / $6,000 | 6.42m / **`false`** |
-| **`08-supabase-supabase`** | $236.87 | $749.12 | $385.87 | $415.12 | $1,050.00 | $1,350.00 | $148.56 | **$81.94** | $120.00 | `gcp-cloud-build` ($81.94) | 88h / $8,800 | 47.18m / **`false`** |
-| **`10-pydantic-pydantic`** | $8,609.15 | $13,208.08 | $11,321.15 | $5,756.90 | $8,040.00 | $1,350.00 | $4,812.08 | $3,802.08 | **$2,120.00** | `azure-pipelines` ($2,120.00) | 88h / $8,800 | **1.36m** / **`true`** |
+| **`01_MaximVote__maxim`** | $700.61 | $2,281.35 | $2,199.94 | $1,233.35 | $1,890.00 | $1,170.00 | $421.67 | **$245.80** | $440.00 | `gcp-cloud-build` ($245.80) | 204h / $20,400 | 44.85m / **`false`** |
+| **`02_mgjartproject__FineArts-BE`** | $48.76 | $145.00 | $43.76 | $82.94 | $30.00 | $550.00 | $38.47 | **$15.88** | $40.00 | `gcp-cloud-build` ($15.88) | 48h / $4,800 | 120.00m / **`false`** |
+| **`04_astral-sh__uv`** | $3,449.53 | $9,974.34 | $8,632.53 | $4,699.25 | $6,540.00 | $1,350.00 | $3,351.63 | $2,477.08 | **$1,720.00** | `azure-pipelines` ($1,720.00) | 228h / $22,800 | 13.18m / **`false`** |
+| **`05_denoland__deno`** | $22,204.81 | $35,668.05 | $46,839.10 | $10,299.15 | $15,600.00 | $1,350.00 | $22,559.23 | $19,655.90 | **$4,280.00** | `azure-pipelines` ($4,280.00) | 84h / $8,400 | **0.47m** / **`true`** |
+| **`07_immich-app__immich`** | $1,093.67 | $3,290.02 | $2,001.64 | $1,720.12 | $2,610.00 | $1,290.00 | $735.60 | **$484.82** | $600.00 | `gcp-cloud-build` ($484.82) | 148h / $14,800 | 24.31m / **`false`** |
+| **`08_langgenius__dify`** | $1,588.19 | $4,836.76 | $3,184.52 | $2,526.88 | $3,690.00 | $1,350.00 | $1,035.89 | **$675.12** | $880.00 | `gcp-cloud-build` ($675.12) | 204h / $20,400 | 22.34m / **`false`** |
+| **`check_MaximVote__tf`** | $84.15 | $248.91 | $112.15 | $145.91 | $300.00 | $580.00 | $57.96 | **$27.57** | $40.00 | `gcp-cloud-build` ($27.57) | 64h / $6,400 | 113.11m / **`false`** |
+| **`01-microsoft-vscode`** | $2,227.93 | $1,854.61 | $2,468.24 | $744.97 | $1,260.00 | $1,080.00 | $913.56 | $726.44 | **$280.00** | `azure-pipelines` ($280.00) | 60h / $6,000 | **3.08m** / **`true`** |
+| **`02-flutter-flutter`** | $82.21 | $199.98 | $113.32 | $123.27 | $240.00 | $580.00 | $68.78 | $44.03 | **$40.00** | `azure-pipelines` ($40.00) | 64h / $6,400 | 120.00m / **`false`** |
+| **`05-vercel-nextjs`** | $1,045.69 | $1,515.56 | $1,872.71 | $824.56 | $1,290.00 | $1,080.00 | $471.04 | $282.18 | **$280.00** | `azure-pipelines` ($280.00) | 60h / $6,000 | 7.84m / **`false`** |
+| **`08-supabase-supabase`** | $236.87 | $749.12 | $595.40 | $415.12 | $690.00 | $990.00 | $148.56 | **$81.94** | $120.00 | `gcp-cloud-build` ($81.94) | 88h / $8,800 | 56.80m / **`false`** |
+| **`10-pydantic-pydantic`** | $5,772.14 | $13,208.08 | $11,321.15 | $5,756.90 | $8,040.00 | $1,350.00 | $4,812.08 | $3,802.08 | **$2,120.00** | `azure-pipelines` ($2,120.00) | 88h / $8,800 | **2.41m** / **`true`** |
 
 #### Customer Decision-Making Insights (`vendor_tco_comparison`)
 1. **Preventing Value-Destroying Vendor Migrations (9 of 12 Repos Fail the 2x Annual Rule):**
-   * On **`01_MaximVote__maxim`** (41 workflows) and **`08_langgenius__dify`** (41 workflows), migrating to GCP Cloud Build would theoretically lower raw monthly TCO to `$245.80/mo` and `$675.12/mo`, respectively. However, rewriting 41 production workflows requires **204 engineering hours ($20,400)**—resulting in a **26.72-month** and **18.54-month** payback period (`migration_worth_it_2x_annual_rule = false`). `minici` protects engineering leaders from wasting $20k+ of developer time chasing small monthly bill differences, steering them toward in-place optimizations instead.
-   * Even on **`04_astral-sh__uv`** (`$3,464.00/mo` compute, `$5,175.03/mo` GH Actions Team TCO), migrating 47 complex workflows takes **228 hours ($22,800)** with a **6.60-month payback**—just missing the strict 6.0-month (`2x` first-year ROI) gate, whereas in-place Cloud Spot / ARM64 runner right-sizing saves `$1,040.98–$2,835.07/mo` with zero platform rewrite.
+   * On **`01_MaximVote__maxim`** (41 workflows) and **`08_langgenius__dify`** (41 workflows), migrating to GCP Cloud Build would theoretically lower raw monthly TCO to `$245.80/mo` and `$675.12/mo`, respectively. However, rewriting 41 production workflows requires **204 engineering hours ($20,400)**—resulting in a **44.85-month** and **22.34-month** payback period (`migration_worth_it_2x_annual_rule = false`). `minici` protects engineering leaders from wasting $20k+ of developer time chasing small monthly bill differences, steering them toward in-place optimizations instead.
+   * Even on **`04_astral-sh__uv`** (`$3,464.00/mo` compute, `$3,449.53/mo` GH Actions Team TCO), migrating 47 complex workflows takes **228 hours ($22,800)** with a **13.18-month payback**—missing the strict 6.0-month (`2x` first-year ROI) gate, whereas in-place Cloud Spot / ARM64 runner right-sizing saves `$1,040.98–$2,835.07/mo` with zero platform rewrite.
 2. **Identifying Genuine Platform Arbitrage (3 of 12 Repos Pass the 2x Annual Rule):**
-   * **`05_denoland__deno`** (11 workflows, `805,380 mins/mo`), **`10-pydantic-pydantic`** (12 workflows, `402,993 mins/mo`), and **`01-microsoft-vscode`** (5 workflows, `54,991 mins/mo`) combine compact workflow counts (`5–12` files, `$6,000–$8,800` migration cost) with massive multi-OS / larger-runner minute volumes. Flat parallel-lane pricing (`azure-pipelines` at `$40/lane/mo`) yields **0.23-month (~7 days)**, **1.36-month**, and **2.32-month** paybacks (`migration_worth_it_2x_annual_rule = true`).
+   * **`05_denoland__deno`** (11 workflows, `805,380 mins/mo`), **`10-pydantic-pydantic`** (12 workflows, `402,993 mins/mo`), and **`01-microsoft-vscode`** (5 workflows, `54,991 mins/mo`) combine compact workflow counts (`5–12` files, `$6,000–$8,800` migration cost) with massive multi-OS / larger-runner minute volumes. Flat parallel-lane pricing (`azure-pipelines` at `$40/lane/mo`) yields **0.47-month (~14 days)**, **2.41-month**, and **3.08-month** paybacks (`migration_worth_it_2x_annual_rule = true`).
 3. **Exposing the Jenkins "Free Software" Illusion:**
-   * On small repositories like **`02_mgjartproject__FineArts-BE`** (`$46.76/mo`) and **`check_MaximVote__tf`** (`$70.15/mo`), Jenkins self-hosted TCO is **$700.00/mo** and **$760.00/mo** once the `$70/mo` controller, agent VMs, and `$450/mo` operator maintenance allowance are included—proving why small teams should never self-host Jenkins.
+   * On small repositories like **`02_mgjartproject__FineArts-BE`** (`$46.76/mo`) and **`check_MaximVote__tf`** (`$70.15/mo`), Jenkins self-hosted TCO is **$550.00/mo** and **$580.00/mo** once the `$70/mo` controller, agent VMs, and `$450/mo` operator maintenance allowance are included—proving why small teams should never self-host Jenkins.
 
 ---
 
@@ -111,15 +111,15 @@ Instead of treating a CI job as an opaque black box, `minici` decomposes pipelin
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- | :---: | :---: | :---: |
 | **`05_denoland__deno`** | 5.0% | 22.0% | 30.0% | 36.0% | 0.0% | 7.0% | **$10,962.19/mo** | `dependency_install` | 6.0h | **$3,111.85/mo** | **0.13m (~4d)** |
 | **`10-pydantic-pydantic`** | 5.0% | 22.0% | 30.0% | 36.0% | 0.0% | 7.0% | **$2,165.75/mo** | `dependency_install` | 6.0h | **$733.02/mo** | **0.53m (~16d)** |
-| **`04_astral-sh__uv`** | 5.0% | 20.0% | 18.0% | 32.0% | 18.0% | 7.0% | **$1,513.77/mo** | `dependency_install` | 6.0h | **$484.96/mo** | **0.80m (~24d)** |
+| **`04_astral-sh__uv`** | 5.0% | 18.0% | 25.0% | 28.0% | 17.0% | 7.0% | **$1,417.55/mo** | `dependency_install` | 6.0h | **$436.46/mo** | **0.89m (~27d)** |
 | **`01-microsoft-vscode`** | 6.0% | 26.0% | 18.0% | 42.0% | 0.0% | 8.0% | **$1,201.10/mo** | `dependency_install` | 6.0h | **$382.84/mo** | **1.02m** |
-| **`05-vercel-nextjs`** | 6.0% | 26.0% | 18.0% | 42.0% | 0.0% | 8.0% | **$467.20/mo** | `dependency_install` | 6.0h | **$167.38/mo** | **2.33m** |
-| **`08_langgenius__dify`** | 5.0% | 20.0% | 18.0% | 32.0% | 18.0% | 7.0% | **$556.57/mo** | `dependency_install` | 6.0h | **$161.49/mo** | **2.41m** |
+| **`08_langgenius__dify`** | 5.0% | 20.0% | 18.0% | 32.0% | 18.0% | 7.0% | **$556.12/mo** | `dependency_install` | 6.0h | **$161.49/mo** | **2.41m** |
+| **`05-vercel-nextjs`** | 5.0% | 22.0% | 30.0% | 36.0% | 0.0% | 7.0% | **$418.46/mo** | `dependency_install` | 6.0h | **$141.63/mo** | **2.75m** |
 | **`01_MaximVote__maxim`** | 5.0% | 20.0% | 18.0% | 32.0% | 18.0% | 7.0% | **$373.99/mo** | `dependency_install` | 6.0h | **$141.32/mo** | **2.76m** |
-| **`07_immich-app__immich`** | 5.0% | 20.0% | 18.0% | 32.0% | 18.0% | 7.0% | **$395.49/mo** | `dependency_install` | 6.0h | **$114.75/mo** | **3.40m** |
+| **`07_immich-app__immich`** | 5.0% | 18.0% | 25.0% | 28.0% | 17.0% | 7.0% | **$392.60/mo** | `dependency_install` | 6.0h | **$103.28/mo** | **3.78m** |
 | **`08-supabase-supabase`** | 5.0% | 20.0% | 18.0% | 32.0% | 18.0% | 7.0% | **$155.98/mo** | `dependency_install` | 6.0h | **$37.58/mo** | **10.38m** |
-| **`02-flutter-flutter`** | 6.0% | 26.0% | 18.0% | 42.0% | 0.0% | 8.0% | **$43.52/mo** | `dependency_install` | 6.0h | **$13.87/mo** | **28.12m** |
-| **`check_MaximVote__tf`** | 5.0% | 20.0% | 18.0% | 32.0% | 18.0% | 7.0% | **$33.85/mo** | `dependency_install` | 6.0h | **$9.82/mo** | **39.71m** |
+| **`02-flutter-flutter`** | 5.0% | 22.0% | 30.0% | 36.0% | 0.0% | 7.0% | **$42.68/mo** | `dependency_install` | 6.0h | **$11.74/mo** | **33.23m** |
+| **`check_MaximVote__tf`** | 5.0% | 18.0% | 25.0% | 28.0% | 17.0% | 7.0% | **$33.64/mo** | `dependency_install` | 6.0h | **$8.84/mo** | **44.12m** |
 | **`02_mgjartproject__FineArts-BE`** | 5.0% | 20.0% | 18.0% | 32.0% | 18.0% | 7.0% | **$27.17/mo** | `dependency_install` | 6.0h | **$6.55/mo** | **59.57m** |
 
 #### Customer Decision-Making Insights (`build_phase_breakdown`)
@@ -148,33 +148,34 @@ Upgrading from a standard `2-core` runner (`$0.006/min`) to a `4-core` (`2.0x` r
 
 #### 12-Repository Compute-Class & Larger-Runner Tax Table
 
-| Repository | Compute Profile | Larger Runners Count | Larger-Runner Free-Tier Bypass Tax (`$/mo`) | `arm64` 2-Core Compute (`$/mo`) | `arm64` Migration Savings (`$/mo`) | Standard 2-Core (`$/mo`) | Larger 4-Core (`$/mo`) | Larger 8-Core (`$/mo`) | Larger 16-Core (`$/mo`) | Best Net-ROI Tier (Compute + Dev Wait) | Best Net Monthly Delta (`$/mo`) |
+| Repository | Compute Profile | Larger Runners Count | Larger-Runner Free-Tier Bypass Tax (`$/mo`) | `arm64` 2-Core Compute (`$/mo`) | `arm64` Migration Savings (`$/mo`) | Normalized 2-Core (`$/mo`) | Larger 4-Core (`$/mo`) | Larger 8-Core (`$/mo`) | Larger 16-Core (`$/mo`) | Best Net-ROI Tier (Compute + Dev Wait) | Best Net Monthly Delta (`$/mo`) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- | :---: |
-| **`01_MaximVote__maxim`** | `io-bound` | 0 *(44 custom)* | $0.00 | $999.02 | $10.39 | $1,009.41 | $1,710.86 | $2,847.08 | $5,120.20 | `standard-2-core` | **$0.00** *(Hold)* |
+| **`01_MaximVote__maxim`** | `io-bound` | 0 *(44 custom)* | $0.00 | $999.02 | $10.39 | $618.50 | $1,048.31 | $1,744.50 | $3,137.32 | `standard-2-core` | **$0.00** *(Hold)* |
 | **`02_mgjartproject__FineArts-BE`** | `balanced-web-backend` | 0 | $0.00 | $38.97 | $7.79 | $46.76 | $70.32 | $109.91 | $187.04 | **`larger-16-core`** | **-$370.40/mo** |
-| **`04_astral-sh__uv`** | `compile-heavy` | **48** | **$1,208.94/mo** | $2,821.38 | **$642.62/mo** | $3,464.00 | $4,198.79 | $5,292.27 | $7,577.50 | **`larger-4-core`** | **-$229.84/mo** |
-| **`05_denoland__deno`** | `compile-heavy` | **119** | **$19,250.75/mo** | $13,117.20 | **$7,089.61/mo** | $20,206.81 | $24,493.10 | $30,871.80 | $44,202.40 | `standard-2-core` | **$0.00** *(Hold)* |
-| **`07_immich-app__immich`** | `compile-heavy` | **4** | **$201.35/mo** | $644.13 | **$175.54/mo** | $819.67 | $993.54 | $1,252.28 | $1,793.03 | **`larger-8-core`** | **-$705.65/mo** |
-| **`08_langgenius__dify`** | `io-bound` | **2** | **$187.06/mo** | $1,030.75 | **$122.76/mo** | $1,153.51 | $1,955.10 | $3,253.52 | $5,851.14 | `standard-2-core` | **$0.00** *(Hold)* |
+| **`04_astral-sh__uv`** | `compile-heavy` | **18** | **$287.51/mo** | $3,153.09 | **$310.91/mo** | $3,385.31 | $4,103.41 | $5,172.05 | $7,405.37 | **`larger-4-core`** | **-$246.53/mo** |
+| **`05_denoland__deno`** | `compile-heavy` | **42** | **$1,644.97/mo** | $19,455.28 | **$751.53/mo** | $20,177.19 | $24,457.20 | $30,826.54 | $44,137.60 | `standard-2-core` | **$0.00** *(Hold)* |
+| **`07_immich-app__immich`** | `compile-heavy` | **2** | **$45.47/mo** | $700.25 | **$119.42/mo** | $819.67 | $993.54 | $1,252.28 | $1,793.03 | **`larger-8-core`** | **-$705.65/mo** |
+| **`08_langgenius__dify`** | `io-bound` | 0 | $0.00 | $1,098.09 | **$55.42/mo** | $1,108.70 | $1,879.15 | $3,127.13 | $5,623.84 | `standard-2-core` | **$0.00** *(Hold)* |
 | **`check_MaximVote__tf`** | `compile-heavy` | 0 | $0.00 | $58.46 | $11.69 | $70.15 | $85.03 | $107.17 | $153.45 | **`larger-16-core`** | **-$381.09/mo** |
-| **`01-microsoft-vscode`** | `io-bound` | **34** | **$2,087.93/mo** | $1,349.26 | **$754.25/mo** | $2,103.51 | $3,565.27 | $5,933.03 | $10,669.98 | `standard-2-core` | **$0.00** *(Hold)* |
-| **`02-flutter-flutter`** | `test-heavy` | **1** | **$26.85/mo** | $58.32 | $17.89 | $76.21 | $98.34 | $129.97 | $190.52 | **`larger-8-core`** | **-$232.31/mo** |
-| **`05-vercel-nextjs`** | `test-heavy` | **21** | **$787.19/mo** | $614.22 | **$305.47/mo** | $919.69 | $1,186.70 | $1,568.48 | $2,299.23 | **`larger-4-core`** | **-$89.20/mo** |
-| **`08-supabase-supabase`** | `io-bound` | 0 *(19 custom)* | $0.00 | $263.70 | $4.76 | $268.46 | $455.02 | $757.20 | $1,361.75 | `standard-2-core` | **$0.00** *(Hold)* |
-| **`10-pydantic-pydantic`** | `compile-heavy` | **20** | **$2,837.02/mo** | $3,425.50 | **$1,334.38/mo** | $4,759.88 | $5,769.55 | $7,272.10 | $10,412.24 | `standard-2-core` | **$0.00** *(Hold)* |
+| **`01-microsoft-vscode`** | `io-bound` | **34** | **$2,087.93/mo** | $1,349.26 | **$754.25/mo** | $1,691.56 | $2,867.05 | $4,771.11 | $8,580.38 | `standard-2-core` | **$0.00** *(Hold)* |
+| **`02-flutter-flutter`** | `compile-heavy` | 0 | $0.00 | $67.98 | $8.23 | $76.21 | $92.38 | $116.43 | $166.71 | **`larger-16-core`** | **-$277.19/mo** |
+| **`05-vercel-nextjs`** | `compile-heavy` | **15** | **$631.31/mo** | $670.33 | **$249.36/mo** | $692.11 | $838.92 | $1,057.40 | $1,513.99 | **`larger-4-core`** | **-$248.65/mo** |
+| **`08-supabase-supabase`** | `io-bound` | 0 *(19 custom)* | $0.00 | $263.70 | $4.76 | $209.48 | $355.05 | $590.85 | $1,062.58 | **`larger-4-core`** | **-$10.42/mo** |
+| **`10-pydantic-pydantic`** | `compile-heavy` | 0 | $0.00 | $4,446.82 | **$313.06/mo** | $4,759.88 | $5,769.55 | $7,272.10 | $10,412.24 | `standard-2-core` | **$0.00** *(Hold)* |
 
 #### Customer Decision-Making Insights (`compute_class_explorer`)
-1. **Exposing the "Larger-Runner Free-Minutes Bypass Tax":**
-   * On GitHub Actions, standard `ubuntu-latest` (`2-core`) jobs draw from the organization's included plan minutes (`2,000` Free / `3,000` Team / `50,000` Enterprise). However, **Larger Runners** (`4-core+`, `ubuntu-24.04-arm`, `gpu`, or custom-sized hosted SKUs) **never draw from included minutes**—they bill from the very first second.
-   * `minici` surfaces this exact billing trap in both JSON (`larger_runners_bypass_free_minutes_tax_usd`) and CLI (`• Pipeline Hygiene : ... 48 larger runner job(s) ($1208.94/mo metered from 1st sec; never draw free mins)`):
-     * **`05_denoland__deno`:** **119 larger runner jobs** billing **$19,250.75/mo** (`95.3%` of total compute).
-     * **`10-pydantic-pydantic`:** **20 larger runner jobs** billing **$2,837.02/mo** (`59.6%` of total compute).
+1. **Exposing the "Larger-Runner Free-Minutes Bypass Tax" (Without False Positives on Standard `windows-latest` / `macos-latest`):**
+   * On GitHub Actions, standard `ubuntu-latest` (`2-core`), `windows-latest` (`4-core`), and `macos-latest` (`3-core`) jobs draw from the organization's included plan minutes. However, **GitHub Larger Runners** (`4-core+` Linux, `8-core+` Windows, `macos-large`, `ubuntu-24.04-arm`, and `gpu` hosted SKUs) **never draw from included minutes**—they bill from the very first second.
+   * `minici` surfaces this exact billing trap in both JSON (`larger_runners_bypass_free_minutes_tax_usd`) and CLI (`• Pipeline Hygiene : ... 18 larger runner job(s) ($287.51/mo metered from 1st sec; never draw free mins)`):
      * **`01-microsoft-vscode`:** **34 larger runner jobs** billing **$2,087.93/mo** (`99.3%` of total compute).
-     * **`04_astral-sh__uv`:** **48 larger runner jobs** billing **$1,208.94/mo** (`34.9%` of total compute).
-     * **`05-vercel-nextjs`:** **21 larger runner jobs** billing **$787.19/mo** (`85.6%` of total compute).
+     * **`05_denoland__deno`:** **42 larger runner jobs** billing **$1,644.97/mo**.
+     * **`05-vercel-nextjs`:** **15 larger runner jobs** billing **$631.31/mo** (`68.6%` of total compute).
+     * **`04_astral-sh__uv`:** **18 larger runner jobs** billing **$287.51/mo**.
+     * **`07_immich-app__immich`:** **2 larger runner jobs** billing **$45.47/mo**.
+     * **`10-pydantic-pydantic`:** **0 larger runner jobs** (`$0.00` bypass tax)—correctly distinguishing standard `windows-latest` (`4-core`) and `macos-latest` (`3-core`) matrix jobs from GitHub Larger Runners.
 2. **When Upgrading Runner Cores Pays for Itself via Reclaimed Engineering Time:**
    * On **`07_immich-app__immich`** (`compile-heavy`), moving from `2-core` (`$819.67/mo`) to `8-core` (`$1,252.28/mo`) adds `$432.61/mo` in runner compute but achieves a `2.40x` speedup on the `10.4m` critical path—reclaiming **$1,138.26/mo** in DORA-weighted developer wait-time loss for a **net gain of `-$705.65/mo`**.
-   * Conversely, on **`01_MaximVote__maxim`**, **`08_langgenius__dify`**, **`01-microsoft-vscode`**, and **`08-supabase-supabase`** (`io-bound` workloads where `8-core` only yields `1.30x` speedup), upgrading runner cores wastes `$701–$2,100+/mo` with minimal wait-time reduction—so `minici` recommends holding at `standard-2-core` (`$0.00` delta) or migrating to `arm64` (`-$754.25/mo` on `vscode`).
+   * Conversely, on **`01_MaximVote__maxim`**, **`08_langgenius__dify`**, and **`01-microsoft-vscode`** (`io-bound` workloads where `8-core` only yields `1.30x` speedup), upgrading runner cores wastes `$430–$1,175+/mo` with minimal wait-time reduction—so `minici` recommends holding at `standard-2-core` (`$0.00` delta) or migrating to `arm64` (`-$754.25/mo` on `vscode`).
 
 ---
 
@@ -183,29 +184,30 @@ Upgrading from a standard `2-core` runner (`$0.006/min`) to a `4-core` (`2.0x` r
 #### Architectural Archetypes & Remediation Levers
 Generic CI advice ("add caching") fails when engineers need stack-specific implementation levers. `minici` maps each repository to its dominant runtime archetype and calculates the exact monthly savings of its primary stack-native optimization:
 
-| Repository | `detected_stack_archetype` | Hosted macOS Spend (`$/mo`) | Flat Unmetered M2 Plan (`$/mo`) | Buildkite + Mac mini Fleet TCO (`$/mo`) | Stack-Specific Monthly Savings (`$/mo`) | `stack_specific_primary_lever` |
-| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| **`05_denoland__deno`** | `ios-macos-xcode` | $16,241.83 | **$332.50** | $16,020.00 | **$15,909.33/mo** | `self-hosted-mac-mini-fleet-or-flat-m2-plan` |
-| **`10-pydantic-pydantic`** | `ios-macos-xcode` | $2,442.99 | **$332.50** | $7,710.00 | **$2,110.49/mo** | `self-hosted-mac-mini-fleet-or-flat-m2-plan` |
-| **`04_astral-sh__uv`** | `ios-macos-xcode` | $942.21 | **$332.50** | $6,150.00 | **$609.71/mo** | `self-hosted-mac-mini-fleet-or-flat-m2-plan` |
-| **`01-microsoft-vscode`** | `ios-macos-xcode` | $794.99 | **$332.50** | $1,080.00 | **$462.49/mo** | `self-hosted-mac-mini-fleet-or-flat-m2-plan` |
-| **`01_MaximVote__maxim`** | `node-typescript-vitest` | $0.00 | $0.00 | $0.00 | **$302.82/mo** | `pnpm-store-cache-and-turborepo-remote-cache` |
-| **`05-vercel-nextjs`** | `node-typescript-vitest` | $0.00 | $0.00 | $0.00 | **$275.91/mo** | `pnpm-store-cache-and-turborepo-remote-cache` |
-| **`08-supabase-supabase`** | `node-typescript-vitest` | $0.00 | $0.00 | $0.00 | **$80.54/mo** | `pnpm-store-cache-and-turborepo-remote-cache` |
-| **`check_MaximVote__tf`** | `rust-cargo` | $0.00 | $0.00 | $0.00 | **$31.57/mo** | `rust-cache-sccache-and-cargo-nextest` |
-| **`02_mgjartproject__FineArts-BE`** | `python-uv-pytest` | $0.00 | $0.00 | $0.00 | **$11.69/mo** | `uv-cache-and-pytest-xdist-sharding` |
-| **`07_immich-app__immich`** | `ios-macos-xcode` | $107.38 | $332.50 | $2,220.00 | **$0.00/mo** | `xcode-deriveddata-spm-cache-and-macos-on-merge-only` |
-| **`08_langgenius__dify`** | `ios-macos-xcode` | $161.08 | $332.50 | $3,240.00 | **$0.00/mo** | `xcode-deriveddata-spm-cache-and-macos-on-merge-only` |
-| **`02-flutter-flutter`** | `ios-macos-xcode` | $26.85 | $332.50 | $210.00 | **$0.00/mo** | `xcode-deriveddata-spm-cache-and-macos-on-merge-only` |
+| Repository | `detected_stack_archetype` | Flat Unmetered M2 Plan (`$/mo`) | BYO Mac mini Fleet TCO (`$/mo`) | Stack-Specific Monthly Savings (`$/mo`) | `stack_specific_primary_lever` |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **`05_denoland__deno`** | `rust-cargo` | $332.50 | $15,870.00 | **$9,093.06/mo** | `rust-cache-sccache-and-cargo-nextest` |
+| **`10-pydantic-pydantic`** | `rust-cargo` | $332.50 | $7,685.00 | **$713.98/mo** | `rust-cache-sccache-and-cargo-nextest` |
+| **`01-microsoft-vscode`** | `node-typescript-vitest` | $332.50 | $1,075.00 | **$631.05/mo** | `pnpm-store-cache-and-turborepo-remote-cache` |
+| **`04_astral-sh__uv`** | `rust-cargo` | $332.50 | $6,135.00 | **$519.60/mo** | `rust-cache-sccache-and-cargo-nextest` |
+| **`01_MaximVote__maxim`** | `node-typescript-vitest` | $0.00 | $0.00 | **$302.82/mo** | `pnpm-store-cache-and-turborepo-remote-cache` |
+| **`08_langgenius__dify`** | `python-uv-pytest` | $332.50 | $3,235.00 | **$288.38/mo** | `uv-cache-and-pytest-xdist-sharding` |
+| **`07_immich-app__immich`** | `flutter-dart-mobile` | $332.50 | $2,215.00 | **$286.88/mo** | `pub-cache-gradle-deriveddata-and-codemagic-m2-flat-plan` |
+| **`05-vercel-nextjs`** | `node-typescript-vitest` | $0.00 | $0.00 | **$275.91/mo** | `pnpm-store-cache-and-turborepo-remote-cache` |
+| **`08-supabase-supabase`** | `node-typescript-vitest` | $0.00 | $0.00 | **$80.54/mo** | `pnpm-store-cache-and-turborepo-remote-cache` |
+| **`check_MaximVote__tf`** | `rust-cargo` | $0.00 | $0.00 | **$31.57/mo** | `rust-cache-sccache-and-cargo-nextest` |
+| **`02-flutter-flutter`** | `flutter-dart-mobile` | $332.50 | $205.00 | **$26.67/mo** | `pub-cache-gradle-deriveddata-and-codemagic-m2-flat-plan` |
+| **`02_mgjartproject__FineArts-BE`** | `python-uv-pytest` | $0.00 | $0.00 | **$11.69/mo** | `uv-cache-and-pytest-xdist-sharding` |
 
 #### Customer Decision-Making Insights (`stack_specific_economics`)
-1. **macOS / Xcode Break-Even Precision (`>= 4,000 macOS mins/mo` vs. `< 4,000 macOS mins/mo`):**
-   * Hosted macOS runners (`$0.0620/min`) are `10.3x` more expensive than standard Linux runners. When monthly macOS usage exceeds `~5,360 mins/mo` (`$332.50/mo`), switching macOS lanes to a flat unmetered Apple Silicon M2 plan (`$3,990/yr = $332.50/mo` for 3 concurrent M2 slots) or dedicated Mac mini hardware saves **$15,909.33/mo** on `denoland/deno`, **$2,110.49/mo** on `pydantic/pydantic`, **$609.71/mo** on `astral-sh/uv`, and **$462.49/mo** on `microsoft/vscode`.
-   * Crucially, on repositories with light macOS usage (`02-flutter-flutter` at `$26.85/mo`, `07_immich-app__immich` at `$107.38/mo`, and `08_langgenius__dify` at `$161.08/mo`), a `$332.50/mo` flat M2 plan or `$210–$3,240/mo` Buildkite fleet would **cost more than their current hosted macOS spend**. `minici` strictly reports **`stack_specific_monthly_savings_usd = $0.00`** for hardware/plan migration and pivots `stack_specific_primary_lever` to **`xcode-deriveddata-spm-cache-and-macos-on-merge-only`**.
-2. **Node/TypeScript, Python, and Rust Stack Levers:**
-   * **`node-typescript-vitest` (`maxim`, `nextjs`, `supabase`):** Recommends `pnpm-store-cache-and-turborepo-remote-cache`, unlocking **$302.82/mo** (`maxim`), **$275.91/mo** (`nextjs`), and **$80.54/mo** (`supabase`) in remote artifact & dependency store savings.
-   * **`rust-cargo` (`check_MaximVote__tf` and `10_mendableai__firecrawl`):** Recommends `rust-cache-sccache-and-cargo-nextest` (`45%` compile/test reduction without remote `sccache`, saving **$31.57/mo** on `MaximVote/tf` and **$890.46/mo** on `firecrawl`).
-   * **`python-uv-pytest` (`FineArts-BE`, `open-webui`, `transformers`, `langchain`, `home-assistant`):** Recommends `uv-cache-and-pytest-xdist-sharding`, saving `25%+` of gross compute (`$11.69/mo` on `FineArts-BE` up to `$336.91/mo` on `home-assistant-core`).
+1. **Pure AST Stack Archetype Classification (Zero Cross-OS `ios-macos-xcode` False Positives):**
+   * Cross-platform Rust, C++, Go, Python, and TypeScript repositories (such as `denoland/deno`, `astral-sh/uv`, `pydantic/pydantic`, `microsoft/vscode`, `ggml-org/llama.cpp`, and `ollama/ollama`) run macOS release/matrix jobs alongside Linux and Windows jobs, yet are **not** iOS Xcode apps. `minici` classifies `ios-macos-xcode` strictly when native Apple/Xcode signals dominate without overriding `rust-cargo`, `cpp-cmake-ninja`, `flutter-dart-mobile`, `go-mod-build-cache`, `python-uv-pytest`, or `node-typescript-vitest` AST signals—while still exposing macOS M2 flat-plan (`$332.50/mo`) and Mac mini fleet (`$25/mo` amortized hardware) economics whenever `macos_mins_per_run > 0`.
+2. **Rust, Flutter/Dart, Node/TypeScript, C++, and Python Stack Levers Across the 27-Repo Benchmark:**
+   * **`rust-cargo` (`deno`, `pydantic`, `uv`, `firecrawl`, `MaximVote/tf`):** Recommends `rust-cache-sccache-and-cargo-nextest`, unlocking **$9,093.06/mo** (`deno`), **$890.46/mo** (`firecrawl`), **$713.98/mo** (`pydantic` / `pydantic-core`), and **$519.60/mo** (`uv`).
+   * **`node-typescript-vitest` (`vscode`, `maxim`, `nextjs`, `n8n`, `supabase`):** Recommends `pnpm-store-cache-and-turborepo-remote-cache`, unlocking **$631.05/mo** (`vscode`), **$302.82/mo** (`maxim`), **$275.91/mo** (`nextjs`), and **$80.54/mo** (`supabase`).
+   * **`flutter-dart-mobile` (`immich`, `flutter`):** Detects `pubspec.yaml` / `flutter` workflow steps and recommends pub-cache + Gradle + DerivedData caching (`$286.88/mo` on `immich`, `$26.67/mo` on `flutter`).
+   * **`cpp-cmake-ninja` (`ggml-org/llama.cpp`):** Detects CMake/Ninja/`ccache` signals across 62 workflows and unlocks **$868.84/mo** via remote `ccache`/`sccache` + Ninja parallelism.
+   * **`python-uv-pytest` (`dify`, `FineArts-BE`, `open-webui`, `transformers`, `langchain`, `home-assistant`):** Recommends `uv-cache-and-pytest-xdist-sharding`, saving **$288.38/mo** on `dify` up to **$350.95/mo** on `home-assistant/core`.
 
 ---
 
@@ -244,9 +246,9 @@ flowchart TD
 | **15** | `monorepo_ci_cost` | `monorepo` (9 units • `turborepo`, `$0` sav) | `monorepo` (5 units, `$1,212.40/mo` sav) | `single-service` (`$0.00/mo`) | `single-service` (`$0.00/mo`) | `monorepo` (5 units, `$93.96/mo` sav) |
 | **16** | `microservices_ci_cost` | `75s` setup (`$227.48/mo` shared image sav) | `75s` setup (`$935.28/mo` shared image sav) | `75s` setup (`$1,382.15/mo` shared sav) | `120s` setup (`$567.95/mo` shared sav) | `120s` setup (`$72.49/mo` shared sav) |
 | **17** | **`vendor_tco_comparison`** | `gcp-cloud-build` (`$245.80`, **worth=`false`**) | `azure-pipelines` (`$1,720`, **worth=`false`**) | `azure-pipelines` (`$4,280`, **worth=`true`**) | `azure-pipelines` (`$280`, **worth=`true`**) | `gcp-cloud-build` (`$81.94`, **worth=`false`**) |
-| **18** | **`build_phase_breakdown`** | `dependency_install` (`$141.32/mo`, `2.8m`) | `dependency_install` (`$484.96/mo`, `0.8m`) | `dependency_install` (`$3,111.85/mo`, `0.1m`) | `dependency_install` (`$382.84/mo`, `1.0m`) | `dependency_install` (`$37.58/mo`, `10.4m`) |
-| **19** | **`compute_class_explorer`** | `io-bound` • 0 larger (`standard-2-core`) | `compile-heavy` • 48 larger (`larger-4-core`) | `compile-heavy` • 119 larger (`$19.3k` tax) | `io-bound` • 34 larger (`$2,088` tax) | `io-bound` • 0 larger (`standard-2-core`) |
-| **20** | **`stack_specific_economics`** | `node-typescript-vitest` (`$302.82/mo`) | `ios-macos-xcode` (`$609.71/mo` M2 plan) | `ios-macos-xcode` (`$15,909.33/mo` M2/mini) | `ios-macos-xcode` (`$462.49/mo` M2 plan) | `node-typescript-vitest` (`$80.54/mo`) |
+| **18** | **`build_phase_breakdown`** | `dependency_install` (`$141.32/mo`, `2.8m`) | `dependency_install` (`$436.46/mo`, `0.9m`) | `dependency_install` (`$3,111.85/mo`, `0.1m`) | `dependency_install` (`$382.84/mo`, `1.0m`) | `dependency_install` (`$37.58/mo`, `10.4m`) |
+| **19** | **`compute_class_explorer`** | `io-bound` • 0 larger (`standard-2-core`) | `compile-heavy` • 18 larger (`larger-4-core`) | `compile-heavy` • 42 larger (`$1,645` tax) | `io-bound` • 34 larger (`$2,088` tax) | `io-bound` • 0 larger (`larger-4-core`) |
+| **20** | **`stack_specific_economics`** | `node-typescript-vitest` (`$302.82/mo`) | `rust-cargo` (`$519.60/mo`) | `rust-cargo` (`$9,093.06/mo`) | `node-typescript-vitest` (`$631.05/mo`) | `node-typescript-vitest` (`$80.54/mo`) |
 
 ---
 
@@ -265,14 +267,14 @@ In strict accordance with the **Unified Product Output & Strict Applicability Ru
  • Recommendation   : Pipeline already optimized (44/57 jobs on custom runners; remaining 13 lightweight hosted job(s) are optimal as-is)
 ```
 
-### 5.2 `04_astral-sh__uv` — Enterprise Rust Monorepo with 48 Larger Runners & `0.8m` Phase Payback
+### 5.2 `04_astral-sh__uv` — Enterprise Rust Monorepo with 18 Larger Runners & `0.9m` Phase Payback
 ```text
  OVERALL TOTAL (433 runs/mo • paid tier)     243 expanded job(s)            746.2m           —      $8.000    $3464.00/mo
 
  • Free-Tier Quota  : 323126 / 2000 mins (16156.3% of monthly quota) • Net Billed: $3464.00/mo • Rounding Overhead: 99.5m/run ($461.87/mo)
  • Dev Wait-Time    : 13.1m critical path ($14.14/run • $6122.62/mo gross | $2448.68/mo at 40% context-switch loss) • Concurrency: 243 peak jobs (213 hosted > 20 cap, +$510.00/mo tier upgrade)
  • Artifact Storage : 51 upload job(s) • 30d retention ($81.19/mo, 324.75 GB steady-state) (14d retention reduces storage to $37.89/mo)
- • Pipeline Hygiene : Monorepo (5 units, cargo-nextest-or-bazel affected-only saves ~$1212.40/mo) • Cache 129/243 jobs (caching 68 uncached saves ~$566.23/mo) • Cancel-in-progress missing on 4 wf (~$3.51/mo superseded waste) • Path filters missing on 4 wf (~$9.35/mo selective savings) • 48 larger runner job(s) ($1208.94/mo metered from 1st sec; never draw free mins) • Top ROI phase: dependency_install (~6h effort saves ~$484.96/mo, 0.8m payback)
+ • Pipeline Hygiene : Monorepo (5 units, cargo-nextest-or-bazel affected-only saves ~$1212.40/mo) • Cache 129/243 jobs (caching 68 uncached saves ~$566.23/mo) • Cancel-in-progress missing on 4 wf (~$3.51/mo superseded waste) • Path filters missing on 4 wf (~$9.35/mo selective savings) • 18 larger runner job(s) ($287.51/mo metered from 1st sec; never draw free mins) • Top ROI phase: dependency_install (~6h effort saves ~$436.46/mo, 0.9m payback)
  • Recommendation   : Right-size heavy jobs to ARM64 / High-Speed Runners ($2423.02/mo, saves $1040.98/mo) or Cloud Spot ($628.93/mo, saves $2835.07/mo)
 ```
 
@@ -302,6 +304,6 @@ In strict accordance with the **Unified Product Output & Strict Applicability Ru
 ## 6. Summary of Customer Impact
 
 1. **Vendor Migration Discipline (`vendor_tco_comparison`):** Gives CFOs and VPs of Engineering a side-by-side 9-vendor TCO calculation while preventing premature platform migrations when YAML rewrite costs (`$4,800–$22,800`) fail the **2x Annual Migration Rule** (`migration_worth_it_2x_annual_rule = false` on 9 of 12 repos, `true` only on high-spend, low-workflow repos like `deno`, `pydantic`, and `vscode`).
-2. **Actionable First-Step Prioritization (`build_phase_breakdown`):** Ranks all 6 build phases by engineering effort vs. monthly savings payback—proving that a **6-hour `dependency_install` caching sprint** pays for itself in **4 to 30 days** (`0.13m–1.02m`) on scaleup and enterprise repositories before teams embark on multi-week test-sharding refactors.
-3. **Larger-Runner Billing Transparency & Amdahl Right-Sizing (`compute_class_explorer`):** Surfaces the hidden **$187.06/mo to $19,250.75/mo** spend on GitHub Actions Larger Runners that bypass free-tier minutes from the first second, quantifies `arm64` migration savings (`$122.76/mo` to `$7,089.61/mo`), and computes net-of-wait-time runner tier ROI (`-$705.65/mo` net gain on `8-core` for `immich` vs. holding at `2-core` on `io-bound` workloads).
-4. **Stack-Native Engineering Precision (`stack_specific_economics`):** Replaces generic advice with stack-specific levers (`pnpm-store-cache-and-turborepo-remote-cache`, `uv-cache-and-pytest-xdist-sharding`, `rust-cache-sccache-and-cargo-nextest`, `self-hosted-mac-mini-fleet-or-flat-m2-plan`) and strictly suppresses hardware/plan switch recommendations when hosted macOS spend is below break-even (`$0.00` savings reported on `flutter`, `immich`, and `dify`).
+2. **Actionable First-Step Prioritization (`build_phase_breakdown`):** Ranks all 6 build phases by engineering effort vs. monthly savings payback—proving that a **6-hour `dependency_install` caching sprint** pays for itself in **4 to 31 days** (`0.13m–1.02m`) on scaleup and enterprise repositories before teams embark on multi-week test-sharding refactors.
+3. **Larger-Runner Billing Transparency & Amdahl Right-Sizing (`compute_class_explorer`):** Surfaces the hidden **$45.47/mo to $2,087.93/mo** spend on GitHub Actions Larger Runners that bypass free-tier minutes from the first second (without false-positiving standard `windows-latest` / `macos-latest` jobs), quantifies `arm64` migration savings (`$55.42/mo` to `$754.25/mo`), and computes net-of-wait-time runner tier ROI (`-$705.65/mo` net gain on `8-core` for `immich` vs. holding at `2-core` on `io-bound` workloads).
+4. **Stack-Native Engineering Precision (`stack_specific_economics`):** Replaces generic advice with pure AST stack-specific levers (`pnpm-store-cache-and-turborepo-remote-cache`, `uv-cache-and-pytest-xdist-sharding`, `rust-cache-sccache-and-cargo-nextest`, `ccache-sccache-remote-and-ninja-parallel-build`, `pub-cache-gradle-deriveddata-and-codemagic-m2-flat-plan`) across all 27 repositories without misclassifying cross-platform Rust/Python/Node/C++ matrix repos as iOS Xcode apps.
