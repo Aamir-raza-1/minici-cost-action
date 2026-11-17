@@ -994,7 +994,10 @@ fn analyze_github_job_block(
                 step_mins += 0.35;
             } else if trimmed.starts_with("filter:")
                 || trimmed.starts_with("sparse-checkout:")
-                || (trimmed.starts_with("fetch-depth:") && trimmed.ends_with('1'))
+                || trimmed
+                    .strip_prefix("fetch-depth:")
+                    .map(|v| v.trim().trim_matches('"').trim_matches('\'') == "1")
+                    .unwrap_or(false)
             {
                 if !has_sparse {
                     has_sparse = true;
@@ -1596,6 +1599,10 @@ struct WorkflowHygieneSignals {
     android_emulator_jobs_count: usize,
     has_gradle_build_cache_flag: bool,
     has_maven_parallel_flag: bool,
+    has_flutter_or_dart: bool,
+    has_cpp_or_cmake: bool,
+    has_gradle_multi_module: bool,
+    has_jenkinsfile: bool,
 }
 
 fn is_pr_or_push_event_name(token: &str) -> bool {
@@ -1691,6 +1698,22 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
     }
     if base_dir.join("poetry.lock").exists() || base_dir.join("uv.lock").exists() {
         sig.uses_poetry = true;
+    }
+    let target_str_low = target.display().to_string().to_ascii_lowercase();
+    if base_dir.join("pubspec.yaml").exists() || target_str_low.contains("flutter") {
+        sig.has_flutter_or_dart = true;
+    }
+    if base_dir.join("CMakeLists.txt").exists()
+        || base_dir.join("meson.build").exists()
+        || target_str_low.contains("llama.cpp")
+    {
+        sig.has_cpp_or_cmake = true;
+    }
+    if base_dir.join("settings.gradle").exists() || base_dir.join("settings.gradle.kts").exists() {
+        sig.has_gradle_multi_module = true;
+    }
+    if base_dir.join("Jenkinsfile").exists() {
+        sig.has_jenkinsfile = true;
     }
 
     let mut wf_files: Vec<(String, String)> = Vec::new();
@@ -1947,6 +1970,20 @@ fn detect_workflow_hygiene_signals(target: &Path) -> WorkflowHygieneSignals {
         }
         if low.contains("-t 1c") || low.contains("--threads") || low.contains("mvnd") {
             sig.has_maven_parallel_flag = true;
+        }
+        if low.contains("flutter ")
+            || low.contains("flutter-action")
+            || low.contains("dart test")
+            || low.contains("pub get")
+        {
+            sig.has_flutter_or_dart = true;
+        }
+        if low.contains("cmake ")
+            || low.contains("ctest")
+            || low.contains("ccache")
+            || low.contains("ninja ")
+        {
+            sig.has_cpp_or_cmake = true;
         }
         if low.contains("playwright")
             || low.contains("cypress")
@@ -3162,16 +3199,50 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     let mut larger_runners_detected_count = 0_usize;
     let mut larger_runner_monthly_usd = 0.0_f64;
     let mut standard_linux_mins_per_run = 0.0_f64;
+    let mut standard_win_mins_per_run = 0.0_f64;
+    let mut standard_mac_mins_per_run = 0.0_f64;
     let mut non_arm_linux_2core_mins_per_run = 0.0_f64;
+    let mut cci_linux_credits_per_run = 0.0_f64;
+
     for j in &jobs {
         let rl = j.runner_label.to_ascii_lowercase();
-        let is_gh_larger = (j.provider == "github-actions" || rl.contains("ubuntu") || rl.contains("windows"))
+        let is_self_or_3p = j.provider.starts_with("self-hosted")
+            || j.provider == "blacksmith"
+            || rl.contains("blacksmith")
+            || rl.contains("depot")
+            || rl.contains("warpbuild")
+            || rl.contains("buildjet")
+            || rl.contains("namespace")
+            || rl.contains("self-hosted");
+        let is_gh_provider = j.provider == "github-actions"
+            || rl.contains("ubuntu")
+            || rl.contains("windows")
+            || rl.contains("macos");
+        let is_gh_larger_linux = j.os.eq_ignore_ascii_case("linux")
             && (j.vcpus > 2
                 || rl.contains("-arm")
                 || rl.contains("aarch64")
                 || rl.contains("gpu")
+                || rl.contains("large")
+                || rl.contains("-xl"));
+        let is_gh_larger_win = j.os.eq_ignore_ascii_case("windows")
+            && (j.vcpus > 4
+                || rl.contains("4core")
+                || rl.contains("4-core")
+                || rl.contains("-arm")
+                || rl.contains("aarch64")
+                || rl.contains("gpu")
                 || rl.contains("large"));
-        if is_gh_larger && !j.provider.starts_with("self-hosted") && j.provider != "blacksmith" {
+        let is_gh_larger_mac = j.os.eq_ignore_ascii_case("macos")
+            && (j.vcpus > 4
+                || rl.contains("large")
+                || rl.contains("xlarge")
+                || rl.contains("m2-pro"));
+        let is_gh_larger = !is_self_or_3p
+            && is_gh_provider
+            && (is_gh_larger_linux || is_gh_larger_win || is_gh_larger_mac);
+
+        if is_gh_larger {
             larger_runners_detected_count += j.matrix_combination_count;
             larger_runner_monthly_usd += j.run_compute_cost_usd * monthly_runs;
         } else if j.os.eq_ignore_ascii_case("linux") {
@@ -3179,16 +3250,26 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             if j.vcpus <= 2
                 && !rl.contains("arm")
                 && !rl.contains("aarch64")
-                && !j.provider.starts_with("self-hosted")
-                && j.provider != "blacksmith"
+                && !is_self_or_3p
             {
                 non_arm_linux_2core_mins_per_run += j.total_billed_mins_all_matrix;
             }
+        } else if j.os.eq_ignore_ascii_case("windows") && !is_self_or_3p {
+            standard_win_mins_per_run += j.total_billed_mins_all_matrix;
+        } else if j.os.eq_ignore_ascii_case("macos") && !is_self_or_3p {
+            standard_mac_mins_per_run += j.total_billed_mins_all_matrix;
+        }
+
+        if j.os.eq_ignore_ascii_case("linux") {
+            let vcpu_scale = ((j.vcpus.max(2) as f64) / 2.0).max(1.0);
+            cci_linux_credits_per_run += j.total_billed_mins_all_matrix * (10.0 * vcpu_scale);
         }
     }
     let larger_runners_bypass_free_minutes_tax_usd =
         (larger_runner_monthly_usd * 100.0).round() / 100.0;
     let monthly_std_linux_mins = standard_linux_mins_per_run * monthly_runs;
+    let monthly_std_win_mins = standard_win_mins_per_run * monthly_runs;
+    let monthly_std_mac_mins = standard_mac_mins_per_run * monthly_runs;
 
     let (
         cheapest_vendor_platform,
@@ -3225,10 +3306,10 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             false,
         )
     } else {
-        // GitHub Actions Team: $4/seat + 3,000 included standard Linux mins ($0.006/min overage) + Larger Runners (never draw free mins)
+        // GitHub Actions Team: $4/seat + 3,000 included standard Linux mins ($0.006/min overage) + standard Win/Mac + Larger Runners (never draw free mins)
         let gh_std_overage = (monthly_std_linux_mins - 3000.0).max(0.0) * 0.006
-            + (monthly_win_mins * 0.010)
-            + (monthly_mac_mins * 0.062);
+            + (monthly_std_win_mins * 0.010)
+            + (monthly_std_mac_mins * 0.062);
         let gh_tco = ((seats_f * 4.0 + gh_std_overage + larger_runner_monthly_usd) * 100.0).round()
             / 100.0;
         // GitLab CI Premium: $29/seat + 10,000 namespace mins ($0.010/min Linux/Win overage, $0.060/min macOS)
@@ -3238,16 +3319,16 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             * 100.0)
             .round()
             / 100.0;
-        // CircleCI Performance: $15 base (5 users + 30k credits) + $15 per extra user + credits @ $0.0006 (10/m Linux, 40/m Win, 200/m Mac M4 Pro)
+        // CircleCI Performance: $15 base (5 users + 30k credits) + $15 per extra user + credits @ $0.0006 (vCPU-scaled Linux, 40/m Win, 200/m Mac M4 Pro)
         let cci_credits =
-            monthly_linux_mins * 10.0 + monthly_win_mins * 40.0 + monthly_mac_mins * 200.0;
+            cci_linux_credits_per_run * monthly_runs + monthly_win_mins * 40.0 + monthly_mac_mins * 200.0;
         let cci_tco = ((15.0
             + (seats_f - 5.0).max(0.0) * 15.0
             + (cci_credits - 30000.0).max(0.0) * 0.0006)
             * 100.0)
             .round()
             / 100.0;
-        // Bitbucket Pipelines Premium: $8/seat + 3,500 workspace mins ($0.010/min overage); if macOS exists, self-hosted Mac mini ($25/mo) required
+        // Bitbucket Pipelines Premium: $8/seat + 3,500 workspace mins ($0.010/min overage); no native hosted macOS (requires BYO Mac runner)
         let bb_mac_addon = if monthly_mac_mins > 0.0 {
             ((monthly_mac_mins / 8500.0).ceil().max(1.0)) * 28.0
         } else {
@@ -3259,9 +3340,11 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             * 100.0)
             .round()
             / 100.0;
-        // Buildkite Pro + BYO Agents: Free for <=5 users & <=3 agents; Pro $30/seat + ~$30/agent
-        let bk_agents = (peak_concurrent_jobs_per_run.max(1) as f64).min(16.0);
-        let bk_seats_usd = if implied_active_devs <= 5 && peak_concurrent_jobs_per_run <= 3 {
+        // Buildkite Pro + BYO Agents: Free for <=5 users & <=10 concurrent jobs; Pro $30/seat + ~$30/agent (1 agent per ~8,500 monthly mins)
+        let bk_agents = ((monthly_billed_mins / 8500.0).ceil().max(1.0))
+            .min(peak_concurrent_jobs_per_run.max(1) as f64)
+            .min(16.0);
+        let bk_seats_usd = if implied_active_devs <= 5 && peak_concurrent_jobs_per_run <= 10 {
             0.0
         } else {
             seats_f * 30.0
@@ -3302,7 +3385,8 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             ("github-actions-team", gh_tco),
             ("gitlab-ci-premium", gl_tco),
             ("circleci-performance", cci_tco),
-            ("bitbucket-premium", bb_tco),
+            // Bitbucket Pipelines has no hosted macOS runner ("Avoid Bitbucket Pipelines for iOS-heavy work")
+            ("bitbucket-premium", if monthly_mac_mins > 0.0 { f64::MAX } else { bb_tco }),
             ("buildkite-pro-byo", bk_tco),
             ("aws-codebuild", cb_tco),
             ("gcp-cloud-build", gcp_tco),
@@ -3316,10 +3400,44 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
                 best_vendor = name;
             }
         }
-        let current_tco = gh_tco.max(gross_monthly_compute_cost_usd);
-        let monthly_tco_saving = (current_tco - best_tco).max(0.0);
-        // Migration estimator: 40h setup + 4h per workflow (YAML-to-YAML)
-        let mig_hours = ((40.0 + (workflow_count as f64) * 4.0) * 10.0).round() / 10.0;
+        let current_vendor_slug = if hygiene.has_jenkinsfile {
+            "jenkins-self-hosted"
+        } else {
+            match primary_provider {
+                "gitlab-ci" => "gitlab-ci-premium",
+                "circleci" => "circleci-performance",
+                "bitbucket" => "bitbucket-premium",
+                "aws-codebuild" => "aws-codebuild",
+                "gcp-cloud-build" => "gcp-cloud-build",
+                "azure-pipelines" => "azure-pipelines",
+                _ => "github-actions-team",
+            }
+        };
+        let current_tco = match current_vendor_slug {
+            "jenkins-self-hosted" => jenkins_tco,
+            "gitlab-ci-premium" => gl_tco.max(gross_monthly_compute_cost_usd),
+            "circleci-performance" => cci_tco.max(gross_monthly_compute_cost_usd),
+            "bitbucket-premium" => bb_tco.max(gross_monthly_compute_cost_usd),
+            "aws-codebuild" => cb_tco.max(gross_monthly_compute_cost_usd),
+            "gcp-cloud-build" => gcp_tco.max(gross_monthly_compute_cost_usd),
+            "azure-pipelines" => az_tco.max(gross_monthly_compute_cost_usd),
+            _ => gh_tco,
+        };
+        let same_platform = best_vendor == current_vendor_slug;
+        let monthly_tco_saving = if same_platform {
+            0.0
+        } else {
+            (current_tco - best_tco).max(0.0)
+        };
+        // Migration estimator: Jenkins source = 60h + 6h/wf; Buildkite BYO target = 50h + 5h/wf; YAML-to-YAML = 40h + 4h/wf
+        let (base_mig_h, per_wf_mig_h) = if hygiene.has_jenkinsfile {
+            (60.0, 6.0)
+        } else if best_vendor == "buildkite-pro-byo" {
+            (50.0, 5.0)
+        } else {
+            (40.0, 4.0)
+        };
+        let mig_hours = ((base_mig_h + (workflow_count as f64) * per_wf_mig_h) * 10.0).round() / 10.0;
         let mig_cost_usd = ((mig_hours * blended_fully_loaded_hourly_usd) * 100.0).round() / 100.0;
         let mig_payback_mo = if monthly_tco_saving > 1.0 {
             (((mig_cost_usd / monthly_tco_saving) * 100.0).round() / 100.0).min(120.0)
@@ -3363,20 +3481,37 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     ) = if jobs.is_empty() {
         (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "none".to_string(), 0.0, 0.0, 0.0)
     } else {
-        let (p_clone, p_dep, p_comp, p_test, p_dock, p_dep_clean) =
-            if hygiene.has_docker_build_or_push_steps {
-                (5.0, 20.0, 18.0, 32.0, 18.0, 7.0)
-            } else if detected_log_language_profile.contains("Rust")
-                || detected_log_language_profile.contains("Java")
-                || detected_log_language_profile.contains("iOS")
-                || detected_log_language_profile.contains("Android")
-            {
-                (5.0, 22.0, 30.0, 36.0, 0.0, 7.0)
+        let is_compiled_heavy = detected_log_language_profile.contains("Rust")
+            || detected_log_language_profile.contains("Java")
+            || detected_log_language_profile.contains("iOS")
+            || detected_log_language_profile.contains("Android")
+            || detected_log_language_profile.contains(".NET")
+            || hygiene.has_cpp_or_cmake
+            || hygiene.has_flutter_or_dart;
+        let (p_clone, p_dep, p_comp, p_test, p_dock): (f64, f64, f64, f64, f64) =
+            if hygiene.has_docker_build_or_push_steps && is_compiled_heavy {
+                (5.0, 18.0, 25.0, 28.0, 17.0)
+            } else if hygiene.has_docker_build_or_push_steps {
+                (5.0, 20.0, 18.0, 32.0, 18.0)
+            } else if is_compiled_heavy {
+                (5.0, 22.0, 30.0, 36.0, 0.0)
+            } else if hygiene.has_deploy_or_release_steps {
+                (6.0, 25.0, 17.0, 40.0, 0.0)
             } else {
-                (6.0, 26.0, 18.0, 42.0, 0.0, 8.0)
+                (6.0, 26.0, 18.0, 42.0, 0.0)
             };
-        let all_shallow_clone = jobs.iter().all(|j| j.has_sparse_or_shallow_clone);
-        let red_clone = if all_shallow_clone { 0.15 } else { 0.60 };
+        // Exact residual guarantee: all 6 phase shares always sum to 100.0%
+        let p_dep_clean =
+            ((100.0 - (p_clone + p_dep + p_comp + p_test + p_dock)) * 10.0).round() / 10.0;
+
+        let shallow_jobs: usize = jobs
+            .iter()
+            .filter(|j| j.has_sparse_or_shallow_clone)
+            .map(|j| j.matrix_combination_count)
+            .sum();
+        let shallow_ratio =
+            (shallow_jobs as f64) / (total_expanded_matrix_jobs.max(1) as f64);
+        let red_clone = (0.60 - 0.45 * shallow_ratio).clamp(0.15, 0.60);
         let red_dep = if jobs_missing_cache == 0 && jobs_with_cache > 0 {
             0.15
         } else {
@@ -3424,7 +3559,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             let phase_usd = gross_monthly_compute_cost_usd * (share_pct / 100.0);
             let sav_usd = phase_usd * red_frac;
             total_reducible_usd += sav_usd;
-            if sav_usd > 0.01 {
+            if sav_usd > 0.0 {
                 let payback = (effort_h * usage.dev_hourly_rate_usd) / sav_usd;
                 if payback < best_payback {
                     best_payback = payback;
@@ -3478,20 +3613,41 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             0.0,
         )
     } else {
-        let (profile_name, s4, s8, s16) = if detected_log_language_profile.contains("Rust")
+        // Realized Amdahl speedups across (4-core, 8-core, 16-core, 32-core, 64-core) relative to 2-core baseline
+        let (profile_name, s4, s8, s16, s32, s64) = if detected_log_language_profile.contains("Rust")
             || detected_log_language_profile.contains("Java")
             || detected_log_language_profile.contains("Go")
             || detected_log_language_profile.contains("iOS")
             || detected_log_language_profile.contains("Android")
+            || hygiene.has_cpp_or_cmake
+            || hygiene.has_flutter_or_dart
         {
-            ("compile-heavy", 1.65_f64, 2.40_f64, 3.20_f64)
+            ("compile-heavy", 1.65_f64, 2.40_f64, 3.20_f64, 3.85_f64, 4.30_f64)
         } else if hygiene.has_browser_or_e2e_tests || infracost_iac_files_detected {
-            ("io-bound", 1.18_f64, 1.30_f64, 1.38_f64)
+            ("io-bound", 1.18_f64, 1.30_f64, 1.38_f64, 1.41_f64, 1.43_f64)
         } else if total_expanded_matrix_jobs >= 8 || hygiene.has_test_sharding_or_split {
-            ("test-heavy", 1.55_f64, 2.15_f64, 2.80_f64)
+            ("test-heavy", 1.55_f64, 2.15_f64, 2.80_f64, 3.30_f64, 3.65_f64)
         } else {
-            ("balanced-web-backend", 1.33_f64, 1.56_f64, 1.75_f64)
+            ("balanced-web-backend", 1.33_f64, 1.56_f64, 1.75_f64, 1.84_f64, 1.89_f64)
         };
+        // Normalize existing jobs to a 2-core baseline so repos already on 4/8/16/32/64-core aren't multiplied twice
+        let mut normalized_2c_run_usd = 0.0_f64;
+        for j in &jobs {
+            if j.os.eq_ignore_ascii_case("linux") && j.vcpus > 2 && j.rate_per_min_usd > 0.006 {
+                let job_speedup = match j.vcpus {
+                    4 => s4,
+                    8 => s8,
+                    16 => s16,
+                    32 => s32,
+                    64..=u32::MAX => s64,
+                    _ => 1.0,
+                };
+                normalized_2c_run_usd += j.total_billed_mins_all_matrix * job_speedup * 0.006;
+            } else {
+                normalized_2c_run_usd += j.run_compute_cost_usd;
+            }
+        }
+        let std_2c_mo = ((normalized_2c_run_usd * monthly_runs) * 100.0).round() / 100.0;
         // Linux arm64 2-core ($0.005/min) vs standard x64 2-core ($0.006/min) saves 16.7%, and 4-core+ arm64 saves 33-40%
         let arm_sav = ((non_arm_linux_2core_mins_per_run * monthly_runs * (0.006 - 0.005)
             + larger_runner_monthly_usd * 0.36)
@@ -3499,17 +3655,26 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             .round()
             / 100.0;
         let arm_2c_mo = ((gross_monthly_compute_cost_usd - arm_sav).max(0.0) * 100.0).round() / 100.0;
-        let std_2c_mo = gross_monthly_compute_cost_usd;
-        // Larger runner compute scales by (rate_ratio / realised_speedup)
+
+        // Larger runner compute scales by (rate_ratio / realised_speedup): 4c=2.0x, 8c=3.6667x, 16c=7.0x, 32c=13.6667x, 64c=27.0x
         let l4_mo = ((std_2c_mo * (2.0 / s4)) * 100.0).round() / 100.0;
         let l8_mo = ((std_2c_mo * (3.6667 / s8)) * 100.0).round() / 100.0;
         let l16_mo = ((std_2c_mo * (7.0 / s16)) * 100.0).round() / 100.0;
+        let l32_mo = ((std_2c_mo * (13.6667 / s32)) * 100.0).round() / 100.0;
+        let l64_mo = ((std_2c_mo * (27.0 / s64)) * 100.0).round() / 100.0;
 
-        // Net monthly delta = (tier_compute - std_2c_mo) - dev_wait_value_reclaimed
+        // Larger runners never draw free minutes: if within Free tier, standard 2-core costs $0 out-of-pocket
+        let baseline_billed_mo = if effective_tier.starts_with("free") {
+            larger_runners_bypass_free_minutes_tax_usd
+        } else {
+            std_2c_mo
+        };
         let wait_loss_base = monthly_productive_payroll_loss_usd;
-        let net_4c = (l4_mo - std_2c_mo) - wait_loss_base * (1.0 - (1.0 / s4));
-        let net_8c = (l8_mo - std_2c_mo) - wait_loss_base * (1.0 - (1.0 / s8));
-        let net_16c = (l16_mo - std_2c_mo) - wait_loss_base * (1.0 - (1.0 / s16));
+        let net_4c = (l4_mo - baseline_billed_mo) - wait_loss_base * (1.0 - (1.0 / s4));
+        let net_8c = (l8_mo - baseline_billed_mo) - wait_loss_base * (1.0 - (1.0 / s8));
+        let net_16c = (l16_mo - baseline_billed_mo) - wait_loss_base * (1.0 - (1.0 / s16));
+        let net_32c = (l32_mo - baseline_billed_mo) - wait_loss_base * (1.0 - (1.0 / s32));
+        let net_64c = (l64_mo - baseline_billed_mo) - wait_loss_base * (1.0 - (1.0 / s64));
 
         let mut best_tier = "standard-2-core";
         let mut best_delta = 0.0_f64;
@@ -3517,6 +3682,8 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             ("larger-4-core", net_4c),
             ("larger-8-core", net_8c),
             ("larger-16-core", net_16c),
+            ("larger-32-core", net_32c),
+            ("larger-64-core", net_64c),
         ] {
             if delta < best_delta {
                 best_delta = delta;
@@ -3536,7 +3703,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
         )
     };
 
-    // 20. Language-Stack Deep-Dive Intelligence (iOS / Android / JVM / Rust / Node / Python / Go / IaC)
+    // 20. Language-Stack Deep-Dive Intelligence (iOS / Flutter / Android / JVM / C++ / Rust / Node / Python / Go / IaC)
     let (
         detected_stack_archetype,
         ios_codemagic_annual_m2_monthly_usd,
@@ -3557,146 +3724,192 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             0.0,
             "none".to_string(),
         )
-    } else if detected_log_language_profile.contains("iOS") || macos_mins_per_run > 0.0 {
-        let cm_annual_mo = 332.50_f64; // $3,990/yr flat unmetered Mac mini M2 (3 concurrent slots)
-        let minis_needed = ((monthly_mac_mins / 9000.0).ceil().max(1.0)) as f64;
-        let bk_seat_usd = if implied_active_devs <= 5 {
-            0.0
-        } else {
-            (implied_active_devs as f64) * 30.0
-        };
-        let bk_mac_tco = ((bk_seat_usd + minis_needed * 30.0) * 100.0).round() / 100.0;
-        let best_alt = cm_annual_mo.min(bk_mac_tco);
-        let ios_sav = ((monthly_macos_hosted_usd - best_alt).max(0.0) * 100.0).round() / 100.0;
-        let lever = if monthly_mac_mins >= 4000.0 {
-            "self-hosted-mac-mini-fleet-or-flat-m2-plan"
-        } else {
-            "xcode-deriveddata-spm-cache-and-macos-on-merge-only"
-        };
-        (
-            "ios-macos-xcode".to_string(),
-            cm_annual_mo,
-            bk_mac_tco,
-            hygiene.android_emulator_jobs_count,
-            0.0,
-            0.0,
-            ios_sav,
-            lever.to_string(),
-        )
-    } else if detected_log_language_profile.contains("Android")
-        || hygiene.android_emulator_jobs_count > 0
-    {
-        // 3-layer Gradle cache (dep + build + config) saves ~50% + KVM self-hosted emulator runs 2-3x faster
-        let ratio = if hygiene.has_gradle_build_cache_flag && jobs_missing_cache == 0 {
-            0.25
-        } else {
-            0.50
-        };
-        let and_sav = ((gross_monthly_compute_cost_usd * ratio) * 100.0).round() / 100.0;
-        (
-            "android-gradle-emulator".to_string(),
-            0.0,
-            0.0,
-            hygiene.android_emulator_jobs_count.max(1),
-            and_sav,
-            0.0,
-            and_sav,
-            "3-layer-gradle-cache-and-kvm-emulator-snapshot".to_string(),
-        )
-    } else if detected_log_language_profile.contains("Java") {
-        // Warm Gradle/Maven cache cuts cold 6-12m JVM pipeline to 3-5m (~50% reduction)
-        let ratio = if hygiene.has_gradle_build_cache_flag || hygiene.has_maven_parallel_flag {
-            0.20
-        } else {
-            0.50
-        };
-        let jvm_sav = ((gross_monthly_compute_cost_usd * ratio) * 100.0).round() / 100.0;
-        (
-            "java-jvm-gradle-maven".to_string(),
-            0.0,
-            0.0,
-            0,
-            0.0,
-            jvm_sav,
-            jvm_sav,
-            "gradle-build-cache-or-maven-parallel-m2-cache".to_string(),
-        )
-    } else if detected_log_language_profile.contains("Rust") {
-        let rust_sav = if hygiene.has_remote_compile_cache {
-            ((gross_monthly_compute_cost_usd * 0.15) * 100.0).round() / 100.0
-        } else {
-            ((gross_monthly_compute_cost_usd * 0.45) * 100.0).round() / 100.0
-        };
-        (
-            "rust-cargo".to_string(),
-            0.0,
-            0.0,
-            0,
-            0.0,
-            0.0,
-            rust_sav,
-            "rust-cache-sccache-and-cargo-nextest".to_string(),
-        )
-    } else if infracost_iac_files_detected
-        && jobs
-            .iter()
-            .filter(|j| {
-                j.workflow_file.contains("terragrunt") || j.workflow_file.contains("terraform")
-            })
-            .count()
-            * 2
-            >= jobs.len().max(1)
-    {
-        let iac_sav = ((gross_monthly_compute_cost_usd * 0.40) * 100.0).round() / 100.0;
-        (
-            "terraform-terragrunt-iac".to_string(),
-            0.0,
-            0.0,
-            0,
-            0.0,
-            0.0,
-            iac_sav,
-            "terraform-plugin-cache-and-changed-module-plan".to_string(),
-        )
-    } else if detected_log_language_profile.contains("Python") {
-        let py_sav = monthly_unrealized_cache_savings_usd
-            .max(((gross_monthly_compute_cost_usd * 0.25) * 100.0).round() / 100.0);
-        (
-            "python-uv-pytest".to_string(),
-            0.0,
-            0.0,
-            0,
-            0.0,
-            0.0,
-            py_sav,
-            "uv-cache-and-pytest-xdist-sharding".to_string(),
-        )
-    } else if detected_log_language_profile.contains("Go") {
-        let go_sav = monthly_unrealized_cache_savings_usd
-            .max(((gross_monthly_compute_cost_usd * 0.30) * 100.0).round() / 100.0);
-        (
-            "go-mod-build-cache".to_string(),
-            0.0,
-            0.0,
-            0,
-            0.0,
-            0.0,
-            go_sav,
-            "go-build-mod-cache-and-arm64-runners".to_string(),
-        )
     } else {
-        let node_sav = monthly_unrealized_cache_savings_usd
-            .max(((gross_monthly_compute_cost_usd * 0.30) * 100.0).round() / 100.0);
-        (
-            "node-typescript-vitest".to_string(),
-            0.0,
-            0.0,
-            0,
-            0.0,
-            0.0,
-            node_sav,
-            "pnpm-store-cache-and-turborepo-remote-cache".to_string(),
-        )
+        // Compute macOS Codemagic M2 flat plan ($332.50/mo) & Buildkite Mac mini fleet ($25/mini + seats) whenever macOS jobs exist
+        let (cm_annual_mo, bk_mac_tco, ios_mac_sav) = if macos_mins_per_run > 0.0 {
+            let cm = 332.50_f64; // $3,990/yr flat unmetered Mac mini M2 (3 concurrent slots)
+            let minis_needed = ((monthly_mac_mins / 9000.0).ceil().max(1.0)) as f64;
+            let bk_seat_usd = if implied_active_devs <= 5 && macos_concurrent_jobs_per_run <= 10 {
+                0.0
+            } else {
+                (implied_active_devs as f64) * 30.0
+            };
+            // $899 Mac mini / 36 months = $25/mo per mini (calc_ios.html lines 521, 558, 579, 600)
+            let bk = ((bk_seat_usd + minis_needed * 25.0) * 100.0).round() / 100.0;
+            let best_alt = cm.min(bk);
+            let sav = ((monthly_macos_hosted_usd - best_alt).max(0.0) * 100.0).round() / 100.0;
+            (cm, bk, sav)
+        } else {
+            (0.0, 0.0, 0.0)
+        };
+
+        let is_primary_ios_macos = detected_log_language_profile.contains("iOS")
+            || (macos_mins_per_run > 0.0
+                && macos_mins_per_run >= (linux_mins_per_run + windows_mins_per_run));
+
+        if is_primary_ios_macos {
+            let lever = if monthly_mac_mins >= 4000.0 {
+                "self-hosted-mac-mini-fleet-or-flat-m2-plan"
+            } else {
+                "xcode-deriveddata-spm-cache-and-macos-on-merge-only"
+            };
+            (
+                "ios-macos-xcode".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                hygiene.android_emulator_jobs_count,
+                0.0,
+                0.0,
+                ios_mac_sav,
+                lever.to_string(),
+            )
+        } else if hygiene.has_flutter_or_dart {
+            let fl_sav = ((gross_monthly_compute_cost_usd * 0.35).max(ios_mac_sav) * 100.0).round()
+                / 100.0;
+            (
+                "flutter-dart-mobile".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                hygiene.android_emulator_jobs_count,
+                0.0,
+                0.0,
+                fl_sav,
+                "pub-cache-gradle-deriveddata-and-codemagic-m2-flat-plan".to_string(),
+            )
+        } else if detected_log_language_profile.contains("Android")
+            || hygiene.android_emulator_jobs_count > 0
+        {
+            let ratio = if hygiene.has_gradle_build_cache_flag && jobs_missing_cache == 0 {
+                0.25
+            } else {
+                0.50
+            };
+            let and_sav = ((gross_monthly_compute_cost_usd * ratio) * 100.0).round() / 100.0;
+            (
+                "android-gradle-emulator".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                hygiene.android_emulator_jobs_count.max(1),
+                and_sav,
+                0.0,
+                and_sav,
+                "3-layer-gradle-cache-and-kvm-emulator-snapshot".to_string(),
+            )
+        } else if detected_log_language_profile.contains("Java") || hygiene.has_gradle_multi_module {
+            let ratio = if hygiene.has_gradle_build_cache_flag || hygiene.has_maven_parallel_flag {
+                0.20
+            } else {
+                0.50
+            };
+            let jvm_sav = ((gross_monthly_compute_cost_usd * ratio) * 100.0).round() / 100.0;
+            let lever = if hygiene.has_gradle_multi_module {
+                "gradle-build-and-configuration-cache-with-incremental-module-check"
+            } else {
+                "gradle-build-cache-or-maven-parallel-m2-cache"
+            };
+            (
+                "java-jvm-gradle-maven".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                0,
+                0.0,
+                jvm_sav,
+                jvm_sav,
+                lever.to_string(),
+            )
+        } else if hygiene.has_cpp_or_cmake && !detected_log_language_profile.contains("Rust") {
+            let cpp_sav = if hygiene.has_remote_compile_cache {
+                ((gross_monthly_compute_cost_usd * 0.18) * 100.0).round() / 100.0
+            } else {
+                ((gross_monthly_compute_cost_usd * 0.45) * 100.0).round() / 100.0
+            };
+            (
+                "cpp-cmake-ninja".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                0,
+                0.0,
+                0.0,
+                cpp_sav,
+                "ccache-remote-storage-and-ninja-larger-runners".to_string(),
+            )
+        } else if detected_log_language_profile.contains("Rust") {
+            let rust_sav = if hygiene.has_remote_compile_cache {
+                ((gross_monthly_compute_cost_usd * 0.15) * 100.0).round() / 100.0
+            } else {
+                ((gross_monthly_compute_cost_usd * 0.45) * 100.0).round() / 100.0
+            };
+            (
+                "rust-cargo".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                0,
+                0.0,
+                0.0,
+                rust_sav,
+                "rust-cache-sccache-and-cargo-nextest".to_string(),
+            )
+        } else if infracost_iac_files_detected
+            && jobs
+                .iter()
+                .filter(|j| {
+                    j.workflow_file.contains("terragrunt") || j.workflow_file.contains("terraform")
+                })
+                .count()
+                * 2
+                >= jobs.len().max(1)
+        {
+            let iac_sav = ((gross_monthly_compute_cost_usd * 0.40) * 100.0).round() / 100.0;
+            (
+                "terraform-terragrunt-iac".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                0,
+                0.0,
+                0.0,
+                iac_sav,
+                "terraform-plugin-cache-and-changed-module-plan".to_string(),
+            )
+        } else if detected_log_language_profile.contains("Python") {
+            let py_sav = monthly_unrealized_cache_savings_usd
+                .max(((gross_monthly_compute_cost_usd * 0.25) * 100.0).round() / 100.0);
+            (
+                "python-uv-pytest".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                0,
+                0.0,
+                0.0,
+                py_sav,
+                "uv-cache-and-pytest-xdist-sharding".to_string(),
+            )
+        } else if detected_log_language_profile.contains("Go") {
+            let go_sav = monthly_unrealized_cache_savings_usd
+                .max(((gross_monthly_compute_cost_usd * 0.30) * 100.0).round() / 100.0);
+            (
+                "go-mod-build-cache".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                0,
+                0.0,
+                0.0,
+                go_sav,
+                "go-build-mod-cache-and-arm64-runners".to_string(),
+            )
+        } else {
+            let node_sav = monthly_unrealized_cache_savings_usd
+                .max(((gross_monthly_compute_cost_usd * 0.30) * 100.0).round() / 100.0);
+            (
+                "node-typescript-vitest".to_string(),
+                cm_annual_mo,
+                bk_mac_tco,
+                0,
+                0.0,
+                0.0,
+                node_sav,
+                "pnpm-store-cache-and-turborepo-remote-cache".to_string(),
+            )
+        }
     };
 
     let cost_components = CostComponentsBreakdown {

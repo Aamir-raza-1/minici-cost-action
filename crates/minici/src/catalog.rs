@@ -1089,6 +1089,21 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             _ => {}
         }
         s
+    } else if lower.contains("gpu") {
+        let mut s = EMBEDDED_SKU_CATALOG[2].clone();
+        s.vcpus = explicit_vcpus.unwrap_or(4);
+        s.ram_gb = 16.0;
+        s.free_tier_mins_per_month = 0.0;
+        if lower.contains("win") {
+            s.sku_label = "windows-4core-gpu";
+            s.os = "Windows";
+            s.rate_per_min_usd = 0.102;
+        } else {
+            s.sku_label = "ubuntu-4core-gpu";
+            s.os = "Linux";
+            s.rate_per_min_usd = 0.052;
+        }
+        s
     } else if lower.starts_with("hf-jobs-") {
         let mut s = EMBEDDED_SKU_CATALOG[2].clone();
         s.vcpus = 4;

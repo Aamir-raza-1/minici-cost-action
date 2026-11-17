@@ -402,6 +402,18 @@ def validate_single_repo_all_modes(
         "s5_setup_overhead_share_pct": cc["microservices_ci_cost"]["setup_overhead_share_pct"],
         "s5_shared_infra_setup_savings_usd": cc["microservices_ci_cost"]["monthly_shared_infra_setup_savings_usd"],
         "s5_unpinned_template_refs_count": cc["microservices_ci_cost"]["unpinned_template_refs_count"],
+        "p1_cheapest_vendor_platform": cc["vendor_tco_comparison"]["cheapest_vendor_platform"],
+        "p1_cheapest_vendor_monthly_tco_usd": cc["vendor_tco_comparison"]["cheapest_vendor_monthly_tco_usd"],
+        "p1_github_actions_team_tco_usd": cc["vendor_tco_comparison"]["github_actions_team_monthly_tco_usd"],
+        "p1_migration_meets_2x_rule": cc["vendor_tco_comparison"]["migration_worth_it_2x_annual_rule"],
+        "p2_best_first_optimization_phase": cc["build_phase_breakdown"]["best_first_optimization_phase"],
+        "p2_reducible_phase_savings_usd": cc["build_phase_breakdown"]["monthly_total_reducible_phase_savings_usd"],
+        "p3_workload_compute_profile": cc["compute_class_explorer"]["detected_workload_compute_profile"],
+        "p3_larger_runners_detected_count": cc["compute_class_explorer"]["larger_runners_detected_count"],
+        "p3_arm64_migration_savings_usd": cc["compute_class_explorer"]["arm64_migration_monthly_savings_usd"],
+        "p3_recommended_runner_tier": cc["compute_class_explorer"]["best_net_roi_runner_tier"],
+        "p4_detected_stack_archetype": cc["stack_specific_economics"]["detected_stack_archetype"],
+        "p4_stack_specific_savings_usd": cc["stack_specific_economics"]["stack_specific_monthly_savings_usd"],
         "engine_time_us": engine_us,
         "engine_time_ms": engine_ms,
         "cli_wall_ms": round(wall_bd_ms, 2),
@@ -422,7 +434,7 @@ def write_markdown_baseline_doc(
     fresh_results: list[dict],
 ) -> None:
     lines = [
-        "# Locked 27-Repository Golden Baseline: KPIs, 16 Unified CI/CD Cost Models & 3-Mode Latency (`v0.5.0`)",
+        "# Locked 27-Repository Golden Baseline: KPIs, 20 Unified CI/CD Cost Models & 3-Mode Latency (`v0.5.0`)",
         "",
         "**Locked Version:** `minici 0.5.0` (`tag: v0.5.0`)  ",
         "**Total Repositories Locked:** `27` (`10` Primary + `7` Internal Edge-Case + `10` Fresh World-Scale OSS)  ",
@@ -439,7 +451,7 @@ def write_markdown_baseline_doc(
         "python3 tools/verify_10_repos_all_modes.py",
         "```",
         "",
-        "If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or any of the 16 unified CI/CD cost models (`6` invoice components + `5` hidden payroll/pipeline models + `5` team-stage & pipeline-shape models) on any of the 27 repositories, `verify_10_repos_all_modes.py` exits non-zero and prints the exact field delta.",
+        "If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or any of the 20 unified CI/CD cost models (`6` invoice components + `5` hidden payroll/pipeline models + `5` team-stage & pipeline-shape models + `4` multi-vendor calculator & stack intelligence models) on any of the 27 repositories, `verify_10_repos_all_modes.py` exits non-zero and prints the exact field delta.",
         "",
         "---",
         "",
@@ -501,6 +513,21 @@ def write_markdown_baseline_doc(
 
     lines.extend([
         "",
+        "### Part 1E: 10 Primary Repositories — 4 Calculator & Stack Intelligence Pillars (`P17–P20`)",
+        "",
+        "| Repository | P17: Cheapest Vendor TCO (`2x Migration Rule`) | P18: Best First Phase (`Reducible $/mo`) | P19: Compute Profile (`Larger` • `ARM64 Savings` • `Best Tier`) | P20: Stack Archetype (`Stack Savings $/mo`) |",
+        "| :--- | :---: | :---: | :---: | :---: |",
+    ])
+    for r in ten_results:
+        lines.append(
+            f"| **`{r['repo']}`** | `{r['p1_cheapest_vendor_platform']}` (`${r['p1_cheapest_vendor_monthly_tco_usd']:,.2f}/mo` • 2x:`{r['p1_migration_meets_2x_rule']}`) "
+            f"| `{r['p2_best_first_optimization_phase']}` (`${r['p2_reducible_phase_savings_usd']:,.2f}/mo`) "
+            f"| `{r['p3_workload_compute_profile']}` (`{r['p3_larger_runners_detected_count']}` • `${r['p3_arm64_migration_savings_usd']:,.2f}/mo` • `{r['p3_recommended_runner_tier']}`) "
+            f"| `{r['p4_detected_stack_archetype']}` (`${r['p4_stack_specific_savings_usd']:,.2f}/mo`) |"
+        )
+
+    lines.extend([
+        "",
         "---",
         "",
         "## Part 2: 10 Fresh World-Scale GitHub Repositories (`/Users/araza/personal/top10-github-repos`) — Core KPIs & 3-Mode Performance",
@@ -557,6 +584,21 @@ def write_markdown_baseline_doc(
             f"| `{r['s3_compliance_controls_count']}` (`{r['s3_regional_residency_multiplier']:.2f}x` • `${r['s3_siem_1yr_retention_usd']:,.2f}/mo`) "
             f"| `{r['s4_detected_pipeline_shape']}` (`{r['s4_workspace_units_count']}` • `{r['s4_detected_monorepo_tool']}` • `${r['s4_affected_only_savings_usd']:,.2f}/mo`) "
             f"| `{r['s5_setup_overhead_share_pct']:.1f}%` (`${r['s5_shared_infra_setup_savings_usd']:,.2f}/mo` • `{r['s5_unpinned_template_refs_count']}`) |"
+        )
+
+    lines.extend([
+        "",
+        "### Part 2E: 10 Fresh World-Scale Repositories — 4 Calculator & Stack Intelligence Pillars (`P17–P20`)",
+        "",
+        "| Repository | P17: Cheapest Vendor TCO (`2x Migration Rule`) | P18: Best First Phase (`Reducible $/mo`) | P19: Compute Profile (`Larger` • `ARM64 Savings` • `Best Tier`) | P20: Stack Archetype (`Stack Savings $/mo`) |",
+        "| :--- | :---: | :---: | :---: | :---: |",
+    ])
+    for r in fresh_results:
+        lines.append(
+            f"| **`{r['repo']}`** | `{r['p1_cheapest_vendor_platform']}` (`${r['p1_cheapest_vendor_monthly_tco_usd']:,.2f}/mo` • 2x:`{r['p1_migration_meets_2x_rule']}`) "
+            f"| `{r['p2_best_first_optimization_phase']}` (`${r['p2_reducible_phase_savings_usd']:,.2f}/mo`) "
+            f"| `{r['p3_workload_compute_profile']}` (`{r['p3_larger_runners_detected_count']}` • `${r['p3_arm64_migration_savings_usd']:,.2f}/mo` • `{r['p3_recommended_runner_tier']}`) "
+            f"| `{r['p4_detected_stack_archetype']}` (`${r['p4_stack_specific_savings_usd']:,.2f}/mo`) |"
         )
 
     lines.extend([
@@ -716,13 +758,25 @@ def main():
             "s5_setup_overhead_share_pct": r["s5_setup_overhead_share_pct"],
             "s5_shared_infra_setup_savings_usd": r["s5_shared_infra_setup_savings_usd"],
             "s5_unpinned_template_refs_count": r["s5_unpinned_template_refs_count"],
+            "p1_cheapest_vendor_platform": r["p1_cheapest_vendor_platform"],
+            "p1_cheapest_vendor_monthly_tco_usd": r["p1_cheapest_vendor_monthly_tco_usd"],
+            "p1_github_actions_team_tco_usd": r["p1_github_actions_team_tco_usd"],
+            "p1_migration_meets_2x_rule": r["p1_migration_meets_2x_rule"],
+            "p2_best_first_optimization_phase": r["p2_best_first_optimization_phase"],
+            "p2_reducible_phase_savings_usd": r["p2_reducible_phase_savings_usd"],
+            "p3_workload_compute_profile": r["p3_workload_compute_profile"],
+            "p3_larger_runners_detected_count": r["p3_larger_runners_detected_count"],
+            "p3_arm64_migration_savings_usd": r["p3_arm64_migration_savings_usd"],
+            "p3_recommended_runner_tier": r["p3_recommended_runner_tier"],
+            "p4_detected_stack_archetype": r["p4_detected_stack_archetype"],
+            "p4_stack_specific_savings_usd": r["p4_stack_specific_savings_usd"],
         }
 
     # Golden Locked Baseline Write or Verification
     golden_path = Path(args.golden_baseline)
     md_path = Path(args.markdown_baseline)
     locked_deterministic = {
-        "schema_version": "1.3.0",
+        "schema_version": "1.4.0",
         "minici_version": "0.5.0",
         "repos": {r["repo"]: extract_locked_kpi(r) for r in results},
         "fresh_10_repos": {r["repo"]: extract_locked_kpi(r) for r in fresh_results},

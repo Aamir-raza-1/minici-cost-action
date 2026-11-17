@@ -1700,11 +1700,55 @@ jobs:
         assert_eq!(cc.detected_stack_archetype, "android-gradle-emulator");
         assert!(cc.android_emulator_jobs_count >= 1);
         assert!(cc.stack_specific_monthly_savings_usd > 0.0);
+        // Verify 6-phase percentages sum to exactly 100.0%
+        let phase_sum = cc.phase_clone_checkout_share_pct
+            + cc.phase_dependency_install_share_pct
+            + cc.phase_compile_typecheck_share_pct
+            + cc.phase_test_suite_share_pct
+            + cc.phase_docker_build_push_share_pct
+            + cc.phase_deploy_cleanup_share_pct;
+        assert!((phase_sum - 100.0).abs() < 0.05);
         let json_out = rep.to_json();
         assert!(json_out.contains("\"vendor_tco_comparison\":"));
         assert!(json_out.contains("\"build_phase_breakdown\":"));
         assert!(json_out.contains("\"compute_class_explorer\":"));
         assert!(json_out.contains("\"stack_specific_economics\":"));
         let _ = fs::remove_dir_all(&dir);
+
+        // Session 4 Delta Edge Cases: Standard windows-latest (4 vCPU) is NOT a Larger Runner,
+        // GPU runner `gpu-t4-4-core` IS a Larger Runner, quoted `fetch-depth: "1"` is shallow,
+        // and C++/CMake + Flutter/Dart archetypes are accurately classified even with macOS matrix legs.
+        let cpp_dir = std::env::temp_dir().join("minici_4_pillar_cpp_gpu_edge_test");
+        let _ = fs::remove_dir_all(&cpp_dir);
+        let cpp_wf = cpp_dir.join(".github").join("workflows");
+        fs::create_dir_all(&cpp_wf).unwrap();
+        fs::write(cpp_dir.join("CMakeLists.txt"), "cmake_minimum_required(VERSION 3.20)\nproject(llama)").unwrap();
+        fs::write(
+            cpp_wf.join("build.yml"),
+            "name: C++ Cross-Platform\non: [push, pull_request]\njobs:\n  win-std:\n    runs-on: windows-latest\n    est-minutes: 10.0\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: \"1\"\n      - run: cmake -B build && cmake --build build\n  linux-std:\n    runs-on: ubuntu-latest\n    est-minutes: 12.0\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: '1'\n      - run: cmake -B build -G Ninja\n  cuda-bench:\n    runs-on: gpu-t4-4-core\n    est-minutes: 6.0\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 1\n      - run: ctest --output-on-failure\n",
+        )
+        .unwrap();
+        let cpp_rep = analyze_path(&cpp_dir, None);
+        let cpp_cc = &cpp_rep.cost_components;
+        // Only `gpu-t4-4-core` is a GitHub Larger Runner (`windows-latest` is standard 4-vCPU)
+        assert_eq!(cpp_cc.larger_runners_detected_count, 1);
+        assert_eq!(cpp_cc.detected_stack_archetype, "cpp-cmake-ninja");
+        assert_eq!(cpp_cc.detected_workload_compute_profile, "compile-heavy");
+        let _ = fs::remove_dir_all(&cpp_dir);
+
+        let fl_dir = std::env::temp_dir().join("minici_4_pillar_flutter_edge_test");
+        let _ = fs::remove_dir_all(&fl_dir);
+        let fl_wf = fl_dir.join(".github").join("workflows");
+        fs::create_dir_all(&fl_wf).unwrap();
+        fs::write(fl_dir.join("pubspec.yaml"), "name: app\ndependencies:\n  flutter:\n    sdk: flutter\n").unwrap();
+        fs::write(
+            fl_wf.join("flutter.yml"),
+            "name: Flutter Mobile\non: pull_request\njobs:\n  apk:\n    runs-on: ubuntu-latest\n    est-minutes: 10.0\n    steps:\n      - uses: subosito/flutter-action@v2\n      - run: flutter test && flutter build apk\n  ipa:\n    runs-on: macos-latest\n    est-minutes: 8.0\n    steps:\n      - uses: subosito/flutter-action@v2\n      - run: flutter build ipa --no-codesign\n",
+        )
+        .unwrap();
+        let fl_rep = analyze_path(&fl_dir, None);
+        assert_eq!(fl_rep.cost_components.detected_stack_archetype, "flutter-dart-mobile");
+        assert!(fl_rep.cost_components.ios_codemagic_annual_m2_monthly_usd > 0.0);
+        let _ = fs::remove_dir_all(&fl_dir);
     }
 }

@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.3.0",
+  "schema_version": "1.4.0",
   "minici_version": "0.5.0",
   "repos": {
     "MaximVote/maxim": {
@@ -43,7 +43,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 37.56,
       "s5_shared_infra_setup_savings_usd": 227.48,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 245.8,
+      "p1_github_actions_team_tco_usd": 700.61,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 373.99,
+      "p3_workload_compute_profile": "io-bound",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 10.39,
+      "p3_recommended_runner_tier": "standard-2-core",
+      "p4_detected_stack_archetype": "node-typescript-vitest",
+      "p4_stack_specific_savings_usd": 302.82
     },
     "mgjartproject/FineArts-BE": {
       "workflows": 2,
@@ -86,7 +98,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 12.62,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 15.88,
+      "p1_github_actions_team_tco_usd": 48.76,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 27.17,
+      "p3_workload_compute_profile": "balanced-web-backend",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 7.79,
+      "p3_recommended_runner_tier": "larger-16-core",
+      "p4_detected_stack_archetype": "python-uv-pytest",
+      "p4_stack_specific_savings_usd": 11.69
     },
     "Eazy-Ops/Backend": {
       "workflows": 5,
@@ -129,7 +153,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 39.14,
       "s5_shared_infra_setup_savings_usd": 17.08,
-      "s5_unpinned_template_refs_count": 1
+      "s5_unpinned_template_refs_count": 1,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 28.87,
+      "p1_github_actions_team_tco_usd": 86.74,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 36.37,
+      "p3_workload_compute_profile": "balanced-web-backend",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 12.12,
+      "p3_recommended_runner_tier": "larger-16-core",
+      "p4_detected_stack_archetype": "node-typescript-vitest",
+      "p4_stack_specific_savings_usd": 21.82
     },
     "astral-sh/uv": {
       "workflows": 47,
@@ -172,7 +208,19 @@
       "s4_affected_only_savings_usd": 1212.4,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 935.28,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "azure-pipelines",
+      "p1_cheapest_vendor_monthly_tco_usd": 1720.0,
+      "p1_github_actions_team_tco_usd": 3449.53,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 1417.55,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 18,
+      "p3_arm64_migration_savings_usd": 310.91,
+      "p3_recommended_runner_tier": "larger-4-core",
+      "p4_detected_stack_archetype": "rust-cargo",
+      "p4_stack_specific_savings_usd": 519.6
     },
     "denoland/deno": {
       "workflows": 11,
@@ -215,7 +263,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 11.4,
       "s5_shared_infra_setup_savings_usd": 1382.15,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "azure-pipelines",
+      "p1_cheapest_vendor_monthly_tco_usd": 4280.0,
+      "p1_github_actions_team_tco_usd": 22204.81,
+      "p1_migration_meets_2x_rule": true,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 10962.19,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 42,
+      "p3_arm64_migration_savings_usd": 751.53,
+      "p3_recommended_runner_tier": "standard-2-core",
+      "p4_detected_stack_archetype": "rust-cargo",
+      "p4_stack_specific_savings_usd": 9093.06
     },
     "ggml-org/llama.cpp": {
       "workflows": 62,
@@ -258,7 +318,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 521.3,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "azure-pipelines",
+      "p1_cheapest_vendor_monthly_tco_usd": 1040.0,
+      "p1_github_actions_team_tco_usd": 2486.57,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 756.57,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 25,
+      "p3_arm64_migration_savings_usd": 248.72,
+      "p3_recommended_runner_tier": "larger-4-core",
+      "p4_detected_stack_archetype": "ios-macos-xcode",
+      "p4_stack_specific_savings_usd": 177.57
     },
     "immich-app/immich": {
       "workflows": 27,
@@ -301,7 +373,19 @@
       "s4_affected_only_savings_usd": 286.88,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 221.31,
-      "s5_unpinned_template_refs_count": 2
+      "s5_unpinned_template_refs_count": 2,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 484.82,
+      "p1_github_actions_team_tco_usd": 1093.67,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 392.6,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 2,
+      "p3_arm64_migration_savings_usd": 119.42,
+      "p3_recommended_runner_tier": "larger-8-core",
+      "p4_detected_stack_archetype": "ios-macos-xcode",
+      "p4_stack_specific_savings_usd": 0.0
     },
     "langgenius/dify": {
       "workflows": 41,
@@ -344,7 +428,19 @@
       "s4_affected_only_savings_usd": 403.73,
       "s5_setup_overhead_share_pct": 38.5,
       "s5_shared_infra_setup_savings_usd": 266.46,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 675.12,
+      "p1_github_actions_team_tco_usd": 1588.19,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 556.12,
+      "p3_workload_compute_profile": "io-bound",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 55.42,
+      "p3_recommended_runner_tier": "standard-2-core",
+      "p4_detected_stack_archetype": "python-uv-pytest",
+      "p4_stack_specific_savings_usd": 288.38
     },
     "open-webui/open-webui": {
       "workflows": 7,
@@ -387,7 +483,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 43.82,
       "s5_shared_infra_setup_savings_usd": 59.43,
-      "s5_unpinned_template_refs_count": 1
+      "s5_unpinned_template_refs_count": 1,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 105.51,
+      "p1_github_actions_team_tco_usd": 304.03,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 109.06,
+      "p3_workload_compute_profile": "test-heavy",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 37.67,
+      "p3_recommended_runner_tier": "larger-16-core",
+      "p4_detected_stack_archetype": "python-uv-pytest",
+      "p4_stack_specific_savings_usd": 56.51
     },
     "mendableai/firecrawl": {
       "workflows": 36,
@@ -430,7 +538,19 @@
       "s4_affected_only_savings_usd": 692.58,
       "s5_setup_overhead_share_pct": 17.72,
       "s5_shared_infra_setup_savings_usd": 210.39,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 806.78,
+      "p1_github_actions_team_tco_usd": 2290.56,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 938.49,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 37.24,
+      "p3_recommended_runner_tier": "larger-16-core",
+      "p4_detected_stack_archetype": "rust-cargo",
+      "p4_stack_specific_savings_usd": 890.46
     }
   },
   "fresh_10_repos": {
@@ -475,7 +595,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 567.95,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "azure-pipelines",
+      "p1_cheapest_vendor_monthly_tco_usd": 280.0,
+      "p1_github_actions_team_tco_usd": 2227.93,
+      "p1_migration_meets_2x_rule": true,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 1201.1,
+      "p3_workload_compute_profile": "io-bound",
+      "p3_larger_runners_detected_count": 34,
+      "p3_arm64_migration_savings_usd": 754.25,
+      "p3_recommended_runner_tier": "standard-2-core",
+      "p4_detected_stack_archetype": "node-typescript-vitest",
+      "p4_stack_specific_savings_usd": 631.05
     },
     "flutter/flutter": {
       "workflows": 6,
@@ -518,7 +650,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 20.57,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "azure-pipelines",
+      "p1_cheapest_vendor_monthly_tco_usd": 40.0,
+      "p1_github_actions_team_tco_usd": 82.21,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 42.68,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 8.23,
+      "p3_recommended_runner_tier": "larger-16-core",
+      "p4_detected_stack_archetype": "flutter-dart-mobile",
+      "p4_stack_specific_savings_usd": 26.67
     },
     "ollama/ollama": {
       "workflows": 4,
@@ -561,7 +705,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 341.84,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "azure-pipelines",
+      "p1_cheapest_vendor_monthly_tco_usd": 320.0,
+      "p1_github_actions_team_tco_usd": 1412.09,
+      "p1_migration_meets_2x_rule": true,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 576.07,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 3,
+      "p3_arm64_migration_savings_usd": 81.39,
+      "p3_recommended_runner_tier": "larger-4-core",
+      "p4_detected_stack_archetype": "cpp-cmake-ninja",
+      "p4_stack_specific_savings_usd": 227.9
     },
     "huggingface/transformers": {
       "workflows": 7,
@@ -604,7 +760,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 152.22,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 274.38,
+      "p1_github_actions_team_tco_usd": 781.77,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 315.71,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 93.96,
+      "p3_recommended_runner_tier": "larger-8-core",
+      "p4_detected_stack_archetype": "cpp-cmake-ninja",
+      "p4_stack_specific_savings_usd": 253.7
     },
     "vercel/next.js": {
       "workflows": 5,
@@ -647,7 +815,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 248.32,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "azure-pipelines",
+      "p1_cheapest_vendor_monthly_tco_usd": 280.0,
+      "p1_github_actions_team_tco_usd": 1045.69,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 418.46,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 15,
+      "p3_arm64_migration_savings_usd": 249.36,
+      "p3_recommended_runner_tier": "larger-4-core",
+      "p4_detected_stack_archetype": "cpp-cmake-ninja",
+      "p4_stack_specific_savings_usd": 165.54
     },
     "langchain-ai/langchain": {
       "workflows": 27,
@@ -690,7 +870,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 73.66,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 128.9,
+      "p1_github_actions_team_tco_usd": 370.79,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 153.51,
+      "p3_workload_compute_profile": "test-heavy",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 45.47,
+      "p3_recommended_runner_tier": "larger-8-core",
+      "p4_detected_stack_archetype": "python-uv-pytest",
+      "p4_stack_specific_savings_usd": 68.2
     },
     "n8n-io/n8n": {
       "workflows": 12,
@@ -733,7 +925,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 171.79,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 250.81,
+      "p1_github_actions_team_tco_usd": 714.61,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 358.85,
+      "p3_workload_compute_profile": "io-bound",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 19.05,
+      "p3_recommended_runner_tier": "standard-2-core",
+      "p4_detected_stack_archetype": "node-typescript-vitest",
+      "p4_stack_specific_savings_usd": 190.88
     },
     "supabase/supabase": {
       "workflows": 12,
@@ -776,7 +980,19 @@
       "s4_affected_only_savings_usd": 93.96,
       "s5_setup_overhead_share_pct": 45.0,
       "s5_shared_infra_setup_savings_usd": 72.49,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 81.94,
+      "p1_github_actions_team_tco_usd": 236.87,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 155.98,
+      "p3_workload_compute_profile": "io-bound",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 4.76,
+      "p3_recommended_runner_tier": "larger-4-core",
+      "p4_detected_stack_archetype": "node-typescript-vitest",
+      "p4_stack_specific_savings_usd": 80.54
     },
     "home-assistant/core": {
       "workflows": 19,
@@ -819,7 +1035,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 21.09,
       "s5_shared_infra_setup_savings_usd": 177.64,
-      "s5_unpinned_template_refs_count": 5
+      "s5_unpinned_template_refs_count": 5,
+      "p1_cheapest_vendor_platform": "gcp-cloud-build",
+      "p1_cheapest_vendor_monthly_tco_usd": 721.24,
+      "p1_github_actions_team_tco_usd": 2047.48,
+      "p1_migration_meets_2x_rule": false,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 701.17,
+      "p3_workload_compute_profile": "io-bound",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 242.91,
+      "p3_recommended_runner_tier": "larger-4-core",
+      "p4_detected_stack_archetype": "python-uv-pytest",
+      "p4_stack_specific_savings_usd": 350.95
     },
     "pydantic/pydantic": {
       "workflows": 12,
@@ -862,7 +1090,19 @@
       "s4_affected_only_savings_usd": 0.0,
       "s5_setup_overhead_share_pct": 25.53,
       "s5_shared_infra_setup_savings_usd": 729.12,
-      "s5_unpinned_template_refs_count": 0
+      "s5_unpinned_template_refs_count": 0,
+      "p1_cheapest_vendor_platform": "azure-pipelines",
+      "p1_cheapest_vendor_monthly_tco_usd": 2120.0,
+      "p1_github_actions_team_tco_usd": 5772.14,
+      "p1_migration_meets_2x_rule": true,
+      "p2_best_first_optimization_phase": "dependency_install",
+      "p2_reducible_phase_savings_usd": 2165.75,
+      "p3_workload_compute_profile": "compile-heavy",
+      "p3_larger_runners_detected_count": 0,
+      "p3_arm64_migration_savings_usd": 313.06,
+      "p3_recommended_runner_tier": "standard-2-core",
+      "p4_detected_stack_archetype": "rust-cargo",
+      "p4_stack_specific_savings_usd": 713.98
     }
   },
   "edge_case_repos": {
