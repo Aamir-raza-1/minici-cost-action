@@ -1779,6 +1779,8 @@ jobs:
         assert!(cc.always_on_runner_utilization_pct > 0.0);
         assert!(!cc.ephemeral_runner_recommended_mode.is_empty());
         assert!(cc.ephemeral_cold_start_wait_tax_monthly_usd > 0.0);
+        assert_eq!(cc.k8s_eks_control_plane_monthly_usd, 73.00);
+        assert_eq!(cc.k8s_gke_aks_free_tier_control_plane_monthly_usd, 0.00);
         assert!(cc.spot_interruption_band_pct.contains("5-10%"));
         assert!(cc.spot_retry_overhead_monthly_usd > 0.0);
         assert_eq!(cc.spot_ineligible_jobs_count, 1);
