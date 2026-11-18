@@ -1,5 +1,5 @@
 name: "MiniCI — CI/CD Cost Breakdown, PR Diff & Quota Receipt"
-description: "Sub-millisecond Pure Rust engine that expands CI workflow matrices and posts PR cost diffs, free-tier quota burn %, and dev wait-time cost."
+description: "Sub-millisecond Rust engine for CI/CD matrix cost breakdowns, PR diffs, free-tier quota burn, and wait-time cost."
 author: "Aamir Raza <raza.aamir01@gmail.com>"
 branding:
   icon: "dollar-sign"
@@ -10,6 +10,10 @@ inputs:
     description: "Path to repository root or workflow directory"
     required: false
     default: "."
+  compare-to:
+    description: "Optional base Git ref (e.g. origin/main) to also render a Pull Request cost delta table"
+    required: false
+    default: ""
   tier:
     description: "Pricing tier mode: auto, free, or paid"
     required: false
@@ -145,6 +149,30 @@ runs:
           --format markdown \
           --out-file .minici_breakdown.md \
           --quiet
+        if [ -n "${{ inputs.compare-to }}" ]; then
+          "$BIN_PATH" diff \
+            --path "${{ inputs.path }}" \
+            --compare-to "${{ inputs.compare-to }}" \
+            --tier "${{ inputs.tier }}" \
+            --prs-per-week "${{ inputs.prs-per-week }}" \
+            --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
+            --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+            --format table
+          "$BIN_PATH" diff \
+            --path "${{ inputs.path }}" \
+            --compare-to "${{ inputs.compare-to }}" \
+            --tier "${{ inputs.tier }}" \
+            --prs-per-week "${{ inputs.prs-per-week }}" \
+            --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
+            --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+            --format markdown \
+            --out-file .minici_diff.md \
+            --quiet
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f .minici_diff.md ]; then
+            cat .minici_diff.md >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        fi
         if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f .minici_breakdown.md ]; then
           cat .minici_breakdown.md >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

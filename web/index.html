@@ -162,10 +162,11 @@
         <span class="pill">354 µs Pure Rust • 7 CI Providers + Cloud Spot</span>
       </div>
       <nav class="links">
-        <a href="#demo">Video Demo</a>
+        <a href="#demo">Walkthrough Video</a>
         <a href="#calculator">7-Provider Calculator</a>
         <a href="#quickstart">Quickstart</a>
         <a href="#pricing">Pricing</a>
+        <a href="https://minici-yaml-fixer.raza-aamir01.workers.dev">Companion: YAML Fixer</a>
         <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a>
       </nav>
     </div>
@@ -186,13 +187,17 @@
       </div>
 
       <div class="video-wrap">
-        <video id="demoVideo" controls autoplay muted loop playsinline preload="metadata">
-          <source src="minici-cost-demo.mp4" type="video/mp4" />
+        <video id="demoVideo" controls autoplay muted loop playsinline preload="metadata" poster="how-to-install-and-use.png">
+          <source src="how-to-install-and-use.mp4" type="video/mp4" />
           Your browser does not support HTML5 MP4 video.
         </video>
         <div class="video-caption">
-          <span>▶ Live terminal demo: local repo breakdown, PR cost diff &amp; sticky GitHub comment</span>
-          <a href="minici-cost-demo.mp4" download>⬇ Download MP4 (1.8 MB)</a>
+          <span>▶ Customer Walkthrough: Build from source, local repo breakdown &amp; PR branch cost diff</span>
+          <span>
+            <a href="how-to-install-and-use.mp4" download>⬇ Walkthrough MP4 (3.1 MB)</a>
+            &nbsp;•&nbsp;
+            <a href="minici-cost-demo.mp4" download>⬇ Product Reel (1.4 MB)</a>
+          </span>
         </div>
       </div>
     </section>
@@ -278,10 +283,10 @@ minici --report report.html
 minici diff --compare-to main</pre>
         </div>
         <div class="panel card">
-          <strong>3. GitHub Action &amp; Claude Code Hooks</strong>
+          <strong>3. GitHub Action &amp; MCP Server</strong>
           <pre>minici init-hooks --path .
 # Installs .github/workflows/minici-cost.yml
-# + .claude/settings.json (Pre/PostToolUse)</pre>
+# + .mcp.json &amp; Git pre-push hook</pre>
         </div>
       </div>
     </section>
@@ -355,20 +360,11 @@ minici diff --compare-to main</pre>
       </div>
     </section>
 
-    <!-- COLLAPSED OWNER DEBUG PANEL (Hidden by default so customer page stays 100% clean) -->
-    <section id="ownerDebugDrawer" style="display:none;margin-top:24px;" class="panel">
-      <strong style="color:var(--emerald);font-family:var(--mono);">🔒 OWNER INTERNAL DEBUG &amp; GOLDEN PATHS (Visible Only When Toggled)</strong>
-      <p style="font-size:0.84rem;color:var(--muted);margin-top:6px;">
-        CLI Owner View: <code>minici breakdown --path .</code> • CLI Customer View: <code>minici breakdown --path . --customer-mode</code> • Sync 71 SKUs: <code>minici self-update</code>
-      </p>
-    </section>
   </main>
 
   <footer class="container">
     <span>Built by Aamir Raza (<a href="mailto:raza.aamir01@gmail.com" style="color:var(--muted);">raza.aamir01@gmail.com</a>) • Apache-2.0</span>
-    <button onclick="toggleOwner()" id="ownerBtn" style="background:transparent;border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:0.74rem;">
-      Owner Debug: OFF
-    </button>
+    <span>Companion Auto-Fixer: <a href="https://minici-yaml-fixer.raza-aamir01.workers.dev" style="color:var(--sky);text-decoration:none;">minici-yaml-fixer</a></span>
   </footer>
 
   <script>
@@ -426,14 +422,6 @@ minici diff --compare-to main</pre>
       navigator.clipboard.writeText(document.getElementById(id).textContent);
       btn.textContent = 'Copied!';
       setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
-    }
-
-    function toggleOwner() {
-      const d = document.getElementById('ownerDebugDrawer');
-      const b = document.getElementById('ownerBtn');
-      const show = d.style.display === 'none';
-      d.style.display = show ? 'block' : 'none';
-      b.textContent = show ? 'Owner Debug: ON' : 'Owner Debug: OFF';
     }
 
     recalc();

@@ -18,11 +18,11 @@
 
 ## 🎬 How to Install & Use (Real Customer Walkthrough)
 
-* ▶️ **Playable MP4 Walkthrough (`3.1 MB`):** [`web/how-to-install-and-use.mp4`](web/how-to-install-and-use.mp4)
+* ▶️ **Stream Walkthrough Video in Browser (`3.1 MB`):** https://minici-cost-action.raza-aamir01.workers.dev/how-to-install-and-use.mp4 ([`web/how-to-install-and-use.mp4`](web/how-to-install-and-use.mp4))
 * 📼 **Asciinema Terminal Recording (`.cast`):** [`web/how-to-install-and-use.cast`](web/how-to-install-and-use.cast) (`asciinema play web/how-to-install-and-use.cast`)
-* 🎞️ **Additional Product Demo Reel:** [`web/minici-cost-demo.mp4`](web/minici-cost-demo.mp4) • [`web/live-terminal-proof.mp4`](web/live-terminal-proof.mp4)
+* 🎞️ **Additional Product Demo Reel:** https://minici-cost-action.raza-aamir01.workers.dev/minici-cost-demo.mp4 ([`web/minici-cost-demo.mp4`](web/minici-cost-demo.mp4))
 
-[![MiniCI How to Install and Use Terminal Walkthrough](web/how-to-install-and-use.png)](web/how-to-install-and-use.mp4)
+[![MiniCI How to Install and Use Terminal Walkthrough](web/how-to-install-and-use.png)](https://minici-cost-action.raza-aamir01.workers.dev/how-to-install-and-use.mp4)
 
 ---
 
@@ -59,14 +59,38 @@ jobs:
           fetch-depth: 0
 
       - name: Run MiniCI Cost Breakdown & Quota Receipt
+        id: cost
         uses: Aamir-raza-1/minici-cost-action@v1
         with:
           path: "."
+          compare-to: "origin/main"
           tier: "auto"
           prs-per-week: "25"
           pushes-per-pr: "4"
           dev-hourly-rate: "65"
 ```
+
+### GitHub Action Inputs & Key Outputs (`action.yml`)
+
+| Input | Default | Description |
+| :--- | :---: | :--- |
+| `path` | `.` | Path to repository root or workflow directory |
+| `compare-to` | `""` | Optional base Git ref (e.g., `origin/main`) to also render a Pull Request cost diff table |
+| `tier` | `auto` | Pricing tier mode (`auto`, `free`, or `paid`) |
+| `prs-per-week` | `25` | Pull requests per week for monthly run-rate projection |
+| `pushes-per-pr` | `4` | Average pushes per pull request |
+| `dev-hourly-rate` | `65` | Developer hourly engineering rate (`USD`) for wait-time cost |
+
+| Key Action Output (`steps.<id>.outputs.*`) | Description |
+| :--- | :--- |
+| `gross_monthly_compute_cost_usd` | Gross monthly CI/CD compute cost (`USD`) |
+| `net_billed_monthly_compute_cost_usd` | Net billed monthly CI/CD compute cost after free-tier allowance (`USD`) |
+| `monthly_rounding_tax_usd` | Monthly sub-minute ceiling rounding overhead (`USD`) |
+| `monthly_productive_payroll_loss_usd` | Monthly developer wait-time payroll loss at `40%` context-switch factor (`USD`) |
+| `arm64_migration_monthly_savings_usd` | Monthly compute savings from migrating eligible Linux `x64` jobs to `ARM64` (`USD`) |
+| `recoverable_ci_and_wait_monthly_usd` | Total monthly recoverable CI compute and developer wait-time waste (`USD`) |
+| `detected_stack_archetype` | Detected language/build stack archetype (`Rust`, `Node/TS`, `Python`, `Go`, `Docker`, etc.) |
+| *(+ 22 additional FinOps outputs)* | Full 29-output schema documented in [`action.yml`](action.yml) |
 
 ---
 

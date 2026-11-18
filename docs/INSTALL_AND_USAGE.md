@@ -153,6 +153,7 @@ jobs:
 | Input | Default | Description |
 | :--- | :---: | :--- |
 | `path` | `.` | Repository root or workflow directory |
+| `compare-to` | `""` | Optional base Git ref (e.g., `origin/main`) to also append a PR cost delta table |
 | `tier` | `auto` | Pricing tier mode (`auto`, `free`, or `paid`) |
 | `prs-per-week` | `25` | Pull requests per week for monthly run projection |
 | `pushes-per-pr` | `4` | Average pushes per pull request |

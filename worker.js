@@ -6,8 +6,11 @@ export default {
         JSON.stringify({
           status: "ok",
           service: "minici-cost-action",
-          engine: "Pure Rust 541KB (354us)",
-          skus: 26,
+          version: "0.7.0",
+          engine: "Pure Rust std-only (<1ms)",
+          providers: 7,
+          skus: 160,
+          models: 20,
           author: "Aamir Raza <raza.aamir01@gmail.com>"
         }),
         { headers: { "content-type": "application/json; charset=utf-8" } }
