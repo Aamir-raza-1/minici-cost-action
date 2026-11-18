@@ -1,6 +1,6 @@
-# Locked 27-Repository Golden Baseline: KPIs, 20 Unified CI/CD Cost Models & 3-Mode Latency (`v0.6.0`)
+# Locked 27-Repository Golden Baseline: KPIs, 20 Unified CI/CD Cost Models & 3-Mode Latency (`v0.7.0`)
 
-**Locked Version:** `minici 0.6.0` (`tag: v0.6.0`)  
+**Locked Version:** `minici 0.7.0` (`tag: v0.7.0`)  
 **Total Repositories Locked:** `27` (`10` Primary + `7` Internal Edge-Case + `10` Fresh World-Scale OSS)  
 **Execution Modes Verified on Every Repo:** `Mode 1: CLI` • `Mode 2: GitHub Action Workflow` • `Mode 3: MCP JSON-RPC 2.0 + Shift-Left Hook`  
 **Machine-Readable Companion Lock:** [`tests/golden_baseline_10_repos.json`](../tests/golden_baseline_10_repos.json)

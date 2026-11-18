@@ -28,7 +28,7 @@ echo "+=========================================================================
 # Gate 1: Rust Unit, Golden Math & CLI Contract Lock Tests
 echo -n "⏳ [Gate 1/9] Running Cargo Unit & CLI Contract Lock Tests... "
 cargo test --manifest-path crates/minici/Cargo.toml --quiet
-echo "✅ PASS (15/15 unit + contract tests)"
+echo "✅ PASS (16/16 unit + contract tests)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 2: Release Binary Build & Path Sync
@@ -39,7 +39,7 @@ mkdir -p "$REPO_ROOT/target/release" "$HOME/.local/bin"
 cp "$BIN" "$REPO_ROOT/target/release/minici"
 cp "$BIN" "$HOME/.local/bin/minici" 2>/dev/null || true
 VER=$("$BIN" --version)
-[[ "$VER" == "minici 0.6.0" || "$VER" == "minici 0.5.0" || "$VER" == "minici 0.4.0" || "$VER" == "minici 0.3.0" || "$VER" == "minici 0.2.0" || "$VER" == "minici 0.1.0" ]] || { echo "❌ FAIL: Unexpected version $VER"; exit 1; }
+[[ "$VER" == "minici 0.7.0" || "$VER" == "minici 0.6.0" || "$VER" == "minici 0.5.0" || "$VER" == "minici 0.4.0" || "$VER" == "minici 0.3.0" || "$VER" == "minici 0.2.0" || "$VER" == "minici 0.1.0" ]] || { echo "❌ FAIL: Unexpected version $VER"; exit 1; }
 echo "✅ PASS ($VER synced)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
