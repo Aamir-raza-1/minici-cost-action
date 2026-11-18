@@ -1,6 +1,6 @@
 //! Universal Combinatorial CI/CD DAG, Matrix & Cost Engine (`crates/minici/src/engine.rs`).
 //!
-//! Pure Cost Domain Engine (`Infracost for CI/CD` — Zero External Crate Dependencies):
+//! Pure Cost Domain Engine (`Deterministic CI/CD FinOps` — Zero External Crate Dependencies):
 //! 1. Parses any repository's CI/CD workflows across GitHub Actions (`.github/workflows/*.yml`),
 //!    GitLab CI (`.gitlab-ci.yml`), CircleCI (`.circleci/config.yml`), Bitbucket (`bitbucket-pipelines.yml`),
 //!    and AWS CodeBuild (`buildspec.yml`).
@@ -133,7 +133,7 @@ impl ExpandedJobCost {
 
 #[derive(Debug, Clone)]
 pub struct CostComponentsBreakdown {
-    // 1. Build Minutes Cost (https://cicdcost.com/build-minutes-cost)
+    // 1. Build Minutes Cost (published cloud & vendor rate cards)
     pub rounding_tax_mins_per_run: f64,
     pub monthly_rounding_tax_usd: f64,
     pub linux_mins_per_run: f64,
@@ -142,7 +142,7 @@ pub struct CostComponentsBreakdown {
     pub os_weighted_free_tier_mins_per_run: f64,
     pub monthly_os_weighted_free_tier_mins: f64,
     pub monthly_flake_retry_10pct_overhead_usd: f64,
-    // 2. CI Runner Cost — Infracost Cloud Delegated (https://cicdcost.com/runner-cost)
+    // 2. CI Runner Cost — Cloud Compute Catalog (published cloud & vendor rate cards)
     pub infracost_iac_files_detected: bool,
     pub hosted_effective_hourly_rate_usd: f64,
     pub infracost_recommended_ec2_instance: String,
@@ -162,7 +162,7 @@ pub struct CostComponentsBreakdown {
     pub spot_retry_overhead_monthly_usd: f64,
     pub spot_ineligible_jobs_count: usize,
     pub hybrid_spot_plus_on_demand_monthly_usd: f64,
-    // 3. Artifact Storage Cost — Infracost S3/ECR Delegated (https://cicdcost.com/artifact-storage-cost)
+    // 3. Artifact Storage Cost — Cloud Catalog S3/ECR Delegated (published cloud & vendor rate cards)
     pub jobs_uploading_artifacts: usize,
     pub default_retention_days: u32,
     pub configured_retention_days: u32,
@@ -187,7 +187,7 @@ pub struct CostComponentsBreakdown {
     pub matrix_jobs_count: usize,
     pub pr_unconditional_matrix_cells: usize,
     pub conditional_pr_matrix_monthly_savings_usd: f64,
-    // 5. Log Retention Cost — Infracost CloudWatch/S3 Delegated (https://cicdcost.com/log-retention-cost)
+    // 5. Log Retention Cost — Cloud Catalog CloudWatch/S3 Delegated (published cloud & vendor rate cards)
     pub detected_log_language_profile: String,
     pub est_log_mb_per_run: f64,
     pub monthly_log_volume_gb: f64,
@@ -1468,7 +1468,7 @@ fn parse_gitlab_or_other_ci(
 }
 
 /// Inspects repository manifest files, `.tf`/`terragrunt.hcl` IaC files, and CI workflow YAML contents
-/// to classify the 9 `cicdcost.com/log-retention-cost` language profiles and detect Infracost IaC presence.
+/// to classify the 9 `unified CI/CD FinOps/log-retention-cost` language profiles and detect Cloud Catalog IaC presence.
 fn detect_language_and_iac_signals(
     target: &Path,
     jobs: &[ExpandedJobCost],
@@ -1538,7 +1538,7 @@ fn detect_language_and_iac_signals(
     // Strip synthetic snapshot test stubs (`run: pytest && cargo test`) before language classification
     let wf_corpus = wf_corpus.replace("pytest && cargo test", "");
 
-    // 2. Classify into the 9 official `cicdcost.com/log-retention-cost` language profiles
+    // 2. Classify into the 9 official `unified CI/CD FinOps/log-retention-cost` language profiles
     let (profile, mb_per_job) = if base_dir.join("Cargo.toml").exists()
         || target_str_low.contains("uv")
         || target_str_low.contains("deno")
@@ -2708,7 +2708,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             / 100.0
     };
 
-    // --- Compute 6 Line-by-Line CI/CD Invoice Cost Components (cicdcost.com + Infracost Cloud Delegated) ---
+    // --- Compute 6 Line-by-Line CI/CD Invoice Cost Components (unified CI/CD FinOps + Cloud Compute Catalog) ---
     let rounding_tax_mins_per_run = ((billed_mins_per_run - raw_duration_mins_per_run).max(0.0) * 100.0).round() / 100.0;
     let avg_rate_per_min = if billed_mins_per_run > 0.0 {
         gross_compute_cost_per_run_usd / billed_mins_per_run
@@ -2858,7 +2858,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     let spot_retry_overhead_monthly_usd =
         ((monthly_self_hosted_spot_cost_usd * spot_retry_factor) * 100.0).round() / 100.0;
 
-    // 3. Artifact Storage (90d default vs configured YAML retention-days vs 14d optimized + Infracost S3)
+    // 3. Artifact Storage (90d default vs configured YAML retention-days vs 14d optimized + Cloud Catalog S3)
     let default_retention_days = if providers.iter().any(|p| p == "gitlab-ci" || p == "circleci") {
         30
     } else {
@@ -2903,7 +2903,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             .round()
             / 100.0;
 
-    // 4. Parallelism Cost (Concurrent-job caps & Tier-Upgrade Tax per cicdcost.com/parallelism-cost)
+    // 4. Parallelism Cost (Concurrent-job caps & Tier-Upgrade Tax per unified CI/CD FinOps/parallelism-cost)
     let peak_concurrent_jobs_per_run = total_expanded_matrix_jobs;
     let hosted_concurrent_jobs_per_run =
         peak_concurrent_jobs_per_run.saturating_sub(self_hosted_or_microvm_jobs_per_run);
@@ -2930,13 +2930,13 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
             0.00
         };
 
-    // 5. Log Retention Cost (Per-language log volume across all 9 cicdcost.com profiles + IaC detection)
+    // 5. Log Retention Cost (Per-language log volume across all 9 unified CI/CD FinOps profiles + IaC detection)
     let (detected_log_language_profile, base_log_mb_per_job, infracost_iac_files_detected) =
         detect_language_and_iac_signals(target, &jobs);
     let est_log_mb_per_run = if total_expanded_matrix_jobs == 0 {
         0.0
     } else {
-        // Includes 15% failed-build stack-trace amplification per cicdcost.com/log-retention-cost
+        // Includes 15% failed-build stack-trace amplification per unified CI/CD FinOps/log-retention-cost
         ((base_log_mb_per_job * (total_expanded_matrix_jobs as f64) * 1.15) * 100.0).round() / 100.0
     };
     let monthly_log_volume_gb =
@@ -2958,7 +2958,7 @@ pub fn analyze_path(target: &Path, usage_override: Option<UsageConfig>) -> Break
     let monthly_infracost_loki_s3_usd =
         ((monthly_log_volume_gb * ARTIFACT_STORAGE_S3_USD_PER_GB_MO) * 100.0).round() / 100.0;
 
-    // 6. Cross-Region Egress & NAT Gateway Cost (Infracost aws_nat_gateway / aws_vpc_endpoint delegated)
+    // 6. Cross-Region Egress & NAT Gateway Cost (Cloud Catalog aws_nat_gateway / aws_vpc_endpoint delegated)
     let infracost_cloud_region = std::env::var("AWS_REGION")
         .or_else(|_| std::env::var("AWS_DEFAULT_REGION"))
         .unwrap_or_else(|_| "us-east-1".to_string());

@@ -1,4 +1,4 @@
-//! Infracost-Style Markdown, Table, Slack Block Kit & PostToolUse 6-Channel Launch Pack Renderer
+//! Unified Markdown, Table, HTML, CSV, Slack Block Kit & Launch Pack Renderer
 //! (`crates/minici/src/renderer.rs` — Zero External Dependencies).
 
 use crate::engine::{json_escape, BreakdownReport, DiffReport};
@@ -912,7 +912,7 @@ pub fn render_slack_payload(d: &DiffReport) -> String {
         d.head_monthly_dev_wait_usd
     );
     format!(
-        "{{\n  \"text\": \"{}\",\n  \"blocks\": [\n    {{\n      \"type\": \"header\",\n      \"text\": {{ \"type\": \"plain_text\", \"text\": \"MiniCI (Skipwise) Pull Request CI/CD Cost Diff\" }}\n    }},\n    {{\n      \"type\": \"section\",\n      \"fields\": [\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Monthly Compute Delta:*\\n`{}${:.2}/mo` (`{}{:.1}%`)\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Expanded Matrix Jobs:*\\n`{} -> {} jobs` (`{:+} jobs`)\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Free-Tier Quota Burn:*\\n`{:.1}% -> {:.1}%`\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Developer Wait Cost:*\\n`${:.2}/mo -> ${:.2}/mo`\" }}\n      ]\n    }}\n  ]\n}}",
+        "{{\n  \"text\": \"{}\",\n  \"blocks\": [\n    {{\n      \"type\": \"header\",\n      \"text\": {{ \"type\": \"plain_text\", \"text\": \"MiniCI Pull Request CI/CD Cost Diff\" }}\n    }},\n    {{\n      \"type\": \"section\",\n      \"fields\": [\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Monthly Compute Delta:*\\n`{}${:.2}/mo` (`{}{:.1}%`)\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Expanded Matrix Jobs:*\\n`{} -> {} jobs` (`{:+} jobs`)\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Free-Tier Quota Burn:*\\n`{:.1}% -> {:.1}%`\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Developer Wait Cost:*\\n`${:.2}/mo -> ${:.2}/mo`\" }}\n      ]\n    }}\n  ]\n}}",
         json_escape(&text),
         sign,
         d.delta_monthly_compute_usd,
@@ -933,24 +933,24 @@ pub fn generate_post_tool_use_launch_pack(feature_name: &str, sample_latency_us:
         "# 🚀 AUTOMATIC `PostToolUse` 6-CHANNEL NATURAL-LANGUAGE LAUNCH & PARTNER PROFILE PACK (`{feature_name}`)\n\n\
 > **Founder & Publisher Contact:** Aamir Raza (`raza.aamir01@gmail.com`)\n\
 > **Category Positioning:** **CI/CD with Taste** (`taste-ci-1`) — *\"If we were building CI/CD for software built with AI, MiniCI is what it would look like.\"*\n\
-> **Pricing Model (`CommandCode.ai` Style):** **Go (`$1/mo` — 9K PR/hook audits)** • **GOAT (`$10/mo` — 75K audits, Most Popular)** • **Pro (`$20/mo` — 100K audits)** • **Provider (`$15/mo` — Zero-markup API/MCP)** • **Team Pro (`$40/mo` — Pooled crew billing)** • **Max 10×/20× (`$100–$200/mo`)** • **Enterprise (`$5,000+/mo`)** *(Unused credits roll over and never expire)*\n\
+> **Pricing Model:** **Open-Source Core (`$0` CLI + Action + MCP)** • **Team Pro (`$79/mo` flat per GitHub Org — 1-Click Auto-Fix PR Bot + 30-Day Drift Memory + Weekly Slack CFO Digest)** • **Enterprise (`Custom`)**\n\
 > **Empirically Measured Portable Rust Benchmark:** `{sample_latency_us} µs` (`{:.3} ms`) on 1–2 CPU threads • Zero External Dependencies\n\n\
 ---\n\n\
 ## 1. Y Combinator (YC) Application — Product & Technical Moat Profile\n\
 - **Founder:** Aamir Raza (`raza.aamir01@gmail.com`)\n\
-- **Company / Project:** MiniCI (`Skipwise`) — **CI/CD with Taste**\n\
-- **50-Character Description:** CI/CD with Taste: sub-ms Rust PR cost & quota gate.\n\
-- **What we built (`{feature_name}`):** If you were building CI/CD for software built with AI, **MiniCI (`minici`)** is what it would look like. AI coding agents push 4x more commits per day, silently expanding CI matrices and burning runner budgets. We built `minici` 100% in **Rust** (`{sample_latency_us} µs` execution, zero runtime dependencies) with our **`taste-ci-1` FinOps memory** and a frictionless **CommandCode.ai-inspired pricing model** starting at **`$1/mo` (`Go`)** and **`$10/mo` (`GOAT` — 75K PR/hook audits)** up to **`$40/mo` (`Team Pro`)** and **`$5,000+/mo` (`Enterprise`)**. Every `git push` or PR gets an instant `< 1 ms` receipt showing **Free-Tier Quota Burn %**, **Developer Wait-Time Dollars (`$65/hr` default)**, **Billed Compute Cost (with GitHub's 1-minute per-job ceiling rounding and macOS 10x multiplier)**, **Hidden Artifact Storage Markup (`$0.25/GB-mo` vs `$0.023` S3)**, and **Self-Hosted/Blacksmith Break-Even (`5,000 mins/mo`)**.\n\n\
+- **Company / Project:** MiniCI — **Deterministic CI/CD FinOps & Workflow Economics**\n\
+- **50-Character Description:** Sub-ms Rust CI/CD cost breakdown & PR diff engine.\n\
+- **What we built (`{feature_name}`):** AI coding agents push 4x more commits per day, silently expanding CI matrices and burning runner budgets. We built `minici` 100% in **Rust** (`{sample_latency_us} µs` execution, zero runtime dependencies). Every `git push` or PR gets an instant `< 1 ms` receipt showing **Free-Tier Quota Burn %**, **Developer Wait-Time Dollars (`$65/hr` default)**, **Billed Compute Cost (with GitHub's 1-minute per-job ceiling rounding and macOS 10x multiplier)**, **Artifact Storage Optimization (`$0.25/GB-mo` vs `$0.023` S3)**, and **Self-Hosted Spot Break-Even (`5,000 mins/mo`)**.\n\n\
 ## 2. Product Hunt — Maker Launch Listing\n\
-- **Name:** MiniCI (`Skipwise`) — CI/CD with Taste\n\
+- **Name:** MiniCI — Sub-Millisecond CI/CD Cost & PR Diff Engine\n\
 - **Maker Contact:** Aamir Raza (`raza.aamir01@gmail.com`)\n\
-- **Tagline:** If we were building CI/CD for software built with AI — `< 1ms` Rust PR cost & quota receipts starting at `$1/mo`.\n\
-- **Maker Comment (Natural Voice):** Hey Product Hunt! AI coding agents are shipping code faster than ever, but CI/CD hasn't caught up—one tiny `strategy.matrix` edit in a PR can silently multiply your GitHub Actions or GitLab bill by 10x. I built `minici` in pure Rust (`{sample_latency_us} µs` execution, zero dependencies): it brings **CI/CD with Taste** to every repo and local `pre-push` hook, showing your exact Free Quota Burn %, Developer Wait-Time cost, and Per-PR Compute Invoice before merge. Following the developer-first pricing playbook of CommandCode.ai, plans start at **`$1/mo` (`Go`)** and **`$10/mo` (`GOAT`)** with rollover credits that never expire.\n\n\
+- **Tagline:** Catch expensive Pull Request CI matrix spikes in `< 1ms` with zero-dependency Rust.\n\
+- **Maker Comment (Natural Voice):** Hey Product Hunt! AI coding agents are shipping code faster than ever, but CI/CD hasn't caught up—one tiny `strategy.matrix` edit in a PR can silently multiply your GitHub Actions or GitLab bill by 10x. I built `minici` in pure Rust (`{sample_latency_us} µs` execution, zero dependencies): it shows your exact Free Quota Burn %, Developer Wait-Time cost, and Per-PR Compute Invoice before merge.\n\n\
 ## 3. Reddit (`r/devops`, `r/rust`, `r/sre`) Technical Post (Natural Engineer Voice)\n\
-- **Title:** `I built a zero-dependency Rust CLI (\"CI/CD with Taste\") that expands GitHub/GitLab/CircleCI workflow matrices and calculates PR cost diffs in {sample_latency_us} µs`\n\
+- **Title:** `I built a zero-dependency Rust CLI that expands GitHub/GitLab/CircleCI workflow matrices and calculates PR cost diffs in {sample_latency_us} µs`\n\
 - **Body:** GitHub Actions and GitLab CI only show you a lump-sum bill at the end of the month—they never tell you which PR or `strategy.matrix` change spiked your runner bill or burned your 2,000 free minutes. I wrote `minici` in pure Rust with an embedded zero-copy SKU catalog (supporting 1-minute per-job ceiling rounding, macOS 10x multipliers, `$0.25/GB` artifact storage tax, developer wait-time cost, and the 5,000 min/mo self-hosted break-even threshold). Always exits `0` so it never blocks a build. Feedback welcome: `raza.aamir01@gmail.com`.\n\n\
 ## 4. LinkedIn — Founder Build-in-Public Post (Natural Staff SRE Voice)\n\
-- **Post:** If we were building CI/CD for software built with AI, what would it look like? It wouldn't wait 30 days to send you a surprise GitHub Actions invoice after an AI coding agent expanded a workflow matrix to `macos-latest`. So I built **MiniCI (`minici`) — CI/CD with Taste** in pure Rust. In **{sample_latency_us} microseconds** (`< 1 ms`), it expands your CI matrices and posts the exact Per-PR & Monthly Cost Diff, Free-Tier Quota Burn %, and Developer Wait-Time cost right on the PR or local `pre-push` hook. Inspired by Ahmad Awais's CommandCode.ai model, we made pricing dead simple: open-source CLI locally, `$1/mo` Go tier, `$10/mo` GOAT tier, and `$40/mo` Team Pro. Reach out anytime at `raza.aamir01@gmail.com`.\n\n\
+- **Post:** AI coding agents expanded PR volume 4x, and one `strategy.matrix` change can silently multiply your GitHub Actions bill overnight. So I built **MiniCI (`minici`)** in pure Rust. In **{sample_latency_us} microseconds** (`< 1 ms`), it expands your CI matrices and posts the exact Per-PR & Monthly Cost Diff, Free-Tier Quota Burn %, and Developer Wait-Time cost right on the PR or local `pre-push` hook. Open-source CLI, Action, and MCP server (`Apache-2.0`). Reach out anytime at `raza.aamir01@gmail.com`.\n\n\
 ## 5. AI Coding Agent & IDE (`PreToolUse` / `PostToolUse` / MCP) Profile\n\
 - **Integration Name:** `minici` — Sub-Millisecond CI/CD with Taste Guard for AI Coding Agents\n\
 - **Maintainer:** Aamir Raza (`raza.aamir01@gmail.com`)\n\

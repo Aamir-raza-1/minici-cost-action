@@ -9,7 +9,7 @@
 #   Gate 4: Customer Mode vs. Owner Debug Mode Flag Separation Check
 #   Gate 5: Zero-Delta Git Branch Diff Check (`diff --compare-to HEAD` == +$0.00/mo)
 #   Gate 6: Multi-Format Report Generation (`html`, `json`, `csv`, `markdown`)
-#   Gate 7: Catalog & Live Hot-Reload SKU Verification (`77 SaaS + Infracost Cloud SKUs`)
+#   Gate 7: Catalog & Live Hot-Reload SKU Verification (`77 SaaS + Cloud Catalog Cloud SKUs`)
 #   Gate 8: Live MCP JSON-RPC 2.0 Stdio Handshake & Tool Call Verification
 # ==============================================================================
 
@@ -86,7 +86,7 @@ echo "✅ PASS (HTML, CSV, MD verified)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 7: Catalog & Live Hot-Reload Engine
-echo -n "⏳ [Gate 7/9] Verifying 7-Provider + Infracost Cloud SKU Catalog & 0% JSON Drift... "
+echo -n "⏳ [Gate 7/9] Verifying 7-Provider + Cloud Compute SKU Catalog & 0% JSON Drift... "
 CAT_OUT=$("$BIN" catalog)
 echo "$CAT_OUT" | grep -q '"provider":"github-actions"' || { echo "❌ FAIL: Missing github-actions"; exit 1; }
 echo "$CAT_OUT" | grep -q '"provider":"gcp-cloud-build"' || { echo "❌ FAIL: Missing gcp-cloud-build"; exit 1; }

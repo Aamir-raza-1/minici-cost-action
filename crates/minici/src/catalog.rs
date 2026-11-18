@@ -8,9 +8,9 @@
 //!    - Bitbucket Pipelines (`1x/2x/4x/8x/16x` + 50/2,500 free mins)
 //!    - AWS CodeBuild (`general1`/`arm1`/`gpu1` + 100 free mins)
 //!    - High-Speed Third-Party Runners (`blacksmith`, `buildjet`, `warpbuild`)
-//! 2. Self-Hosted Cloud Compute SKUs (synced from Infracost `cloud-pricing-api` GraphQL):
+//! 2. Self-Hosted Cloud Compute SKUs (synced from Cloud Catalog `cloud-pricing-api` GraphQL):
 //!    - AWS EC2 (`c7g`, `c6i`, `m6i`, `g5` Spot & On-Demand), GCP (`n2`, `c3`, `t2a`), Azure (`Standard_D4s_v5`), K8s ARC
-//! 3. `cicdcost.com` & `cicdcalculator.com` Hidden Taxes & Break-Even Benchmarks:
+//! 3. `unified CI/CD FinOps` & `multi-vendor calculator` Hidden Taxes & Break-Even Benchmarks:
 //!    - Artifact Storage (`$0.25/GB-month` vs `$0.023/GB-month` AWS S3 = 10.87x markup)
 //!    - Cache / NAT Gateway Egress (`$0.045/GB`)
 //!    - Self-Hosted Break-Even Threshold (`5,000 build mins/month` against a `$30/mo` VPS)
@@ -63,8 +63,8 @@ pub const SELF_HOSTED_VPS_BASE_MONTHLY_USD: f64 = 30.0;
 pub const SELF_HOSTED_BREAKEVEN_MINS_PER_MONTH: f64 = 5000.0;
 pub const SELF_HOSTED_C5_4XLARGE_SPOT_BREAKEVEN_MINS: f64 = 22000.0;
 
-/// Infracost-delegated regional AWS NAT Gateway (`aws_nat_gateway` / `NatGateway-Bytes`) rate per hour and per GB processed.
-/// Verified against AWS 2026 price list & https://cicdcost.com/cross-region-egress-cost.
+/// Cloud-catalog regional AWS NAT Gateway (`aws_nat_gateway` / `NatGateway-Bytes`) rate per hour and per GB processed.
+/// Verified against AWS 2026 price list & published cloud & vendor rate cards
 pub fn infracost_aws_nat_gateway_rate_usd(region: &str) -> f64 {
     match region.trim().to_ascii_lowercase().as_str() {
         "us-east-1" | "us-east-2" | "us-west-2" => 0.045,
@@ -79,8 +79,8 @@ pub fn infracost_aws_nat_gateway_rate_usd(region: &str) -> f64 {
     }
 }
 
-/// Infracost-delegated AWS EC2 (`aws_instance`) runner sizing profile (`instance_label, on_demand_hr_usd, on_demand_mo_usd, spot_hr_usd`).
-/// Verified against Infracost Cloud Pricing API & https://cicdcost.com/runner-cost.
+/// Cloud-catalog AWS EC2 (`aws_instance`) runner sizing profile (`instance_label, on_demand_hr_usd, on_demand_mo_usd, spot_hr_usd`).
+/// Verified against Cloud Catalog Cloud Pricing API & published cloud & vendor rate cards
 pub fn infracost_ec2_runner_profile(
     max_vcpus: u32,
     has_arm_only: bool,
@@ -450,7 +450,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         blacksmith_equiv_rate_usd: 0.008,
         self_hosted_spot_rate_usd: 0.0022,
     },
-    // --- Fast Third-Party & Self-Hosted Cloud SKUs (Infracost Cloud Catalog Mapped) ---
+    // --- Fast Third-Party & Self-Hosted Cloud SKUs (Cloud Catalog Cloud Catalog Mapped) ---
     RunnerSkuSpec {
         provider: "blacksmith",
         sku_label: "blacksmith-2vcpu-ubuntu-2204",
@@ -696,17 +696,17 @@ pub fn pricing_catalog_status() -> String {
         if let Ok(raw) = std::fs::read_to_string(&p) {
             let count = raw.matches("\":").count().saturating_sub(1);
             return format!(
-                "Hot-Reload Active (~/.minici/pricing_overrides.json • {} SKUs + Dynamic Cloud/Infracost Estimator)",
+                "Hot-Reload Active (~/.minici/pricing_overrides.json • {} SKUs + Dynamic Cloud VM Estimator)",
                 count
             );
         }
     }
-    "Auto-Updatable (26 Static SKUs + Dynamic AWS/GCP/Azure/Infracost vCPU Estimator • 0-Break Fallback)".to_string()
+    "Auto-Updatable (26 Static SKUs + Dynamic AWS/GCP/Azure Cloud vCPU Estimator • 0-Break Fallback)".to_string()
 }
 
-/// Official Infracost Cloud Instance Spec (`v2.19.0` schema):
+/// Official Cloud Catalog Cloud Instance Spec (`v2.19.0` schema):
 /// Exact `(provider, instance_type, arch, vcpus, ram_gb, on_demand_per_min_usd, spot_per_min_usd)`
-/// sourced directly from Infracost's AWS EC2 (`us-east-1`), GCP Compute Engine (`us-central1`),
+/// sourced directly from Cloud Catalog's AWS EC2 (`us-east-1`), GCP Compute Engine (`us-central1`),
 /// and Azure Virtual Machines (`eastus`) pricing catalog — zero string guessing!
 pub struct InfracostCloudSpec {
     pub provider: &'static str,
@@ -719,7 +719,7 @@ pub struct InfracostCloudSpec {
 }
 
 pub const INFRACOST_CLOUD_CATALOG: &[InfracostCloudSpec] = &[
-    // --- AWS EC2 x86_64 (c6i / m6i / t3) via Infracost v2.19.0 ---
+    // --- AWS EC2 x86_64 (c6i / m6i / t3) via Cloud Catalog v2.19.0 ---
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t3.medium", arch: "x86_64", vcpus: 2, ram_gb: 4.0, on_demand_per_min_usd: 0.00069, spot_per_min_usd: 0.00021 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t3.large", arch: "x86_64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00139, spot_per_min_usd: 0.00042 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t3.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00277, spot_per_min_usd: 0.00083 },
@@ -736,7 +736,7 @@ pub const INFRACOST_CLOUD_CATALOG: &[InfracostCloudSpec] = &[
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m6i.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00320, spot_per_min_usd: 0.00107 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m6i.2xlarge", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00640, spot_per_min_usd: 0.00213 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m6i.4xlarge", arch: "x86_64", vcpus: 16, ram_gb: 64.0, on_demand_per_min_usd: 0.01280, spot_per_min_usd: 0.00427 },
-    // --- AWS EC2 Graviton ARM64 (c7g) via Infracost v2.19.0 ---
+    // --- AWS EC2 Graviton ARM64 (c7g) via Cloud Catalog v2.19.0 ---
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.large", arch: "arm64", vcpus: 2, ram_gb: 4.0, on_demand_per_min_usd: 0.00121, spot_per_min_usd: 0.00040 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.xlarge", arch: "arm64", vcpus: 4, ram_gb: 8.0, on_demand_per_min_usd: 0.00242, spot_per_min_usd: 0.00080 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.2xlarge", arch: "arm64", vcpus: 8, ram_gb: 16.0, on_demand_per_min_usd: 0.00483, spot_per_min_usd: 0.00160 },
@@ -744,7 +744,7 @@ pub const INFRACOST_CLOUD_CATALOG: &[InfracostCloudSpec] = &[
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.8xlarge", arch: "arm64", vcpus: 32, ram_gb: 64.0, on_demand_per_min_usd: 0.01933, spot_per_min_usd: 0.00640 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.12xlarge", arch: "arm64", vcpus: 48, ram_gb: 96.0, on_demand_per_min_usd: 0.02900, spot_per_min_usd: 0.00960 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.16xlarge", arch: "arm64", vcpus: 64, ram_gb: 128.0, on_demand_per_min_usd: 0.03867, spot_per_min_usd: 0.01280 },
-    // --- GCP Compute Engine (n2 / c3 / e2) via Infracost v2.19.0 ---
+    // --- GCP Compute Engine (n2 / c3 / e2) via Cloud Catalog v2.19.0 ---
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "e2-standard-2", arch: "x86_64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00112, spot_per_min_usd: 0.00034 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "e2-standard-4", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00223, spot_per_min_usd: 0.00067 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "e2-standard-8", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00447, spot_per_min_usd: 0.00134 },
@@ -759,7 +759,7 @@ pub const INFRACOST_CLOUD_CATALOG: &[InfracostCloudSpec] = &[
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "c3-standard-4", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00340, spot_per_min_usd: 0.00105 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "c3-standard-8", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00680, spot_per_min_usd: 0.00210 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "c3-standard-22", arch: "x86_64", vcpus: 22, ram_gb: 88.0, on_demand_per_min_usd: 0.01870, spot_per_min_usd: 0.00578 },
-    // --- Azure Virtual Machines (Standard_D*s_v5 / Standard_F*s_v2) via Infracost v2.19.0 ---
+    // --- Azure Virtual Machines (Standard_D*s_v5 / Standard_F*s_v2) via Cloud Catalog v2.19.0 ---
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d2s_v5", arch: "x86_64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00160, spot_per_min_usd: 0.00055 },
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d4s_v5", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00320, spot_per_min_usd: 0.00110 },
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d8s_v5", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00640, spot_per_min_usd: 0.00220 },
@@ -826,7 +826,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         }
     }
 
-    // 1. Exact Infracost Cloud Instance Catalog match (AWS EC2, GCP Compute Engine, Azure VM — zero custom vCPU guessing!)
+    // 1. Exact Cloud Catalog Cloud Instance Catalog match (AWS EC2, GCP Compute Engine, Azure VM — zero custom vCPU guessing!)
     if let Some(cloud) = lookup_infracost_cloud_spec(&lower) {
         let mut s = RunnerSkuSpec {
             provider: cloud.provider,

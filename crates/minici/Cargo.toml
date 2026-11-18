@@ -2,7 +2,7 @@
 name = "minici"
 version = "0.7.0"
 edition = "2021"
-description = "MiniCI (Skipwise): Millisecond/Microsecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine"
+description = "MiniCI: Sub-Millisecond CI/CD Cost Breakdown, PR Diff & Quota Receipt Engine"
 license = "Apache-2.0"
 
 [[bin]]

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MiniCI (Skipwise) — Infracost for CI/CD Pipelines</title>
-  <meta name="description" content="Catch expensive CI/CD matrix spikes before you merge. Compare GitHub Actions, GitLab, CircleCI, Bitbucket, AWS CodeBuild, GCP Cloud Build, Azure DevOps & Blacksmith in < 1 ms." />
+  <title>MiniCI — CI/CD Cost Breakdown, PR Diff &amp; Quota Receipt</title>
+  <meta name="description" content="Catch expensive CI/CD matrix spikes before you merge. Compare GitHub Actions, GitLab, CircleCI, Bitbucket, AWS CodeBuild, GCP Cloud Build, Azure DevOps &amp; Self-Hosted Spot in &lt; 1 ms." />
   <style>
     :root {
       --bg: #07090e;
@@ -159,7 +159,7 @@
     <div class="container nav">
       <div class="brand">
         <span>MiniCI</span>
-        <span class="pill">354 µs Rust • 7 CI Providers + Infracost</span>
+        <span class="pill">354 µs Pure Rust • 7 CI Providers + Cloud Spot</span>
       </div>
       <nav class="links">
         <a href="#demo">Video Demo</a>
@@ -174,10 +174,10 @@
   <main class="container">
     <!-- 1. CLEAN HERO + REAL PLAYABLE MP4 VIDEO -->
     <section class="hero" id="demo">
-      <span class="pill">Infracost for CI/CD Pipelines • Linux, macOS &amp; Windows</span>
+      <span class="pill">Deterministic CI/CD FinOps Engine • Linux, macOS &amp; Windows</span>
       <h1>Catch Expensive Pull Request CI Matrix Spikes Before You Merge.</h1>
       <p>
-        A single zero-dependency Rust binary (<code>573 KB</code>) that expands your workflow matrices locally or on any public GitHub URL in under a millisecond—comparing costs across all 7 CI providers, Blacksmith, and AWS Spot.
+        A single zero-dependency Rust binary (<code>573 KB</code>) that expands your workflow matrices locally or on any public GitHub URL in under a millisecond—comparing costs across all 7 CI providers, ARM64 runners, and Cloud Spot instances.
       </p>
 
       <div class="cmd-box">
@@ -197,10 +197,10 @@
       </div>
     </section>
 
-    <!-- 2. SIMPLE 7-PROVIDER + BLACKSMITH CALCULATOR -->
+    <!-- 2. SIMPLE 7-PROVIDER + SELF-HOSTED SPOT CALCULATOR -->
     <section class="section" id="calculator">
       <h2>Interactive 7-Provider &amp; Self-Hosted CI Calculator</h2>
-      <p class="sub">Compare monthly compute bills across GitHub Actions (2026 rates), GitLab CI, CircleCI, Bitbucket, AWS CodeBuild, GCP Cloud Build, Azure DevOps, and Blacksmith.</p>
+      <p class="sub">Compare monthly compute bills across GitHub Actions (2026 rates), GitLab CI, CircleCI, Bitbucket, AWS CodeBuild, GCP Cloud Build, Azure DevOps, and Self-Hosted Cloud Spot.</p>
 
       <div class="calc-grid">
         <div class="panel">
@@ -240,7 +240,7 @@
               <strong id="kpiGh">$240.00/mo</strong>
             </div>
             <div class="kpi">
-              <span>Blacksmith / AWS Spot</span>
+              <span>High-Speed / Cloud Spot</span>
               <strong id="kpiSpot">$160 / $56</strong>
             </div>
           </div>
@@ -289,16 +289,16 @@ minici diff --compare-to main</pre>
     <!-- 4. ARCHITECTURE DIAGRAM -->
     <section class="section">
       <h2>Shift-Left Architecture</h2>
-      <p class="sub">Static YAML AST expansion + Infracost v2.19.0 cloud instance catalog—zero container spin-up.</p>
+      <p class="sub">Static YAML AST expansion + 160-SKU SaaS &amp; Cloud instance catalog—zero container spin-up.</p>
       <div class="panel" style="text-align:center;">
         <img src="customer-diagram.svg" alt="MiniCI Shift-Left Architecture Diagram" style="max-width:100%;height:auto;border-radius:8px;" />
       </div>
     </section>
 
-    <!-- 5. PRICING (COMMANDCODE.AI STYLE) -->
+    <!-- 5. PRICING -->
     <section class="section" id="pricing">
       <h2>Simple, Transparent Pricing</h2>
-      <p class="sub">Free forever for local CLI and public repositories.</p>
+      <p class="sub">Free forever for local CLI, MCP Server, and GitHub Action.</p>
 
       <div class="pricing-4">
         <div class="price-card">
@@ -306,9 +306,9 @@ minici diff --compare-to main</pre>
             <strong>Free (Open Source)</strong>
             <div class="price-num">$0</div>
             <ul class="price-list">
-              <li>✓ Unlimited local CLI runs</li>
+              <li>✓ Unlimited local CLI &amp; MCP runs</li>
               <li>✓ Zero-clone public GitHub URLs</li>
-              <li>✓ All 7 CI providers + Infracost</li>
+              <li>✓ All 7 CI providers + 160 SKUs</li>
             </ul>
           </div>
           <a href="#quickstart" class="btn" style="text-align:center;text-decoration:none;">Install Free CLI</a>
@@ -316,28 +316,28 @@ minici diff --compare-to main</pre>
 
         <div class="price-card featured">
           <div>
-            <strong>Go (Indie &amp; Startups)</strong>
-            <div class="price-num">$1<span style="font-size:0.9rem;color:var(--muted);">/mo</span></div>
+            <strong>Team Pro</strong>
+            <div class="price-num">$79<span style="font-size:0.9rem;color:var(--muted);">/mo</span></div>
             <ul class="price-list">
-              <li>✓ Automated PR sticky comments</li>
-              <li>✓ Free-tier quota burn alerts</li>
-              <li>✓ Claude + Wozcode shift-left hooks</li>
+              <li>✓ 1-Click Auto-Fix PR Bot</li>
+              <li>✓ 30-day stateful cost drift memory</li>
+              <li>✓ Weekly Friday Slack CFO digest</li>
             </ul>
           </div>
-          <a href="mailto:raza.aamir01@gmail.com?subject=MiniCI%20Go%20Plan" class="btn" style="text-align:center;text-decoration:none;">Start $1 Go</a>
+          <a href="mailto:raza.aamir01@gmail.com?subject=MiniCI%20Team%20Pro" class="btn" style="text-align:center;text-decoration:none;">Start Team Pro</a>
         </div>
 
         <div class="price-card">
           <div>
-            <strong>GOAT (Pro Engineering)</strong>
-            <div class="price-num">$10<span style="font-size:0.9rem;color:var(--muted);">/mo</span></div>
+            <strong>Scaleup</strong>
+            <div class="price-num">$199<span style="font-size:0.9rem;color:var(--muted);">/mo</span></div>
             <ul class="price-list">
               <li>✓ Org-wide HTML/JSON/CSV FinOps reports</li>
               <li>✓ Flaky retry waste &amp; path-filter diffs</li>
-              <li>✓ Blacksmith &amp; AWS Spot migration advisor</li>
+              <li>✓ ARM64 &amp; Cloud Spot migration advisor</li>
             </ul>
           </div>
-          <a href="mailto:raza.aamir01@gmail.com?subject=MiniCI%20GOAT%20Plan" class="btn" style="text-align:center;text-decoration:none;">Get $10 GOAT</a>
+          <a href="mailto:raza.aamir01@gmail.com?subject=MiniCI%20Scaleup" class="btn" style="text-align:center;text-decoration:none;">Get Scaleup</a>
         </div>
 
         <div class="price-card">
@@ -414,7 +414,7 @@ minici diff --compare-to main</pre>
         ['AWS CodeBuild', 'Per-minute EC2 / Per-second Lambda', '$' + p.aws.toFixed(4) + '/m', '$' + awsBill.toFixed(2)],
         ['GCP Cloud Build', 'Exact-second billing (2.5k incl.)', '$' + p.gcp.toFixed(4) + '/m', '$' + gcpBill.toFixed(2)],
         ['Azure DevOps Pipelines', 'Parallel concurrency slots ($40/slot)', '$40.00/slot', '$' + p.azSlot.toFixed(2)],
-        ['Blacksmith / AWS Spot (Infracost)', '50–75% compute reduction', '$' + p.bs.toFixed(4) + '/m', '$' + bsBill.toFixed(2) + ' (Spot: $' + spotBill.toFixed(2) + ')']
+        ['High-Speed / Self-Hosted Cloud Spot', '50–75% compute reduction', '$' + p.bs.toFixed(4) + '/m', '$' + bsBill.toFixed(2) + ' (Spot: $' + spotBill.toFixed(2) + ')']
       ];
 
       document.getElementById('calcBody').innerHTML = rows.map(r =>

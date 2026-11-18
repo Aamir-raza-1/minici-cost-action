@@ -1,6 +1,6 @@
 {
   "platform": "azure",
-  "source_label": "Azure DevOps Services official + Infracost v2.19.0",
+  "source_label": "Azure DevOps Services & Virtual Machines Official Pricing",
   "source_url": "https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/",
   "secondary_source_urls": [
     "https://learn.microsoft.com/en-us/azure/devops/managed-devops-pools/pricing",

@@ -1,10 +1,9 @@
 {
   "platform": "gcp",
-  "source_label": "Google Cloud Build official + Infracost v2.19.0",
+  "source_label": "Google Cloud Build & Compute Engine Official Pricing",
   "source_url": "https://cloud.google.com/build/pricing",
   "secondary_source_urls": [
-    "https://cloud.google.com/deploy/pricing",
-    "https://www.infracost.io/product"
+    "https://cloud.google.com/deploy/pricing"
   ],
   "checked_on": "2026-11-11",
   "rules": {

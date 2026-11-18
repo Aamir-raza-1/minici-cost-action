@@ -1,10 +1,9 @@
 {
   "platform": "aws",
-  "source_label": "AWS CodeBuild & CodePipeline official + Infracost v2.19.0",
+  "source_label": "AWS CodeBuild, CodePipeline & EC2 Official Pricing",
   "source_url": "https://aws.amazon.com/codebuild/pricing/",
   "secondary_source_urls": [
-    "https://aws.amazon.com/codepipeline/pricing/",
-    "https://www.infracost.io/product"
+    "https://aws.amazon.com/codepipeline/pricing/"
   ],
   "checked_on": "2026-11-11",
   "rules": {

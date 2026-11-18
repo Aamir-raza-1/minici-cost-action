@@ -1,5 +1,5 @@
-name: "MiniCI — Infracost for CI/CD (PR Cost Diff & Quota Receipt)"
-description: "Sub-millisecond Rust engine that expands CI workflow matrices and posts PR cost diffs, free-tier quota burn %, and dev wait-time cost."
+name: "MiniCI — CI/CD Cost Breakdown, PR Diff & Quota Receipt"
+description: "Sub-millisecond Pure Rust engine that expands CI workflow matrices and posts PR cost diffs, free-tier quota burn %, and dev wait-time cost."
 author: "Aamir Raza <raza.aamir01@gmail.com>"
 branding:
   icon: "dollar-sign"
@@ -46,9 +46,9 @@ outputs:
   parallelism_tier_upgrade_tax_usd:
     description: "Monthly concurrency cap seat-tier upgrade tax (USD)"
     value: ${{ steps.minici.outputs.parallelism_tier_upgrade_tax_usd }}
-  datadog_90d_log_shipping_usd:
-    description: "Monthly 90-day external log shipping benchmark cost (USD)"
-    value: ${{ steps.minici.outputs.datadog_90d_log_shipping_usd }}
+  external_log_shipping_90d_usd:
+    description: "Monthly 90-day external SIEM / log shipping cost (USD)"
+    value: ${{ steps.minici.outputs.external_log_shipping_90d_usd }}
   nat_egress_worst_case_usd:
     description: "Monthly private-subnet NAT Gateway + Internet Egress benchmark cost (USD)"
     value: ${{ steps.minici.outputs.nat_egress_worst_case_usd }}
@@ -172,7 +172,7 @@ runs:
             ws("recommended_ec2_instance", cc.get("runner_cost", {}).get("infracost_recommended_ec2_instance", ""))
             wf("artifact_storage_90d_usd", cc.get("artifact_storage_cost", {}).get("monthly_vendor_storage_90d_usd", 0.0))
             wf("parallelism_tier_upgrade_tax_usd", cc.get("parallelism_cost", {}).get("parallelism_tier_upgrade_tax_monthly_usd", 0.0))
-            wf("datadog_90d_log_shipping_usd", cc.get("log_retention_cost", {}).get("monthly_datadog_90d_log_shipping_usd", 0.0))
+            wf("external_log_shipping_90d_usd", cc.get("log_retention_cost", {}).get("monthly_datadog_90d_log_shipping_usd", 0.0))
             wf("nat_egress_worst_case_usd", cc.get("cross_region_egress_cost", {}).get("monthly_infracost_private_subnet_nat_worst_case_usd", 0.0))
             wf("monthly_productive_payroll_loss_usd", cc.get("developer_wait_time_cost", {}).get("monthly_productive_payroll_loss_usd", 0.0))
             wf("monthly_total_immediate_flake_cost_usd", cc.get("failed_build_rerun_cost", {}).get("monthly_total_immediate_flake_cost_usd", 0.0))

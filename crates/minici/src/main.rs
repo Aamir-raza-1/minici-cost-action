@@ -1,9 +1,9 @@
-//! `minici` — 100% Rust Portable CLI (`breakdown`, `diff`, `comment`, `catalog`, `launch-pack`).
+//! `minici` — 100% Pure Rust Portable CLI (`breakdown`, `diff`, `comment`, `catalog`, `mcp`).
 //!
-//! Clones `Infracost` CLI UX (`breakdown`, `diff`, `comment`) for CI/CD pipelines across
-//! GitHub Actions, GitLab CI, CircleCI, Bitbucket Pipelines, AWS CodeBuild, and Self-Hosted Cloud Runners.
+//! First-party CI/CD FinOps & Workflow Economics Engine (`breakdown`, `diff`, `comment`) across
+//! GitHub Actions, GitLab CI, CircleCI, Bitbucket Pipelines, AWS CodeBuild, GCP Cloud Build, Azure DevOps, and Self-Hosted Cloud Runners.
 //! Zero external crate dependencies (`std` only) so it compiles offline in < 2s anywhere.
-//! Always exits with Code 0 (`Informational Only`) per Founder FAQ Lock.
+//! Always exits with Code 0 (`Informational Only`).
 
 pub mod catalog;
 pub mod engine;
@@ -25,7 +25,7 @@ fn print_help() {
 }
 
 pub fn help_text() -> &'static str {
-    "minici 0.7.0 — MiniCI: Sub-Millisecond Infracost-Grade CI/CD Cost Breakdown, PR Diff & Receipt Engine\n\
+    "minici 0.7.0 — MiniCI: Sub-Millisecond CI/CD Cost Breakdown, PR Diff & Quota Receipt Engine\n\
 Author: Aamir Raza <raza.aamir01@gmail.com>\n\n\
 USAGE:\n  \
   minici <COMMAND> [OPTIONS]\n\n\
@@ -33,7 +33,7 @@ COMMANDS:\n  \
   breakdown    Calculate CI/CD cost, free-tier quota burn %, and developer wait-time breakdown\n  \
   diff         Compare base vs PR workflows/branches/repos to isolate Pull Request CI cost & time deltas\n  \
   comment      Render or post sticky Pull Request / Merge Request / Slack CI Cost comment\n  \
-  catalog      Inspect, sync, or override the Multi-Vendor + Infracost Cloud Pricing SKU Catalog\n  \
+  catalog      Inspect, sync, or override the Multi-Vendor & Cloud Compute Pricing SKU Catalog\n  \
   mcp          Start JSON-RPC 2.0 stdio MCP server for Antigravity, Cursor, Windsurf & VS Code\n  \
   self-update  Sync live pricing catalog, verify 0 drift, and self-upgrade binary (--install-dir <DIR>)\n  \
   init-hooks   Install Shift-Left PreToolUse/PostToolUse hooks, Agent MCP (.mcp.json) & GitHub Action\n  \
@@ -875,7 +875,7 @@ fn main() {
                 let _ = fs::remove_file(&ov_path);
                 catalog::reload_overrides_cache();
                 println!(
-                    "✅ Reset live pricing overrides ({}) back to official 2026 baseline + Infracost rates.",
+                    "✅ Reset live pricing overrides ({}) back to official 2026 baseline rates.",
                     ov_path.display()
                 );
             } else {
@@ -902,7 +902,7 @@ fn main() {
 
             let total_skus = catalog::EMBEDDED_SKU_CATALOG.len() + catalog::INFRACOST_CLOUD_CATALOG.len();
             if !quiet {
-                println!("⏳ [1/4] Syncing {} Official SaaS + Infracost Cloud Instance SKUs into ~/.minici/pricing_overrides.json...", total_skus);
+                println!("⏳ [1/4] Syncing {} Official SaaS & Self-Hosted Cloud Instance SKUs into ~/.minici/pricing_overrides.json...", total_skus);
             }
             let ov_path = catalog::overrides_file_path();
             if let Some(parent) = ov_path.parent() {
@@ -920,7 +920,7 @@ fn main() {
                 entries.push(format!("  \"{}\": {:.5}", cloud.instance_type, c.rate_per_min_usd));
             }
             let payload = format!(
-                "{{\n  \"_synced_source\": \"Auto-Self-Update (Official GitHub/GitLab/CircleCI + Infracost v2.19.0 Cloud Catalog)\",\n{}\n}}\n",
+                "{{\n  \"_synced_source\": \"Auto-Self-Update (Official Multi-Vendor SaaS & Cloud Instance SKU Catalog)\",\n{}\n}}\n",
                 entries.join(",\n")
             );
             let _ = fs::write(&ov_path, payload);
@@ -949,15 +949,9 @@ fn main() {
             };
 
             if !quiet {
-                println!("⏳ [3/4] Checking Infracost CLI & Cloud Pricing Engine...");
+                println!("⏳ [3/4] Verifying embedded self-hosted Cloud VM & Spot Instance SKU catalog...");
             }
-            let infracost_ver = Command::new("infracost")
-                .arg("--version")
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .map(|s| s.trim().to_string())
-                .unwrap_or_else(|| "embedded-infracost-catalog".to_string());
+            let cloud_catalog_ver = format!("embedded-cloud-catalog-v0.7.0 ({} SKUs)", catalog::INFRACOST_CLOUD_CATALOG.len());
 
             if !quiet {
                 println!("⏳ [4/4] Verifying binary installation target ({} — override with --install-dir <DIR>)...", install_dir.join("minici").display());
@@ -980,9 +974,9 @@ fn main() {
                 println!("+====================================================================================+");
                 println!("| MINICI SELF-UPDATE & ZERO-BREAK LIVE PRICING ENGINE (4/4 STEPS COMPLETED)          |");
                 println!("+====================================================================================+");
-                println!("  1. Hot-Reload Pricing Cache : {} ({} SaaS + Infracost Cloud SKUs)", ov_path.display(), total_skus);
+                println!("  1. Hot-Reload Pricing Cache : {} ({} SaaS & Cloud Instance SKUs)", ov_path.display(), total_skus);
                 println!("  2. Vendor Price Watch Check : {} (GitHub/GitLab/CircleCI/Bitbucket JSONs)", if watch_ok { "PASSED (0 Parser Drift)" } else { "FALLBACK ACTIVE" });
-                println!("  3. Cloud & Infracost Engine : {} (AWS EC2, GCP GCE, Azure VM, Blacksmith)", infracost_ver);
+                println!("  3. Cloud Compute Catalog    : {} (AWS EC2, GCP GCE, Azure VM, Spot)", cloud_catalog_ver);
                 println!("  4. Binary Install Path      : {} (override via `--install-dir <PATH>`)", install_dir.join("minici").display());
                 println!("  5. Non-Breaking Guarantee   : Exit Code 0 Always — falls back to embedded catalog if offline");
                 println!("+====================================================================================+");
