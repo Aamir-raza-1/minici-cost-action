@@ -11,7 +11,7 @@
     "credit_pack_25000_usd": 15.0,
     "public_repo_standard_free": true,
     "minutes_rollover": false,
-    "job_rounding": "ceil_minute_per_job",
+    "job_rounding": "per_second",
     "included_cache_gb_per_repo": 0,
     "self_hosted_effective_usd_per_min": 0.0
   },

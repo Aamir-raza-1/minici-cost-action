@@ -7,11 +7,12 @@
 
 **Catch Expensive Pull Request CI Matrix Spikes Before You Merge.**
 
-`minici` (`v0.7.0`) is a standalone, zero-dependency Pure Rust (`std` only) CLI, GitHub Action, Git `pre-push` guard, and JSON-RPC 2.0 MCP Server. In **under 2 milliseconds**, it expands your CI workflow matrices across **7 official CI/CD platforms** (`GitHub Actions`, `GitLab CI`, `CircleCI`, `Bitbucket Pipelines`, `AWS CodeBuild`, `Google Cloud Build`, and `Azure Pipelines`) plus self-hosted cloud compute (`EC2`, `GCE`, `Azure VMs`), outputting a unified receipt of **Monthly Compute Spend**, **Free-Tier Quota Burn %**, **Per-PR Cost Deltas**, and **Developer Wait-Time Cost** (`Exit 0` always).
+`minici` (`v0.8.0`) is a standalone, zero-dependency Pure Rust (`std` only) CLI, GitHub Action, `@minici` PR/Slack Bot, and `7`-Tool JSON-RPC 2.0 MCP Server. In **under 2 milliseconds**, it expands your CI workflow matrices across **7 official CI/CD platforms** (`GitHub Actions`, `GitLab CI`, `CircleCI`, `Bitbucket Pipelines`, `AWS CodeBuild`, `Google Cloud Build`, and `Azure Pipelines`) plus self-hosted cloud compute (`EC2`, `GCE`, `Azure VMs`), outputting a unified **24-Model FinOps Receipt** of **Monthly Compute Spend**, **Unit Economics (`$/PR`)**, **Free-Tier Quota Burn %**, **Per-PR Cost Deltas**, **Spend Velocity Anomalies**, and **Developer Wait-Time Cost** (`Exit 0` always).
 
 * 🌐 **Interactive Web Calculator:** https://minici-cost-action.raza-aamir01.workers.dev
 * 📖 **Step-by-Step Install & Usage Guide:** [`docs/INSTALL_AND_USAGE.md`](docs/INSTALL_AND_USAGE.md)
-* 🔬 **20-Model Capabilities, Build-Time Math & Known Boundaries:** [`docs/CAPABILITIES_AND_LIMITATIONS.md`](docs/CAPABILITIES_AND_LIMITATIONS.md)
+* 🔒 **Read-Only Security & Zero Source-Code Trust Policy (`Contents: None`):** [`SECURITY.md`](SECURITY.md)
+* 🔬 **24-Model Capabilities, Build-Time Math & Known Boundaries:** [`docs/CAPABILITIES_AND_LIMITATIONS.md`](docs/CAPABILITIES_AND_LIMITATIONS.md)
 * 🔧 **Companion Auto-Patcher:** Pair with [`minici-yaml-fixer`](https://github.com/Aamir-raza-1/minici-yaml-fixer) to deterministically fix the workflow waste `minici` uncovers while preserving 100% of `#` YAML comments.
 
 ---
@@ -99,23 +100,38 @@ jobs:
 ### 1. Install in Under 3 Seconds (Zero External Dependencies)
 
 ```bash
-# Option A: Install directly from Git with Cargo
+# Option A: 1-Line Prebuilt Binary Installer (Linux & macOS x86_64/arm64 + SHA-256 verification)
+curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+
+# Option B: Install directly from Git with Cargo
 cargo install --git https://github.com/Aamir-raza-1/minici-cost-action.git minici
 
-# Option B: Clone & build offline (std-only Rust, compiles in ~1.5s)
+# Option C: Clone & build offline (std-only Rust, compiles in ~1.5s)
 git clone https://github.com/Aamir-raza-1/minici-cost-action.git
 cd minici-cost-action
 cargo build --release --manifest-path crates/minici/Cargo.toml
 mkdir -p ~/.local/bin && cp crates/minici/target/release/minici ~/.local/bin/minici
 ```
 
-### 2. Run on Any Local Repo, Branch Diff, or Public GitHub Repo
+### 2. Run on Any Local Repo, Live Telemetry, Billing CSV, or Public GitHub Repo
 
 ```bash
-# 1. Instant executive cost & quota summary on the current repository (< 2 ms)
+# 1. Instant executive cost, unit economics ($/PR) & quota summary (< 2 ms)
 minici breakdown --path .
 
-# 2. Compare your feature branch against `main` BEFORE opening a Pull Request
+# 2. Sync live GitHub Actions telemetry (ETag 304 zero-quota cache) or reconcile a FOCUS v1.1 billing CSV
+minici sync --repo owner/repo
+minici breakdown --path . --live
+minici breakdown --path . --billing-csv ./billing-export.csv
+
+# 3. Verify Read-Only Least-Privilege Security (`Contents: None` + 108-attribute coverage receipt)
+minici permissions check --repo owner/repo
+
+# 4. Generate or apply comment-preserving surgical optimizations & safe ARM64 migrations
+minici shrink --path .
+minici migrate --path . --to arm64
+
+# 5. Compare your feature branch against `main` BEFORE opening a Pull Request
 minici diff --path . --compare-to main
 
 # 3. Audit ANY public GitHub repository without cloning it first (cached in ~/.minici/cache/repos/)
@@ -149,7 +165,12 @@ Add `minici` to `.mcp.json` (supported out of the box in Antigravity, Claude Cod
 }
 ```
 
-Exposed MCP tools: `minici_breakdown`, `minici_diff`, and `minici_catalog`.
+Exposed MCP tools (`7` live tools): `minici_breakdown`, `minici_diff`, `minici_sync_live`, `minici_permissions`, `minici_anomalies`, `minici_shrink`, and `minici_migrate`.
+
+### `@minici` Taggable Everywhere (GitHub PRs & Slack)
+
+* **GitHub Pull Requests (`.github/workflows/minici-pr-bot.yml`):** Mention `@minici breakdown`, `@minici diff`, `@minici shrink`, `@minici migrate arm64`, `@minici permissions`, or `@minici why` on any PR to get sticky receipts and 1-click committable ` ```suggestion ` blocks.
+* **Slack (`/minici` & `@minici`):** Point your Slack Slash Command (`/slack/command`) or Events API (`/slack/events`) at the deployed Cloudflare Worker, or run `minici comment slack --webhook-url "$SLACK_WEBHOOK_URL"`.
 
 ---
 

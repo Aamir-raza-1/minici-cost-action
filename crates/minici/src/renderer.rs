@@ -138,13 +138,19 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         ""
     };
 
+    let prov_badge = if r.provenance_mode != "static_heuristic" {
+        format!(" • {}", r.provenance_mode)
+    } else {
+        String::new()
+    };
     let mut out = String::new();
     out.push_str(&format!(
-        "Project: {} ({} workflow(s), {} expanded jobs • {:.2} ms){}\n\n",
+        "Project: {} ({} workflow(s), {} expanded jobs • {:.2} ms{}){}\n\n",
         repo_info,
         r.total_workflows,
         r.total_expanded_matrix_jobs,
         r.execution_time_ms,
+        prov_badge,
         view_suffix
     ));
 
@@ -373,10 +379,49 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
             cc.best_first_optimization_payback_months
         ));
     }
+    if cc.jobs_missing_timeout_minutes_count > 0 && cc.hung_job_360m_worst_case_exposure_usd >= 5.0 {
+        hygiene_parts.push(format!(
+            "{} job(s) missing timeout-minutes (${:.2} 6h hung-run exposure)",
+            cc.jobs_missing_timeout_minutes_count, cc.hung_job_360m_worst_case_exposure_usd
+        ));
+    }
+    if cc.spend_anomaly_alert_active {
+        hygiene_parts.push(format!(
+            "Spend velocity {:.2}x 30d baseline (proj EOM ${:.2}/mo)",
+            cc.burn_velocity_7d_vs_30d_ratio, cc.projected_eom_compute_usd
+        ));
+    }
     if !hygiene_parts.is_empty() {
         out.push_str(&format!(
             " • Pipeline Hygiene : {}\n",
             hygiene_parts.join(" • ")
+        ));
+    }
+
+    if r.gross_monthly_compute_cost_usd > 0.0 && cc.cost_per_merged_pr_usd > 0.0 {
+        let reg_part = if cc.container_images_built_count > 0
+            && cc.monthly_registry_storage_and_pull_usd > 0.0
+        {
+            format!(
+                " • Container Registry: ${:.2}/mo ({:.1} GB, {} image(s))",
+                cc.monthly_registry_storage_and_pull_usd,
+                cc.est_registry_storage_gb,
+                cc.container_images_built_count
+            )
+        } else {
+            String::new()
+        };
+        let idle_part = if cc.monthly_always_on_idle_waste_usd > 0.0 {
+            format!(
+                " • Self-Hosted Idle: {:.0}% off-hours (${:.2}/mo waste)",
+                cc.off_hours_idle_capacity_pct, cc.monthly_always_on_idle_waste_usd
+            )
+        } else {
+            String::new()
+        };
+        out.push_str(&format!(
+            " • Unit Economics   : ${:.2}/merged PR • ${:.2}/active dev/mo{}{}\n",
+            cc.cost_per_merged_pr_usd, cc.cost_per_active_dev_monthly_usd, reg_part, idle_part
         ));
     }
 
@@ -794,6 +839,43 @@ fn render_applicable_summary_notes_markdown(r: &BreakdownReport) -> String {
             cc.monthly_total_reducible_phase_savings_usd
         ));
     }
+    if r.gross_monthly_compute_cost_usd > 0.0 && cc.cost_per_merged_pr_usd > 0.0 {
+        notes.push(format!(
+            "- **Unit Economics:** **`${:.2}` / merged PR** • **`${:.2}` / active developer / mo** (`{:.0}%` top-workflow share)",
+            cc.cost_per_merged_pr_usd,
+            cc.cost_per_active_dev_monthly_usd,
+            cc.top_workflow_cost_share_pct
+        ));
+    }
+    if cc.jobs_missing_timeout_minutes_count > 0 && cc.hung_job_360m_worst_case_exposure_usd >= 5.0 {
+        notes.push(format!(
+            "- **Hung-Job Guardrail:** `{}` job(s) lack `timeout-minutes` (`${:.2}` worst-case 6-hour default timeout exposure)",
+            cc.jobs_missing_timeout_minutes_count,
+            cc.hung_job_360m_worst_case_exposure_usd
+        ));
+    }
+    if cc.spend_anomaly_alert_active {
+        notes.push(format!(
+            "- **Spend Velocity Alert:** 7-day burn is **`{:.2}x`** 30-day baseline (projected EOM **`${:.2}/mo`**)",
+            cc.burn_velocity_7d_vs_30d_ratio,
+            cc.projected_eom_compute_usd
+        ));
+    }
+    if cc.container_images_built_count > 0 && cc.monthly_registry_storage_and_pull_usd > 0.0 {
+        notes.push(format!(
+            "- **Container Registry:** `{}` image(s) built (`~{:.1} GB` active layers, **`${:.2}/mo`** storage)",
+            cc.container_images_built_count,
+            cc.est_registry_storage_gb,
+            cc.monthly_registry_storage_and_pull_usd
+        ));
+    }
+    if cc.monthly_always_on_idle_waste_usd > 0.0 {
+        notes.push(format!(
+            "- **Self-Hosted Idle Capacity:** `{:.0}%` off-hours idle (**`${:.2}/mo`** always-on waste; scale-to-zero recommended)",
+            cc.off_hours_idle_capacity_pct,
+            cc.monthly_always_on_idle_waste_usd
+        ));
+    }
     notes.push(format!("- **Recommendation:** {}", build_contextual_recommendation(r)));
     format!("\n{}\n", notes.join("\n"))
 }
@@ -896,6 +978,31 @@ pub fn render_diff_markdown(d: &DiffReport) -> String {
         d.delta_monthly_dev_wait_usd,
         change_lines,
         six_comp_md
+    )
+}
+
+pub fn render_slack_breakdown_payload(r: &BreakdownReport) -> String {
+    let rec = build_contextual_recommendation(r);
+    let text = format!(
+        "MiniCI FinOps Breakdown: ${:.2}/mo gross (${:.2}/mo net) | {} jobs | ${:.2}/PR | {}",
+        r.gross_monthly_compute_cost_usd,
+        r.net_billed_monthly_compute_cost_usd,
+        r.total_expanded_matrix_jobs,
+        r.cost_components.cost_per_merged_pr_usd,
+        rec
+    );
+    format!(
+        "{{\n  \"text\": \"{}\",\n  \"blocks\": [\n    {{\n      \"type\": \"header\",\n      \"text\": {{ \"type\": \"plain_text\", \"text\": \"MiniCI CI/CD FinOps Breakdown\" }}\n    }},\n    {{\n      \"type\": \"section\",\n      \"fields\": [\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Monthly Compute:*\\n`${:.2}/mo` (`${:.2}/mo` net)\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Unit Economics:*\\n`${:.2}/PR` • `${:.2}/dev`\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Quota Burn:*\\n`{:.1}%` of `{:.0}m`\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Dev Wait Cost:*\\n`${:.2}/mo` (`{:.1}m` CP)\" }}\n      ]\n    }},\n    {{\n      \"type\": \"section\",\n      \"text\": {{ \"type\": \"mrkdwn\", \"text\": \"*Recommendation:* {}\" }}\n    }}\n  ]\n}}",
+        json_escape(&text),
+        r.gross_monthly_compute_cost_usd,
+        r.net_billed_monthly_compute_cost_usd,
+        r.cost_components.cost_per_merged_pr_usd,
+        r.cost_components.cost_per_active_dev_monthly_usd,
+        r.free_tier_quota_burn_pct,
+        r.free_tier_included_mins,
+        r.monthly_dev_wait_cost_usd,
+        r.critical_path_wait_mins_per_run,
+        json_escape(&rec)
     )
 }
 

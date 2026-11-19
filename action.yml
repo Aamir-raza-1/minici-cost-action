@@ -30,6 +30,18 @@ inputs:
     description: "Developer hourly engineering rate (USD) for wait-time cost calculation"
     required: false
     default: "65"
+  live-telemetry:
+    description: "Sync live GitHub Actions workflow run/job telemetry (ETag 304 cached) before computing breakdown"
+    required: false
+    default: "false"
+  billing-csv:
+    description: "Optional path to GitHub, CircleCI, GitLab, or FOCUS v1.1 billing CSV for 100% invoice reconciliation"
+    required: false
+    default: ""
+  post-pr-comment:
+    description: "Automatically post or update a sticky Pull Request CI cost diff comment when running on pull_request"
+    required: false
+    default: "false"
 
 outputs:
   gross_monthly_compute_cost_usd:
@@ -119,6 +131,15 @@ outputs:
   stack_specific_monthly_savings_usd:
     description: "Monthly savings from applying the primary stack-native CI optimization lever (USD)"
     value: ${{ steps.minici.outputs.stack_specific_monthly_savings_usd }}
+  cost_per_merged_pr_usd:
+    description: "Unit economics CI compute cost per merged Pull Request (USD)"
+    value: ${{ steps.minici.outputs.cost_per_merged_pr_usd }}
+  projected_eom_compute_usd:
+    description: "Projected end-of-month CI compute spend weighted by 7d vs 30d burn velocity (USD)"
+    value: ${{ steps.minici.outputs.projected_eom_compute_usd }}
+  jobs_missing_timeout_minutes_count:
+    description: "Count of defined CI jobs missing an explicit timeout-minutes guardrail"
+    value: ${{ steps.minici.outputs.jobs_missing_timeout_minutes_count }}
 
 runs:
   using: "composite"
@@ -129,9 +150,29 @@ runs:
       run: |
         BIN_PATH="${{ github.action_path }}/target/release/minici"
         if ! "$BIN_PATH" --version >/dev/null 2>&1; then
+          mkdir -p "${{ github.action_path }}/target/release"
+          OS_RAW="$(uname -s)"
+          ARCH_RAW="$(uname -m)"
+          ASSET=""
+          if [ "$OS_RAW" = "Linux" ] && [ "$ARCH_RAW" = "x86_64" ]; then ASSET="minici-linux-x86_64"; fi
+          if [ "$OS_RAW" = "Linux" ] && { [ "$ARCH_RAW" = "aarch64" ] || [ "$ARCH_RAW" = "arm64" ]; }; then ASSET="minici-linux-aarch64"; fi
+          if [ "$OS_RAW" = "Darwin" ] && [ "$ARCH_RAW" = "arm64" ]; then ASSET="minici-macos-aarch64"; fi
+          if [ "$OS_RAW" = "Darwin" ] && [ "$ARCH_RAW" = "x86_64" ]; then ASSET="minici-macos-x86_64"; fi
+          if [ -n "$ASSET" ] && curl -fsSL "https://github.com/Aamir-raza-1/minici-cost-action/releases/latest/download/${ASSET}" -o "$BIN_PATH" 2>/dev/null; then
+            chmod +x "$BIN_PATH"
+          fi
+        fi
+        if ! "$BIN_PATH" --version >/dev/null 2>&1; then
           cargo build --release --manifest-path "${{ github.action_path }}/crates/minici/Cargo.toml"
           mkdir -p "${{ github.action_path }}/target/release"
           cp "${{ github.action_path }}/crates/minici/target/release/minici" "$BIN_PATH"
+        fi
+        EXTRA_BD_ARGS=()
+        if [ "${{ inputs.live-telemetry }}" = "true" ]; then
+          EXTRA_BD_ARGS+=(--live)
+        fi
+        if [ -n "${{ inputs.billing-csv }}" ]; then
+          EXTRA_BD_ARGS+=(--billing-csv "${{ inputs.billing-csv }}")
         fi
         "$BIN_PATH" breakdown \
           --path "${{ inputs.path }}" \
@@ -139,6 +180,7 @@ runs:
           --prs-per-week "${{ inputs.prs-per-week }}" \
           --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
           --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+          "${EXTRA_BD_ARGS[@]}" \
           --format table
         "$BIN_PATH" breakdown \
           --path "${{ inputs.path }}" \
@@ -146,6 +188,7 @@ runs:
           --prs-per-week "${{ inputs.prs-per-week }}" \
           --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
           --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+          "${EXTRA_BD_ARGS[@]}" \
           --format markdown \
           --out-file .minici_breakdown.md \
           --quiet
@@ -153,21 +196,22 @@ runs:
           "$BIN_PATH" diff \
             --path "${{ inputs.path }}" \
             --compare-to "${{ inputs.compare-to }}" \
-            --tier "${{ inputs.tier }}" \
-            --prs-per-week "${{ inputs.prs-per-week }}" \
-            --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
-            --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
             --format table
           "$BIN_PATH" diff \
             --path "${{ inputs.path }}" \
             --compare-to "${{ inputs.compare-to }}" \
-            --tier "${{ inputs.tier }}" \
-            --prs-per-week "${{ inputs.prs-per-week }}" \
-            --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
-            --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
             --format markdown \
             --out-file .minici_diff.md \
             --quiet
+          if [ "${{ inputs.post-pr-comment }}" = "true" ] && [ -n "${GITHUB_EVENT_PATH:-}" ]; then
+            "$BIN_PATH" comment github \
+              --path "${{ inputs.path }}" \
+              --compare-to "${{ inputs.compare-to }}" \
+              --event-path "$GITHUB_EVENT_PATH" \
+              --behavior update \
+              --post \
+              --quiet || true
+          fi
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f .minici_diff.md ]; then
             cat .minici_diff.md >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -184,6 +228,7 @@ runs:
             --prs-per-week "${{ inputs.prs-per-week }}" \
             --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
             --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+            "${EXTRA_BD_ARGS[@]}" \
             --format json \
             --out-file .minici_breakdown.json \
             --quiet
@@ -223,5 +268,8 @@ runs:
             wf("arm64_migration_monthly_savings_usd", cc.get("compute_class_explorer", {}).get("arm64_migration_monthly_savings_usd", 0.0))
             ws("detected_stack_archetype", cc.get("stack_specific_economics", {}).get("detected_stack_archetype", ""))
             wf("stack_specific_monthly_savings_usd", cc.get("stack_specific_economics", {}).get("stack_specific_monthly_savings_usd", 0.0))
+            wf("cost_per_merged_pr_usd", cc.get("unit_economics_and_chargeback", {}).get("cost_per_merged_pr_usd", 0.0))
+            wf("projected_eom_compute_usd", cc.get("spend_anomaly_and_forecast", {}).get("projected_eom_compute_usd", 0.0))
+            ws("jobs_missing_timeout_minutes_count", cc.get("spend_anomaly_and_forecast", {}).get("jobs_missing_timeout_minutes_count", 0))
         '
         fi

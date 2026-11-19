@@ -27,7 +27,7 @@ echo "▶ [1/3] Checking 2026 Canonical SKU Sync (catalog.rs <-> pricing/*.json)
 python3 "${REPO_ROOT}/tools/sync_rust_sku_catalog.py" --check
 
 echo ""
-echo "▶ [2/3] Running 27-Repository x 3-Mode Validation (CLI, GitHub Workflow, MCP/Agent + 20 Unified Cost Models)..."
+echo "▶ [2/3] Running 27-Repository x 3-Mode Validation (CLI, GitHub Workflow, MCP/Agent + 24 Unified Cost Models)..."
 python3 "${REPO_ROOT}/tools/verify_10_repos_all_modes.py" --cache-dir "${CACHE_DIR}"
 
 echo ""

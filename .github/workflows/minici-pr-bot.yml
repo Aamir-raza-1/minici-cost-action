@@ -1,0 +1,51 @@
+name: MiniCI Sticky PR Cost Receipt & @minici Bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: minici-pr-bot-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  minici-receipt:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       contains(github.event.comment.body, '@minici'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run MiniCI Sticky PR Diff or @minici Command Router
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cargo build --release --manifest-path crates/minici/Cargo.toml
+          BIN="./crates/minici/target/release/minici"
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            "$BIN" comment github \
+              --path . \
+              --event-path "$GITHUB_EVENT_PATH" \
+              --behavior new \
+              --post
+          else
+            "$BIN" comment github \
+              --path . \
+              --compare-to "origin/${{ github.base_ref }}" \
+              --pr "${{ github.event.pull_request.number }}" \
+              --behavior update \
+              --post
+          fi

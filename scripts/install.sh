@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# MiniCI 1-Line Portable Installer (`scripts/install.sh`)
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+# ==============================================================================
+set -euo pipefail
+
+REPO="Aamir-raza-1/minici-cost-action"
+VERSION="${MINICI_VERSION:-latest}"
+INSTALL_DIR="${MINICI_INSTALL_DIR:-$HOME/.local/bin}"
+
+OS_RAW="$(uname -s)"
+ARCH_RAW="$(uname -m)"
+
+case "$OS_RAW" in
+  Linux*)  OS="linux" ;;
+  Darwin*) OS="macos" ;;
+  *) echo "Unsupported OS: $OS_RAW (use cargo install --git https://github.com/$REPO.git minici)"; exit 1 ;;
+esac
+
+case "$ARCH_RAW" in
+  x86_64|amd64)  ARCH="x86_64" ;;
+  arm64|aarch64) ARCH="aarch64" ;;
+  *) echo "Unsupported architecture: $ARCH_RAW"; exit 1 ;;
+esac
+
+ASSET="minici-${OS}-${ARCH}"
+if [ "$VERSION" = "latest" ]; then
+  BASE_URL="https://github.com/${REPO}/releases/latest/download"
+else
+  BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
+fi
+
+mkdir -p "$INSTALL_DIR"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+echo "⏳ Downloading ${ASSET} from ${REPO} (${VERSION})..."
+if curl -fsSL "${BASE_URL}/${ASSET}" -o "${TMP_DIR}/minici" 2>/dev/null; then
+  if curl -fsSL "${BASE_URL}/SHA256SUMS.txt" -o "${TMP_DIR}/SHA256SUMS.txt" 2>/dev/null; then
+    EXPECTED="$(grep " ${ASSET}\$" "${TMP_DIR}/SHA256SUMS.txt" | awk '{print $1}' || true)"
+    if [ -n "$EXPECTED" ]; then
+      if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL="$(sha256sum "${TMP_DIR}/minici" | awk '{print $1}')"
+      else
+        ACTUAL="$(shasum -a 256 "${TMP_DIR}/minici" | awk '{print $1}')"
+      fi
+      if [ "$EXPECTED" != "$ACTUAL" ]; then
+        echo "❌ Checksum mismatch for ${ASSET}! Expected ${EXPECTED}, got ${ACTUAL}"
+        exit 1
+      fi
+      echo "✅ Verified SHA-256 checksum (${ACTUAL:0:16}...)"
+    fi
+  fi
+  chmod +x "${TMP_DIR}/minici"
+  rm -f "${INSTALL_DIR}/minici"
+  mv "${TMP_DIR}/minici" "${INSTALL_DIR}/minici"
+else
+  echo "⚙️ Release asset not yet cached; compiling std-only Rust binary from source (< 2s)..."
+  git clone --depth 1 "https://github.com/${REPO}.git" "${TMP_DIR}/src"
+  cargo build --release --manifest-path "${TMP_DIR}/src/crates/minici/Cargo.toml"
+  rm -f "${INSTALL_DIR}/minici"
+  cp "${TMP_DIR}/src/crates/minici/target/release/minici" "${INSTALL_DIR}/minici"
+  chmod +x "${INSTALL_DIR}/minici"
+fi
+
+echo "✅ Installed $("${INSTALL_DIR}/minici" --version) -> ${INSTALL_DIR}/minici"

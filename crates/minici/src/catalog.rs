@@ -80,12 +80,20 @@ pub fn infracost_aws_nat_gateway_rate_usd(region: &str) -> f64 {
 }
 
 /// Cloud-catalog AWS EC2 (`aws_instance`) runner sizing profile (`instance_label, on_demand_hr_usd, on_demand_mo_usd, spot_hr_usd`).
-/// Verified against Cloud Catalog Cloud Pricing API & published cloud & vendor rate cards
+/// Verified against Cloud Catalog Cloud Pricing API & published cloud & vendor rate cards.
 pub fn infracost_ec2_runner_profile(
     max_vcpus: u32,
-    has_arm_only: bool,
+    has_linux_arm_only: bool,
+    is_macos_only: bool,
 ) -> (&'static str, f64, f64, f64) {
-    if has_arm_only && max_vcpus <= 4 {
+    if is_macos_only {
+        (
+            "mac2-m2pro.metal (Dedicated 24h) / Mac mini M4",
+            0.900,
+            25.0,
+            0.900,
+        )
+    } else if has_linux_arm_only && max_vcpus <= 4 {
         ("m6g.xlarge (Arm 4 vCPU / 16 GB)", 0.154, 111.0, 0.046)
     } else if max_vcpus <= 2 {
         ("t3.medium (2 vCPU / 4 GB)", 0.0416, 30.0, 0.012)
@@ -204,7 +212,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         rate_per_min_usd: 0.012,
         ceil_to_whole_minute: true,
         free_tier_mins_per_month: 0.0,
-        paid_team_included_mins: 3000.0,
+        paid_team_included_mins: 0.0,
         blacksmith_equiv_rate_usd: 0.008,
         self_hosted_spot_rate_usd: 0.0024,
     },
@@ -218,7 +226,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         rate_per_min_usd: 0.022,
         ceil_to_whole_minute: true,
         free_tier_mins_per_month: 0.0,
-        paid_team_included_mins: 3000.0,
+        paid_team_included_mins: 0.0,
         blacksmith_equiv_rate_usd: 0.016,
         self_hosted_spot_rate_usd: 0.0048,
     },
@@ -232,7 +240,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         rate_per_min_usd: 0.042,
         ceil_to_whole_minute: true,
         free_tier_mins_per_month: 0.0,
-        paid_team_included_mins: 3000.0,
+        paid_team_included_mins: 0.0,
         blacksmith_equiv_rate_usd: 0.032,
         self_hosted_spot_rate_usd: 0.0096,
     },
@@ -246,7 +254,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         rate_per_min_usd: 0.082,
         ceil_to_whole_minute: true,
         free_tier_mins_per_month: 0.0,
-        paid_team_included_mins: 3000.0,
+        paid_team_included_mins: 0.0,
         blacksmith_equiv_rate_usd: 0.064,
         self_hosted_spot_rate_usd: 0.0192,
     },
@@ -260,7 +268,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         rate_per_min_usd: 0.162,
         ceil_to_whole_minute: true,
         free_tier_mins_per_month: 0.0,
-        paid_team_included_mins: 3000.0,
+        paid_team_included_mins: 0.0,
         blacksmith_equiv_rate_usd: 0.128,
         self_hosted_spot_rate_usd: 0.0384,
     },
@@ -302,7 +310,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         rate_per_min_usd: 0.077,
         ceil_to_whole_minute: true,
         free_tier_mins_per_month: 0.0,
-        paid_team_included_mins: 3000.0,
+        paid_team_included_mins: 0.0,
         blacksmith_equiv_rate_usd: 0.045,
         self_hosted_spot_rate_usd: 0.028,
     },
@@ -392,7 +400,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         blacksmith_equiv_rate_usd: 0.008,
         self_hosted_spot_rate_usd: 0.0024,
     },
-    // --- Bitbucket Pipelines Official SKUs ---
+    // --- Bitbucket Pipelines Official SKUs (1-minute per-step ceiling rounding) ---
     RunnerSkuSpec {
         provider: "bitbucket",
         sku_label: "bitbucket-1x",
@@ -401,7 +409,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         vcpus: 2,
         ram_gb: 4.0,
         rate_per_min_usd: 0.010,
-        ceil_to_whole_minute: false,
+        ceil_to_whole_minute: true,
         free_tier_mins_per_month: 50.0,
         paid_team_included_mins: 2500.0,
         blacksmith_equiv_rate_usd: 0.004,
@@ -415,13 +423,13 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         vcpus: 4,
         ram_gb: 8.0,
         rate_per_min_usd: 0.020,
-        ceil_to_whole_minute: false,
+        ceil_to_whole_minute: true,
         free_tier_mins_per_month: 25.0,
         paid_team_included_mins: 1250.0,
         blacksmith_equiv_rate_usd: 0.008,
         self_hosted_spot_rate_usd: 0.0024,
     },
-    // --- AWS CodeBuild Official SKUs ---
+    // --- AWS CodeBuild Official EC2 SKUs (1-minute billing minimum; Lambda compute uses per-second) ---
     RunnerSkuSpec {
         provider: "aws-codebuild",
         sku_label: "BUILD_GENERAL1_SMALL",
@@ -430,7 +438,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         vcpus: 2,
         ram_gb: 3.0,
         rate_per_min_usd: 0.005,
-        ceil_to_whole_minute: false,
+        ceil_to_whole_minute: true,
         free_tier_mins_per_month: 100.0,
         paid_team_included_mins: 100.0,
         blacksmith_equiv_rate_usd: 0.004,
@@ -444,7 +452,7 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         vcpus: 4,
         ram_gb: 7.0,
         rate_per_min_usd: 0.010,
-        ceil_to_whole_minute: false,
+        ceil_to_whole_minute: true,
         free_tier_mins_per_month: 100.0,
         paid_team_included_mins: 100.0,
         blacksmith_equiv_rate_usd: 0.008,
@@ -701,7 +709,11 @@ pub fn pricing_catalog_status() -> String {
             );
         }
     }
-    "Auto-Updatable (26 Static SKUs + Dynamic AWS/GCP/Azure Cloud vCPU Estimator • 0-Break Fallback)".to_string()
+    format!(
+        "Auto-Updatable ({} Static SaaS SKUs + {} Cloud Instance SKUs • 0-Break Fallback)",
+        EMBEDDED_SKU_CATALOG.len(),
+        INFRACOST_CLOUD_CATALOG.len()
+    )
 }
 
 /// Official Cloud Catalog Cloud Instance Spec (`v2.19.0` schema):
@@ -814,6 +826,23 @@ fn extract_runner_vcpus(lower: &str) -> Option<u32> {
     None
 }
 
+fn scale_equiv_rates_for_vcpus(s: &mut RunnerSkuSpec) {
+    let vc = s.vcpus.max(1) as f64;
+    if s.os.eq_ignore_ascii_case("macos") {
+        s.blacksmith_equiv_rate_usd = (0.032_f64 * (vc / 4.0).max(1.0) * 10000.0).round() / 10000.0;
+        s.self_hosted_spot_rate_usd = (0.022_f64 * (vc / 4.0).max(1.0) * 10000.0).round() / 10000.0;
+    } else if s.os.eq_ignore_ascii_case("windows") {
+        s.blacksmith_equiv_rate_usd = ((vc * 0.0020) * 10000.0).round() / 10000.0;
+        s.self_hosted_spot_rate_usd = ((vc * 0.000875) * 10000.0).round() / 10000.0;
+    } else if s.arch == "arm64" {
+        s.blacksmith_equiv_rate_usd = ((vc * 0.0015) * 10000.0).round() / 10000.0;
+        s.self_hosted_spot_rate_usd = ((vc * 0.00045) * 10000.0).round() / 10000.0;
+    } else {
+        s.blacksmith_equiv_rate_usd = ((vc * 0.0020) * 10000.0).round() / 10000.0;
+        s.self_hosted_spot_rate_usd = ((vc * 0.0006) * 10000.0).round() / 10000.0;
+    }
+}
+
 /// Zero-allocation microsecond lookup (`< 5 µs`) resolving any runner label across all providers,
 /// using `EMBEDDED_SKU_CATALOG`, `INFRACOST_CLOUD_CATALOG` for AWS/GCP/Azure instances, and `~/.minici/pricing_overrides.json`.
 pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
@@ -863,6 +892,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = 32;
             s.ram_gb = 128.0;
             s.rate_per_min_usd = 0.120;
+            scale_equiv_rates_for_vcpus(&mut s);
             s
         } else if lower.contains("xlarge") {
             let mut s = EMBEDDED_SKU_CATALOG[12].clone();
@@ -870,6 +900,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = 16;
             s.ram_gb = 64.0;
             s.rate_per_min_usd = 0.060;
+            scale_equiv_rates_for_vcpus(&mut s);
             s
         } else if lower.contains("large") {
             EMBEDDED_SKU_CATALOG[12].clone()
@@ -889,11 +920,13 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = 16;
             s.ram_gb = 32.0;
             s.rate_per_min_usd = 0.048;
+            scale_equiv_rates_for_vcpus(&mut s);
         } else if lower.contains("xlarge") {
             s.sku_label = "docker-xlarge";
             s.vcpus = 8;
             s.ram_gb = 16.0;
             s.rate_per_min_usd = 0.024;
+            scale_equiv_rates_for_vcpus(&mut s);
         }
         s
     } else if lower.contains("bitbucket") {
@@ -903,6 +936,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = 64;
             s.ram_gb = 128.0;
             s.rate_per_min_usd = 0.320;
+            scale_equiv_rates_for_vcpus(&mut s);
             s
         } else if lower.contains("24x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
@@ -910,6 +944,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = 48;
             s.ram_gb = 96.0;
             s.rate_per_min_usd = 0.240;
+            scale_equiv_rates_for_vcpus(&mut s);
             s
         } else if lower.contains("16x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
@@ -917,6 +952,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = 32;
             s.ram_gb = 64.0;
             s.rate_per_min_usd = 0.160;
+            scale_equiv_rates_for_vcpus(&mut s);
             s
         } else if lower.contains("8x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
@@ -924,6 +960,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = 16;
             s.ram_gb = 32.0;
             s.rate_per_min_usd = 0.080;
+            scale_equiv_rates_for_vcpus(&mut s);
             s
         } else if lower.contains("4x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
@@ -931,6 +968,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = 8;
             s.ram_gb = 16.0;
             s.rate_per_min_usd = 0.040;
+            scale_equiv_rates_for_vcpus(&mut s);
             s
         } else if lower.contains("2x") {
             EMBEDDED_SKU_CATALOG[17].clone()
@@ -944,7 +982,20 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
     } else if lower.contains("ubuntu-slim") || lower.contains("linux-slim") || lower.contains("actions_linux_slim") {
         EMBEDDED_SKU_CATALOG[26].clone()
     } else if lower.contains("codebuild") || lower.contains("general1") || lower.contains("arm1") || lower.contains("build_lambda") {
-        if lower.contains("arm1") {
+        if lower.contains("build_lambda") {
+            let mut s = EMBEDDED_SKU_CATALOG[18].clone();
+            s.ceil_to_whole_minute = false;
+            if is_arm {
+                s.sku_label = "BUILD_LAMBDA_ARM";
+                s.arch = "arm64";
+                s.rate_per_min_usd = 0.0006;
+            } else {
+                s.sku_label = "BUILD_LAMBDA_X86";
+                s.arch = "x86_64";
+                s.rate_per_min_usd = 0.0009;
+            }
+            s
+        } else if lower.contains("arm1") {
             EMBEDDED_SKU_CATALOG[31].clone()
         } else {
             let mut s = if lower.contains("medium") {
@@ -957,22 +1008,30 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
                 s.vcpus = 72;
                 s.ram_gb = 145.0;
                 s.rate_per_min_usd = 0.200;
+                scale_equiv_rates_for_vcpus(&mut s);
             } else if lower.contains("xlarge") {
                 s.sku_label = "BUILD_GENERAL1_XLARGE";
                 s.vcpus = 36;
                 s.ram_gb = 72.0;
                 s.rate_per_min_usd = 0.100;
+                scale_equiv_rates_for_vcpus(&mut s);
             } else if lower.contains("large") {
                 s.sku_label = "BUILD_GENERAL1_LARGE";
                 s.vcpus = 8;
                 s.ram_gb = 15.0;
                 s.rate_per_min_usd = 0.020;
+                scale_equiv_rates_for_vcpus(&mut s);
             }
             s
         }
-    } else if lower.contains("self-hosted") || lower.contains("eks") || lower.contains("k8s") {
-        // Check self-hosted BEFORE generic OS SaaS branches so `self-hosted-macOS-ARM64` and
-        // `self-hosted-Windows-X64-Intel` resolve to self-hosted compute instead of GitHub SaaS!
+    } else if lower.contains("self-hosted")
+        || lower.contains("runs-on")
+        || lower.contains("eks")
+        || lower.contains("k8s")
+    {
+        // Check self-hosted & RunsOn (BYO AWS EC2) BEFORE generic OS SaaS branches so
+        // `self-hosted-macOS-ARM64`, `self-hosted-Windows-X64-Intel`, and `runs-on-8vcpu-linux-x64`
+        // resolve to BYO Cloud EC2 compute instead of GitHub SaaS or 3rd-party microVM markup!
         let mut s = EMBEDDED_SKU_CATALOG[21].clone();
         if lower.contains("macos") || lower.contains("darwin") {
             s.os = "macOS";
@@ -982,18 +1041,21 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.arch = if is_arm { "arm64" } else { "x86_64" };
         } else if is_arm {
             s.arch = "arm64";
+        } else if lower.contains("runs-on") {
+            s.arch = "x86_64";
+            s.sku_label = "aws-ec2-runs-on";
         }
         if let Some(vc) = explicit_vcpus {
             s.vcpus = vc;
             s.ram_gb = (vc as f64) * 4.0;
             s.rate_per_min_usd = (vc as f64) * 0.0006;
+            scale_equiv_rates_for_vcpus(&mut s);
         }
         s
     } else if lower.contains("blacksmith")
         || lower.contains("buildjet")
         || lower.contains("warpbuild")
         || lower.contains("depot")
-        || lower.contains("runs-on")
         || lower.contains("namespace")
     {
         let mut s = EMBEDDED_SKU_CATALOG[20].clone();
@@ -1004,6 +1066,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = explicit_vcpus.unwrap_or(4);
             s.ram_gb = 14.0;
             s.rate_per_min_usd = 0.0320;
+            scale_equiv_rates_for_vcpus(&mut s);
         } else if lower.contains("windows") || lower.contains("win") {
             let vc = explicit_vcpus.unwrap_or(4);
             s.sku_label = "third-party-windows";
@@ -1012,6 +1075,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.vcpus = vc;
             s.ram_gb = (vc as f64) * 4.0;
             s.rate_per_min_usd = (vc as f64) * 0.0020;
+            scale_equiv_rates_for_vcpus(&mut s);
         } else {
             let vc = explicit_vcpus.unwrap_or(2);
             s.vcpus = vc;
@@ -1026,6 +1090,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
                 4 => "blacksmith-4vcpu",
                 _ => "blacksmith-2vcpu",
             };
+            scale_equiv_rates_for_vcpus(&mut s);
         }
         s.blacksmith_equiv_rate_usd = s.rate_per_min_usd;
         s
@@ -1059,32 +1124,50 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             Some(96) => {
                 s.sku_label = "windows-96core";
                 s.vcpus = 96;
+                s.free_tier_mins_per_month = 0.0;
+                s.paid_team_included_mins = 0.0;
                 s.rate_per_min_usd = 0.552;
+                scale_equiv_rates_for_vcpus(&mut s);
             }
             Some(64) => {
                 s.sku_label = "windows-64core";
                 s.vcpus = 64;
+                s.free_tier_mins_per_month = 0.0;
+                s.paid_team_included_mins = 0.0;
                 s.rate_per_min_usd = if s.arch == "arm64" { 0.194 } else { 0.322 };
+                scale_equiv_rates_for_vcpus(&mut s);
             }
             Some(32) => {
                 s.sku_label = "windows-32core";
                 s.vcpus = 32;
+                s.free_tier_mins_per_month = 0.0;
+                s.paid_team_included_mins = 0.0;
                 s.rate_per_min_usd = if s.arch == "arm64" { 0.098 } else { 0.162 };
+                scale_equiv_rates_for_vcpus(&mut s);
             }
             Some(16) => {
                 s.sku_label = "windows-16core";
                 s.vcpus = 16;
+                s.free_tier_mins_per_month = 0.0;
+                s.paid_team_included_mins = 0.0;
                 s.rate_per_min_usd = if s.arch == "arm64" { 0.050 } else { 0.082 };
+                scale_equiv_rates_for_vcpus(&mut s);
             }
             Some(8) => {
                 s.sku_label = "windows-8core";
                 s.vcpus = 8;
+                s.free_tier_mins_per_month = 0.0;
+                s.paid_team_included_mins = 0.0;
                 s.rate_per_min_usd = if s.arch == "arm64" { 0.026 } else { 0.042 };
+                scale_equiv_rates_for_vcpus(&mut s);
             }
             Some(4) if lower.contains("4-core") || lower.contains("4core") || lower.ends_with("-4") => {
                 s.sku_label = "windows-4core";
                 s.vcpus = 4;
+                s.free_tier_mins_per_month = 0.0;
+                s.paid_team_included_mins = 0.0;
                 s.rate_per_min_usd = if s.arch == "arm64" { 0.014 } else { 0.022 };
+                scale_equiv_rates_for_vcpus(&mut s);
             }
             _ => {}
         }
@@ -1094,6 +1177,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         s.vcpus = explicit_vcpus.unwrap_or(4);
         s.ram_gb = 16.0;
         s.free_tier_mins_per_month = 0.0;
+        s.paid_team_included_mins = 0.0;
         if lower.contains("win") {
             s.sku_label = "windows-4core-gpu";
             s.os = "Windows";
@@ -1122,6 +1206,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         s.vcpus = 96;
         s.ram_gb = 384.0;
         s.rate_per_min_usd = 0.252;
+        scale_equiv_rates_for_vcpus(&mut s);
         s
     } else if explicit_vcpus == Some(64) {
         let mut s = EMBEDDED_SKU_CATALOG[6].clone();
@@ -1129,6 +1214,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.sku_label = "ubuntu-24.04-arm-64core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.098;
+            scale_equiv_rates_for_vcpus(&mut s);
         }
         s
     } else if explicit_vcpus == Some(32) {
@@ -1137,6 +1223,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.sku_label = "ubuntu-24.04-arm-32core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.050;
+            scale_equiv_rates_for_vcpus(&mut s);
         }
         s
     } else if explicit_vcpus == Some(16) {
@@ -1145,6 +1232,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.sku_label = "ubuntu-24.04-arm-16core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.026;
+            scale_equiv_rates_for_vcpus(&mut s);
         }
         s
     } else if explicit_vcpus == Some(8) {
@@ -1153,6 +1241,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.sku_label = "ubuntu-24.04-arm-8core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.014;
+            scale_equiv_rates_for_vcpus(&mut s);
         }
         s
     } else if explicit_vcpus == Some(4) || lower.contains("large") {
@@ -1161,6 +1250,7 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.sku_label = "ubuntu-24.04-arm-4core";
             s.arch = "arm64";
             s.rate_per_min_usd = 0.008;
+            scale_equiv_rates_for_vcpus(&mut s);
         }
         s
     } else if is_arm {
@@ -1207,21 +1297,32 @@ mod tests {
         let bb = resolve_runner_sku("bitbucket-16x");
         assert_eq!(bb.provider, "bitbucket");
         assert_eq!(bb.vcpus, 32);
+        assert!(bb.ceil_to_whole_minute);
+        assert!((bb.blacksmith_equiv_rate_usd - 0.064).abs() < 1e-6);
 
         let gl = resolve_runner_sku("saas-linux-xlarge-amd64");
         assert_eq!(gl.provider, "gitlab-ci");
         assert_eq!(gl.vcpus, 16);
+        assert!((gl.blacksmith_equiv_rate_usd - 0.032).abs() < 1e-6);
 
         let cci = resolve_runner_sku("docker-xlarge");
         assert_eq!(cci.provider, "circleci");
         assert_eq!(cci.vcpus, 8);
+        assert!((cci.blacksmith_equiv_rate_usd - 0.016).abs() < 1e-6);
 
         let cb = resolve_runner_sku("BUILD_GENERAL1_LARGE");
         assert_eq!(cb.provider, "aws-codebuild");
         assert_eq!(cb.vcpus, 8);
+        assert!(cb.ceil_to_whole_minute);
+
+        let cb_lambda = resolve_runner_sku("BUILD_LAMBDA_ARM_2GB");
+        assert_eq!(cb_lambda.provider, "aws-codebuild");
+        assert!(!cb_lambda.ceil_to_whole_minute);
+        assert!((cb_lambda.rate_per_min_usd - 0.0006).abs() < 1e-6);
 
         let mac_xl = resolve_runner_sku("macos-15-xlarge");
         assert_eq!(mac_xl.vcpus, 12);
+        assert_eq!(mac_xl.paid_team_included_mins, 0.0);
         assert!((mac_xl.rate_per_min_usd - 0.102).abs() < 1e-6);
     }
 
@@ -1242,8 +1343,10 @@ mod tests {
         assert_eq!(depot.vcpus, 16);
         assert!((depot.rate_per_min_usd - 0.032).abs() < 1e-6);
 
+        // RunsOn runs ephemeral EC2 inside the user's AWS account (self-hosted-aws EC2 pricing, NOT SaaS microVM markup!)
         let runson = resolve_runner_sku("runs-on-8vcpu-linux-x64");
+        assert_eq!(runson.provider, "self-hosted-aws");
         assert_eq!(runson.vcpus, 8);
-        assert!((runson.rate_per_min_usd - 0.016).abs() < 1e-6);
+        assert!((runson.rate_per_min_usd - 0.0048).abs() < 1e-6);
     }
 }

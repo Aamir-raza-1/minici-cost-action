@@ -7,13 +7,17 @@
 
 pub mod catalog;
 pub mod engine;
+pub mod optimizer;
+pub mod permissions;
+pub mod providers;
 pub mod renderer;
+pub mod telemetry;
 
-use engine::{analyze_path, compute_diff, BreakdownReport, UsageConfig};
+use engine::{analyze_path, analyze_path_with_telemetry, compute_diff, BreakdownReport, UsageConfig};
 use renderer::{
     generate_post_tool_use_launch_pack, render_breakdown_csv, render_breakdown_html,
     render_breakdown_markdown, render_cli_compact_diff, render_cli_compact_summary,
-    render_diff_markdown, render_slack_payload,
+    render_diff_markdown, render_slack_breakdown_payload, render_slack_payload,
 };
 use std::env;
 use std::fs;
@@ -25,22 +29,28 @@ fn print_help() {
 }
 
 pub fn help_text() -> &'static str {
-    "minici 0.7.0 — MiniCI: Sub-Millisecond CI/CD Cost Breakdown, PR Diff & Quota Receipt Engine\n\
+    "minici 0.8.0 — MiniCI: Sub-Millisecond CI/CD Cost Breakdown, PR Diff & Quota Receipt Engine\n\
 Author: Aamir Raza <raza.aamir01@gmail.com>\n\n\
 USAGE:\n  \
   minici <COMMAND> [OPTIONS]\n\n\
 COMMANDS:\n  \
   breakdown    Calculate CI/CD cost, free-tier quota burn %, and developer wait-time breakdown\n  \
   diff         Compare base vs PR workflows/branches/repos to isolate Pull Request CI cost & time deltas\n  \
-  comment      Render or post sticky Pull Request / Merge Request / Slack CI Cost comment\n  \
+  comment      Render or post sticky Pull Request / Merge Request / Slack CI Cost & @minici bot comment\n  \
+  permissions  Verify least-privilege zero-source-code token security & 108-attribute telemetry coverage\n  \
+  sync         Sync live GitHub Actions telemetry (ETag 304) or billing CSV into .minici/telemetry.lock.json\n  \
+  shrink       Generate or apply surgical workflow cost optimizations with verified shadow DiffReport\n  \
+  migrate      Evaluate or apply safe runner & platform migrations with 5-Layer Switching TCO verdict\n  \
   catalog      Inspect, sync, or override the Multi-Vendor & Cloud Compute Pricing SKU Catalog\n  \
-  mcp          Start JSON-RPC 2.0 stdio MCP server for Antigravity, Cursor, Windsurf & VS Code\n  \
+  mcp          Start 7-tool JSON-RPC 2.0 stdio MCP server for Claude, Antigravity, Cursor & VS Code\n  \
   self-update  Sync live pricing catalog, verify 0 drift, and self-upgrade binary (--install-dir <DIR>)\n  \
   init-hooks   Install Shift-Left PreToolUse/PostToolUse hooks, Agent MCP (.mcp.json) & GitHub Action\n  \
   launch-pack  Generate automatic PostToolUse 6-Channel Launch & Partner Profile Pack\n\n\
 OPTIONS (breakdown):\n  \
   --path <PATH_OR_URL>       Local repo path OR public GitHub URL (e.g. https://github.com/owner/repo) [default: .]\n  \
   --repo <URL_OR_SLUG>       Alias for --path: pass https://github.com/owner/repo or owner/repo directly\n  \
+  --live                     Sync live GitHub Actions run/job telemetry before computing breakdown\n  \
+  --billing-csv <FILE>       Reconcile breakdown against GitHub, CircleCI, GitLab, or FOCUS v1.1 billing CSV\n  \
   --refresh                  Force re-fetch of cached public GitHub repository workflows\n  \
   --format <FMT>             Output format: table, markdown, json, html, or csv [default: table]\n  \
   --report <FILE>            Generate report file (.html, .json, .md, .csv) — auto-detects format from extension\n  \
@@ -79,13 +89,21 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
 
     match method.as_str() {
         "initialize" => Some(format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"minici\",\"version\":\"0.7.0\"}}}}}}",
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"minici\",\"version\":\"0.8.0\"}}}}}}",
             id
         )),
         "notifications/initialized" | "initialized" => None,
         "ping" => Some(format!("{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{}}}}", id)),
         "tools/list" => Some(format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"tools\":[{{\"name\":\"minici_breakdown\",\"description\":\"Calculate CI/CD workflow cost, free-tier quota burn %, and developer wait-time breakdown\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\",\"description\":\"Repository path or GitHub owner/repo\"}}}}}}}},{{\"name\":\"minici_diff\",\"description\":\"Compare Pull Request CI workflow cost delta against a base branch\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"compare_to\":{{\"type\":\"string\"}}}}}}}}]}}}}",
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"tools\":[\
+{{\"name\":\"minici_breakdown\",\"description\":\"Calculate 24-model CI/CD workflow cost, unit economics ($/PR), free-tier quota burn %, and developer wait-time breakdown\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\",\"description\":\"Repository path or GitHub owner/repo\"}}}}}}}},\
+{{\"name\":\"minici_diff\",\"description\":\"Compare Pull Request CI workflow cost delta against a base branch\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"compare_to\":{{\"type\":\"string\"}}}}}}}},\
+{{\"name\":\"minici_sync_live\",\"description\":\"Sync live GitHub Actions telemetry (ETag 304 conditional cache) or FOCUS v1.1 billing CSV into .minici/telemetry.lock.json\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"repo\":{{\"type\":\"string\"}},\"billing_csv\":{{\"type\":\"string\"}}}}}}}},\
+{{\"name\":\"minici_permissions\",\"description\":\"Audit GitHub token least-privilege scopes, verify zero source-code read access (Contents: None), and report 108-attribute telemetry coverage\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"repo\":{{\"type\":\"string\"}}}}}}}},\
+{{\"name\":\"minici_anomalies\",\"description\":\"Inspect 7d/30d CI spend burn velocity, projected EOM bill, quota exhaustion day, and missing timeout-minutes exposure\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}}}}}}}},\
+{{\"name\":\"minici_shrink\",\"description\":\"Generate surgical comment-preserving YAML optimizations (concurrency, timeout-minutes, shallow clone, retention-days) verified by shadow DiffReport\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"apply\":{{\"type\":\"boolean\"}}}}}}}},\
+{{\"name\":\"minici_migrate\",\"description\":\"Evaluate safe runner migration (arm64 / high-speed) and 5-Layer Platform Switching TCO payback verdict\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"target\":{{\"type\":\"string\"}},\"apply\":{{\"type\":\"boolean\"}}}}}}}}\
+]}}}}",
             id
         )),
         "tools/call" => {
@@ -93,26 +111,78 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
             let target_arg = extract_json_str(trimmed, "path")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| default_path.to_path_buf());
-            if tool_name == "minici_diff" {
-                let cmp_arg = extract_json_str(trimmed, "compare_to")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| PathBuf::from("main"));
-                let base = load_or_analyze_in_repo(&cmp_arg, Some(&target_arg), None, false, true);
-                let head = load_or_analyze_in_repo(&target_arg, None, Some(base.usage.clone()), false, true);
-                let diff = compute_diff(&base, &head);
-                let text = engine::json_escape(&diff.to_json());
-                Some(format!(
-                    "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":false}}}}",
-                    id, text
-                ))
-            } else {
-                let rep = load_or_analyze_in_repo(&target_arg, None, None, false, true);
-                let text = engine::json_escape(&rep.to_json());
-                Some(format!(
-                    "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":false}}}}",
-                    id, text
-                ))
-            }
+            let payload_json = match tool_name.as_str() {
+                "minici_diff" => {
+                    let cmp_arg = extract_json_str(trimmed, "compare_to")
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from("main"));
+                    let base = load_or_analyze_in_repo(&cmp_arg, Some(&target_arg), None, false, true);
+                    let head = load_or_analyze_in_repo(&target_arg, None, Some(base.usage.clone()), false, true);
+                    compute_diff(&base, &head).to_json()
+                }
+                "minici_permissions" => {
+                    let repo_slug = extract_json_str(trimmed, "repo")
+                        .unwrap_or_else(|| target_arg.display().to_string());
+                    permissions::run_permissions_audit(&repo_slug, None, false, None).to_json()
+                }
+                "minici_sync_live" => {
+                    let repo_opt = extract_json_str(trimmed, "repo");
+                    if let Some(csv_file) = extract_json_str(trimmed, "billing_csv") {
+                        match telemetry::parse_universal_billing_csv(Path::new(&csv_file), repo_opt.as_deref()) {
+                            Ok(snap) => {
+                                let _ = snap.save_lockfile(&target_arg);
+                                snap.to_json()
+                            }
+                            Err(e) => format!("{{\"error\":\"{}\"}}", engine::json_escape(&e)),
+                        }
+                    } else {
+                        let slug = repo_opt
+                            .or_else(|| infer_github_slug_from_dir(&target_arg))
+                            .unwrap_or_else(|| target_arg.display().to_string());
+                        match telemetry::sync_github_live_telemetry(&slug, Some(&target_arg)) {
+                            Ok(snap) => snap.to_json(),
+                            Err(e) => format!(
+                                "{{\"status\":\"offline_fallback\",\"repo\":\"{}\",\"note\":\"{}\"}}",
+                                engine::json_escape(&slug),
+                                engine::json_escape(&e)
+                            ),
+                        }
+                    }
+                }
+                "minici_anomalies" => {
+                    let rep = load_or_analyze_in_repo(&target_arg, None, None, false, true);
+                    let cc = &rep.cost_components;
+                    format!(
+                        "{{\"target_path\":\"{}\",\"provenance_mode\":\"{}\",\"burn_velocity_7d_vs_30d_ratio\":{:.2},\"spend_anomaly_alert_active\":{},\"projected_eom_compute_usd\":{:.2},\"projected_quota_exhaustion_day\":{},\"jobs_missing_timeout_minutes_count\":{},\"hung_job_360m_worst_case_exposure_usd\":{:.2},\"cost_per_merged_pr_usd\":{:.2}}}",
+                        engine::json_escape(&rep.target_path),
+                        engine::json_escape(&rep.provenance_mode),
+                        cc.burn_velocity_7d_vs_30d_ratio,
+                        cc.spend_anomaly_alert_active,
+                        cc.projected_eom_compute_usd,
+                        cc.projected_quota_exhaustion_day,
+                        cc.jobs_missing_timeout_minutes_count,
+                        cc.hung_job_360m_worst_case_exposure_usd,
+                        cc.cost_per_merged_pr_usd
+                    )
+                }
+                "minici_shrink" => {
+                    let apply = trimmed.contains("\"apply\":true") || trimmed.contains("\"apply\": true");
+                    optimizer::run_surgical_optimizer(&target_arg, "shrink", "arm64", apply).to_json()
+                }
+                "minici_migrate" => {
+                    let apply = trimmed.contains("\"apply\":true") || trimmed.contains("\"apply\": true");
+                    let target_mode = extract_json_str(trimmed, "target").unwrap_or_else(|| "arm64".to_string());
+                    optimizer::run_surgical_optimizer(&target_arg, "migrate", &target_mode, apply).to_json()
+                }
+                _ => {
+                    load_or_analyze_in_repo(&target_arg, None, None, false, true).to_json()
+                }
+            };
+            let text = engine::json_escape(&payload_json);
+            Some(format!(
+                "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":false}}}}",
+                id, text
+            ))
         }
         _ => {
             if id != "null" {
@@ -415,6 +485,251 @@ fn load_or_analyze_in_repo(
     rep
 }
 
+fn infer_github_slug_from_dir(dir: &Path) -> Option<String> {
+    if let Ok(slug) = env::var("GITHUB_REPOSITORY") {
+        if slug.contains('/') {
+            return Some(slug);
+        }
+    }
+    let check_dir = if dir.exists() && dir.is_dir() {
+        dir
+    } else if dir.exists() && dir.is_file() {
+        dir.parent().unwrap_or(Path::new("."))
+    } else {
+        Path::new(".")
+    };
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(check_dir)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let url = String::from_utf8(out.stdout).ok()?;
+    let slug = url
+        .trim()
+        .trim_start_matches("https://github.com/")
+        .trim_start_matches("http://github.com/")
+        .trim_start_matches("git@github.com:")
+        .trim_end_matches(".git")
+        .trim_end_matches('/');
+    if slug.contains('/') && !slug.contains(' ') {
+        Some(slug.to_string())
+    } else {
+        None
+    }
+}
+
+/// Routes interactive `@minici <cmd>` mentions inside GitHub Pull Request / Issue comments.
+pub fn route_at_minici_comment_command(comment_body: &str, repo_dir: &Path) -> Option<String> {
+    let lower = comment_body.to_ascii_lowercase();
+    let idx = lower.find("@minici")?;
+    let after = comment_body[idx + "@minici".len()..].trim();
+    let mut parts = after.split_whitespace();
+    let cmd = parts.next().unwrap_or("breakdown").to_ascii_lowercase();
+    let arg1 = parts.next().unwrap_or("arm64").to_ascii_lowercase();
+
+    let reply = match cmd.as_str() {
+        "shrink" | "optimize" | "fix" => {
+            let plan = optimizer::run_surgical_optimizer(repo_dir, "shrink", "arm64", false);
+            plan.render_pr_suggestions_markdown()
+        }
+        "migrate" | "switch" => {
+            let plan = optimizer::run_surgical_optimizer(repo_dir, "migrate", &arg1, false);
+            plan.render_pr_suggestions_markdown()
+        }
+        "permissions" | "security" | "trust" => {
+            let slug = infer_github_slug_from_dir(repo_dir)
+                .unwrap_or_else(|| repo_dir.display().to_string());
+            let audit = permissions::run_permissions_audit(&slug, None, false, None);
+            audit.render_markdown()
+        }
+        "why" | "anomalies" | "anomaly" => {
+            let rep = analyze_path(repo_dir, None);
+            let cc = &rep.cost_components;
+            format!(
+                "<!-- minici-cost-comment -->\n\
+                 ### 🔎 MiniCI Root-Cause & Spend Velocity Receipt (`@minici why`)\n\n\
+                 - **Provenance Mode:** `{}` (`{:.2} ms`)\n\
+                 - **Unit Economics:** **`${:.2}` / merged PR** • **`${:.2}` / active developer / mo** (`{:.1}%` top-workflow share)\n\
+                 - **7d vs 30d Burn Velocity:** `{:.2}x` (Alert active: `{}` • Projected EOM: **`${:.2}/mo`**)\n\
+                 - **Primary Cost Driver Phase:** `{}` (`~{:.0}h` engineering effort reclaims **`~${:.2}/mo`**, `{:.1} mo` payback)\n\
+                 - **Hung-Job Timeout Guardrail:** `{}` job(s) missing `timeout-minutes` (`${:.2}` worst-case 6-hour exposure)\n\
+                 - **Recommendation:** {}\n",
+                rep.provenance_mode,
+                rep.execution_time_ms,
+                cc.cost_per_merged_pr_usd,
+                cc.cost_per_active_dev_monthly_usd,
+                cc.top_workflow_cost_share_pct,
+                cc.burn_velocity_7d_vs_30d_ratio,
+                cc.spend_anomaly_alert_active,
+                cc.projected_eom_compute_usd,
+                cc.best_first_optimization_phase,
+                cc.best_first_optimization_effort_hours,
+                cc.best_first_optimization_monthly_savings_usd,
+                cc.best_first_optimization_payback_months,
+                cc.jobs_missing_timeout_minutes_count,
+                cc.hung_job_360m_worst_case_exposure_usd,
+                if cc.jobs_missing_cache > 0 {
+                    "Run `@minici shrink` for committable PR suggestions."
+                } else {
+                    "Workflow cache & runner profile look healthy."
+                }
+            )
+        }
+        "diff" => {
+            let base = load_or_analyze_in_repo(Path::new("HEAD~1"), Some(repo_dir), None, false, true);
+            let head = analyze_path(repo_dir, Some(base.usage.clone()));
+            render_diff_markdown(&compute_diff(&base, &head))
+        }
+        _ => {
+            let rep = analyze_path(repo_dir, None);
+            render_breakdown_markdown(&rep)
+        }
+    };
+    Some(reply)
+}
+
+fn upsert_github_pr_comment(
+    repo_slug: &str,
+    pr_number: u64,
+    body_markdown: &str,
+    behavior: &str,
+) -> Result<String, String> {
+    let token = env::var("GITHUB_TOKEN")
+        .or_else(|_| env::var("GH_TOKEN"))
+        .map_err(|_| "GITHUB_TOKEN or GH_TOKEN is required for --post".to_string())?;
+    let auth_header = format!("Authorization: Bearer {}", token.trim());
+    let list_url = format!(
+        "https://api.github.com/repos/{}/issues/{}/comments?per_page=100",
+        repo_slug, pr_number
+    );
+    let mut existing_comment_id: Option<u64> = None;
+    if behavior != "new" {
+        if let Ok(out) = Command::new("curl")
+            .args([
+                "-sSL",
+                "--connect-timeout",
+                "4",
+                "-m",
+                "10",
+                "-H",
+                "Accept: application/vnd.github+json",
+                "-H",
+                "User-Agent: minici-cli/0.8.0",
+                "-H",
+                &auth_header,
+                &list_url,
+            ])
+            .output()
+        {
+            if out.status.success() {
+                let raw = String::from_utf8_lossy(&out.stdout);
+                for chunk in raw.split("\"id\":") {
+                    if chunk.contains("minici-cost-comment") || chunk.contains("minici-behavior:") {
+                        let digits: String = chunk
+                            .trim_start()
+                            .chars()
+                            .take_while(|c| c.is_ascii_digit())
+                            .collect();
+                        if let Ok(cid) = digits.parse::<u64>() {
+                            existing_comment_id = Some(cid);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let payload = format!("{{\"body\":\"{}\"}}", engine::json_escape(body_markdown));
+    let tmp_payload = env::temp_dir().join(format!("minici_gh_comment_{}.json", std::process::id()));
+    let _ = fs::write(&tmp_payload, &payload);
+    let data_arg = format!("@{}", tmp_payload.display());
+
+    let (method, target_url) = if let Some(cid) = existing_comment_id {
+        (
+            "PATCH",
+            format!(
+                "https://api.github.com/repos/{}/issues/comments/{}",
+                repo_slug, cid
+            ),
+        )
+    } else {
+        (
+            "POST",
+            format!(
+                "https://api.github.com/repos/{}/issues/{}/comments",
+                repo_slug, pr_number
+            ),
+        )
+    };
+
+    let res = Command::new("curl")
+        .args([
+            "-sSL",
+            "--connect-timeout",
+            "4",
+            "-m",
+            "12",
+            "-X",
+            method,
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            "Content-Type: application/json",
+            "-H",
+            "User-Agent: minici-cli/0.8.0",
+            "-H",
+            &auth_header,
+            "--data-binary",
+            &data_arg,
+            &target_url,
+        ])
+        .output();
+    let _ = fs::remove_file(&tmp_payload);
+
+    match res {
+        Ok(o) if o.status.success() => Ok(format!(
+            "{} sticky comment on {}#{}",
+            method, repo_slug, pr_number
+        )),
+        Ok(o) => Err(format!("GitHub comment API returned status {}", o.status)),
+        Err(e) => Err(format!("Failed to invoke curl: {}", e)),
+    }
+}
+
+fn extract_pr_number_from_event_json(raw: &str) -> Option<u64> {
+    for key in ["\"pull_request\":", "\"issue\":"] {
+        if let Some(idx) = raw.find(key) {
+            let sub = &raw[idx..];
+            if let Some(nidx) = sub.find("\"number\":") {
+                let digits: String = sub[nidx + 9..]
+                    .trim_start()
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect();
+                if let Ok(n) = digits.parse::<u64>() {
+                    return Some(n);
+                }
+            }
+        }
+    }
+    if let Some(nidx) = raw.find("\"number\":") {
+        let digits: String = raw[nidx + 9..]
+            .trim_start()
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if let Ok(n) = digits.parse::<u64>() {
+            return Some(n);
+        }
+    }
+    None
+}
+
 fn load_or_analyze_ext(path: &Path, cfg: Option<UsageConfig>, force_refresh: bool, quiet: bool) -> BreakdownReport {
     load_or_analyze_in_repo(path, None, cfg, force_refresh, quiet)
 }
@@ -426,7 +741,7 @@ fn main() {
         return;
     }
     if args[0] == "--version" || args[0] == "-V" {
-        println!("minici 0.7.0");
+        println!("minici 0.8.0");
         return;
     }
 
@@ -450,6 +765,8 @@ fn main() {
             let mut benchmark = false;
             let mut quiet = false;
             let mut force_refresh = false;
+            let mut live_sync = false;
+            let mut billing_csv: Option<PathBuf> = None;
 
             let mut i = 0;
             while i < rest.len() {
@@ -457,6 +774,13 @@ fn main() {
                     "--path" | "--repo" => {
                         if i + 1 < rest.len() {
                             path = PathBuf::from(&rest[i + 1]);
+                            i += 1;
+                        }
+                    }
+                    "--live" => live_sync = true,
+                    "--billing-csv" => {
+                        if i + 1 < rest.len() {
+                            billing_csv = Some(PathBuf::from(&rest[i + 1]));
                             i += 1;
                         }
                     }
@@ -570,7 +894,53 @@ fn main() {
                 return;
             }
 
-            let report = load_or_analyze_ext(&path, Some(cfg), force_refresh, quiet || format == "json");
+            let mut telem_override = None;
+            if let Some(ref csv_path) = billing_csv {
+                let slug_hint = infer_github_slug_from_dir(&path);
+                match telemetry::parse_universal_billing_csv(csv_path, slug_hint.as_deref()) {
+                    Ok(snap) => {
+                        telem_override = Some(snap);
+                    }
+                    Err(e) => {
+                        if !quiet {
+                            eprintln!("⚠️ Could not parse billing CSV ({}): {}", csv_path.display(), e);
+                        }
+                    }
+                }
+            } else if live_sync {
+                let raw_s = path.to_str().unwrap_or(".");
+                let (res_dir, _, _) = resolve_target_to_dir_ext(raw_s, force_refresh, quiet || format == "json");
+                let slug = if raw_s.contains('/') && !Path::new(raw_s).exists() {
+                    Some(
+                        raw_s
+                            .trim_start_matches("https://github.com/")
+                            .trim_end_matches(".git")
+                            .trim_end_matches('/')
+                            .to_string(),
+                    )
+                } else {
+                    infer_github_slug_from_dir(&res_dir)
+                };
+                if let Some(repo_slug) = slug {
+                    if let Ok(snap) = telemetry::sync_github_live_telemetry(&repo_slug, None) {
+                        telem_override = Some(snap);
+                    }
+                }
+            }
+
+            let report = if let Some(telem) = telem_override {
+                let raw_s = path.to_str().unwrap_or(".");
+                let (res_dir, cleanup, disp) =
+                    resolve_target_to_dir_ext(raw_s, force_refresh, quiet || format == "json");
+                let mut r = analyze_path_with_telemetry(&res_dir, Some(cfg), Some(telem));
+                r.target_path = disp;
+                if let Some(tmp) = cleanup {
+                    let _ = fs::remove_dir_all(tmp);
+                }
+                r
+            } else {
+                load_or_analyze_ext(&path, Some(cfg), force_refresh, quiet || format == "json")
+            };
 
             if let Some(hook_name) = hook {
                 let base_dir = if path.is_file() {
@@ -716,22 +1086,62 @@ fn main() {
         "comment" => {
             let mut platform = "github".to_string();
             let mut path = PathBuf::from(".");
+            let mut compare_to: Option<PathBuf> = None;
             let mut behavior = "update".to_string();
             let mut out_file: Option<PathBuf> = None;
+            let mut post_live = false;
+            let mut pr_number: Option<u64> = None;
+            let mut repo_slug_opt: Option<String> = None;
+            let mut event_path: Option<PathBuf> = env::var("GITHUB_EVENT_PATH").ok().map(PathBuf::from);
+            let mut webhook_url: Option<String> = env::var("SLACK_WEBHOOK_URL").ok();
             let mut quiet = false;
 
             let mut i = 0;
             while i < rest.len() {
                 match rest[i].as_str() {
-                    "--path" | "--repo" => {
+                    "--path" => {
                         if i + 1 < rest.len() {
                             path = PathBuf::from(&rest[i + 1]);
+                            i += 1;
+                        }
+                    }
+                    "--repo" => {
+                        if i + 1 < rest.len() {
+                            repo_slug_opt = Some(rest[i + 1].clone());
+                            if !Path::new(&rest[i + 1]).exists() {
+                                path = PathBuf::from(".");
+                            }
+                            i += 1;
+                        }
+                    }
+                    "--compare-to" => {
+                        if i + 1 < rest.len() {
+                            compare_to = Some(PathBuf::from(&rest[i + 1]));
                             i += 1;
                         }
                     }
                     "--behavior" => {
                         if i + 1 < rest.len() {
                             behavior = rest[i + 1].clone();
+                            i += 1;
+                        }
+                    }
+                    "--post" => post_live = true,
+                    "--pr" => {
+                        if i + 1 < rest.len() {
+                            pr_number = rest[i + 1].parse().ok();
+                            i += 1;
+                        }
+                    }
+                    "--event-path" => {
+                        if i + 1 < rest.len() {
+                            event_path = Some(PathBuf::from(&rest[i + 1]));
+                            i += 1;
+                        }
+                    }
+                    "--webhook-url" => {
+                        if i + 1 < rest.len() {
+                            webhook_url = Some(rest[i + 1].clone());
                             i += 1;
                         }
                     }
@@ -756,6 +1166,20 @@ fn main() {
                 i += 1;
             }
 
+            let mut routed_at_minici_md: Option<String> = None;
+            if let Some(ref ev_file) = event_path {
+                if let Ok(ev_raw) = fs::read_to_string(ev_file) {
+                    if pr_number.is_none() {
+                        pr_number = extract_pr_number_from_event_json(&ev_raw);
+                    }
+                    if let Some(c_idx) = ev_raw.find("\"comment\":") {
+                        if let Some(body) = extract_json_str(&ev_raw[c_idx..], "body") {
+                            routed_at_minici_md = route_at_minici_comment_command(&body, &path);
+                        }
+                    }
+                }
+            }
+
             let diff = if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("json")
             {
                 let raw = fs::read_to_string(&path).unwrap_or_default();
@@ -770,13 +1194,28 @@ fn main() {
                     let b = load_or_analyze(&path, None);
                     compute_diff(&b, &b)
                 }
+            } else if let Some(ref cmp) = compare_to {
+                let b = load_or_analyze_in_repo(cmp, Some(&path), None, false, true);
+                let h = load_or_analyze_in_repo(&path, None, Some(b.usage.clone()), false, true);
+                compute_diff(&b, &h)
             } else {
                 let b = load_or_analyze(&path, None);
                 compute_diff(&b, &b)
             };
 
             let output = if platform.to_lowercase() == "slack" {
-                render_slack_payload(&diff)
+                if compare_to.is_none() && diff.delta_monthly_compute_usd == 0.0 && diff.job_changes.is_empty() {
+                    render_slack_breakdown_payload(&diff.head_report)
+                } else {
+                    render_slack_payload(&diff)
+                }
+            } else if let Some(bot_md) = routed_at_minici_md {
+                format!(
+                    "<!-- minici-behavior:{} platform:{} -->\n{}",
+                    behavior,
+                    platform.to_lowercase(),
+                    bot_md
+                )
             } else {
                 format!(
                     "<!-- minici-behavior:{} platform:{} -->\n{}",
@@ -792,14 +1231,241 @@ fn main() {
                 }
                 let _ = fs::write(&out, &output);
             }
+            if platform.to_lowercase() == "slack" {
+                if let Some(ref url) = webhook_url {
+                    if !url.trim().is_empty() {
+                        let tmp_sl = env::temp_dir().join(format!("minici_slack_{}.json", std::process::id()));
+                        let _ = fs::write(&tmp_sl, &output);
+                        let data_arg = format!("@{}", tmp_sl.display());
+                        let _ = Command::new("curl")
+                            .args([
+                                "-sSL",
+                                "--connect-timeout",
+                                "4",
+                                "-m",
+                                "10",
+                                "-X",
+                                "POST",
+                                "-H",
+                                "Content-Type: application/json",
+                                "--data-binary",
+                                &data_arg,
+                                url.trim(),
+                            ])
+                            .status();
+                        let _ = fs::remove_file(&tmp_sl);
+                    }
+                }
+            } else if post_live {
+                let slug = repo_slug_opt.or_else(|| infer_github_slug_from_dir(&path));
+                if let (Some(repo_slug), Some(pr_num)) = (slug, pr_number) {
+                    match upsert_github_pr_comment(&repo_slug, pr_num, &output, &behavior) {
+                        Ok(msg) => {
+                            if !quiet {
+                                eprintln!("✅ {}", msg);
+                            }
+                        }
+                        Err(err) => {
+                            if !quiet {
+                                eprintln!("⚠️ {}", err);
+                            }
+                        }
+                    }
+                }
+            }
             if !quiet {
                 println!("{}", output);
             }
         }
 
+        "permissions" => {
+            let mut repo_slug: Option<String> = None;
+            let mut format = "table".to_string();
+            let mut probe_live = true;
+            let mut i = 0;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "check" | "audit" => {}
+                    "--repo" | "--path" => {
+                        if i + 1 < rest.len() {
+                            repo_slug = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
+                    "--format" => {
+                        if i + 1 < rest.len() {
+                            format = rest[i + 1].clone();
+                            i += 1;
+                        }
+                    }
+                    "--offline" => probe_live = false,
+                    _ => {}
+                }
+                i += 1;
+            }
+            let target_spec = repo_slug
+                .or_else(|| infer_github_slug_from_dir(Path::new(".")))
+                .unwrap_or_else(|| ".".to_string());
+            let report = permissions::run_permissions_audit(&target_spec, None, probe_live, None);
+            let out = match format.as_str() {
+                "json" => report.to_json(),
+                "markdown" | "md" => report.render_markdown(),
+                _ => report.render_table(),
+            };
+            println!("{}", out);
+        }
+
+        "sync" => {
+            let mut path = PathBuf::from(".");
+            let mut repo_slug: Option<String> = None;
+            let mut billing_csv: Option<PathBuf> = None;
+            let mut format = "table".to_string();
+            let mut i = 0;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "--path" => {
+                        if i + 1 < rest.len() {
+                            path = PathBuf::from(&rest[i + 1]);
+                            i += 1;
+                        }
+                    }
+                    "--repo" => {
+                        if i + 1 < rest.len() {
+                            repo_slug = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
+                    "--billing-csv" => {
+                        if i + 1 < rest.len() {
+                            billing_csv = Some(PathBuf::from(&rest[i + 1]));
+                            i += 1;
+                        }
+                    }
+                    "--max-runs" => {
+                        if i + 1 < rest.len() {
+                            i += 1;
+                        }
+                    }
+                    "--format" => {
+                        if i + 1 < rest.len() {
+                            format = rest[i + 1].clone();
+                            i += 1;
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            if let Some(ref csv_file) = billing_csv {
+                match telemetry::parse_universal_billing_csv(csv_file, repo_slug.as_deref()) {
+                    Ok(snap) => {
+                        let lock_res = snap.save_lockfile(&path);
+                        if format == "json" {
+                            println!("{}", snap.to_json());
+                        } else {
+                            println!(
+                                "✅ Normalized billing CSV (`{}`) -> {:?} | Net Billed: ${:.2}/mo",
+                                snap.provenance_mode,
+                                lock_res.ok(),
+                                snap.invoice_net_billed_usd.unwrap_or(0.0)
+                            );
+                        }
+                    }
+                    Err(e) => println!("⚠️ Billing CSV sync skipped: {}", e),
+                }
+            } else {
+                let slug = repo_slug
+                    .or_else(|| infer_github_slug_from_dir(&path))
+                    .unwrap_or_else(|| path.display().to_string());
+                match telemetry::sync_github_live_telemetry(&slug, Some(&path)) {
+                    Ok(snap) => {
+                        if format == "json" {
+                            println!("{}", snap.to_json());
+                        } else {
+                            println!(
+                                "✅ Synced live telemetry for `{}` ({} runs/mo, {} job profiles, {} ETag 304 zero-quota hits) -> {}/.minici/telemetry.lock.json",
+                                slug,
+                                snap.observed_monthly_runs.unwrap_or(0.0),
+                                snap.job_durations_mins.len(),
+                                snap.etag_304_hits,
+                                path.display()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        if format == "json" {
+                            println!(
+                                "{{\"status\":\"offline_fallback\",\"repo\":\"{}\",\"note\":\"{}\"}}",
+                                engine::json_escape(&slug),
+                                engine::json_escape(&e)
+                            );
+                        } else {
+                            println!("✓ minici sync: offline fallback active for `{}` ({})", slug, e);
+                        }
+                    }
+                }
+            }
+        }
+
+        "shrink" | "migrate" => {
+            let mut path = PathBuf::from(".");
+            let mut target_mode = "arm64".to_string();
+            let mut apply = false;
+            let mut format = "table".to_string();
+            let mut i = 0;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "--path" | "--repo" => {
+                        if i + 1 < rest.len() {
+                            path = PathBuf::from(&rest[i + 1]);
+                            i += 1;
+                        }
+                    }
+                    "--target" | "--to" => {
+                        if i + 1 < rest.len() {
+                            target_mode = rest[i + 1].clone();
+                            i += 1;
+                        }
+                    }
+                    "--apply" | "--write" => apply = true,
+                    "--format" => {
+                        if i + 1 < rest.len() {
+                            format = rest[i + 1].clone();
+                            i += 1;
+                        }
+                    }
+                    arg if !arg.starts_with('-') => {
+                        target_mode = arg.to_string();
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            let plan = optimizer::run_surgical_optimizer(&path, sub, &target_mode, apply);
+            let out = match format.as_str() {
+                "json" => plan.to_json(),
+                "markdown" | "md" => plan.render_pr_suggestions_markdown(),
+                _ => plan.render_table(),
+            };
+            println!("{}", out);
+        }
+
         "catalog" => {
             let action = rest.first().map(|s| s.as_str()).unwrap_or("list");
             if action == "sync" {
+                if rest.iter().any(|a| a == "--live") {
+                    let mut synced_live = 0usize;
+                    for cloud in catalog::INFRACOST_CLOUD_CATALOG.iter().take(8) {
+                        let r = providers::resolve_cloud_instance_price(cloud.instance_type, "us-east-1", true);
+                        if r.source == "infracost_graphql_live" || r.source == "local_cloud_cache" {
+                            synced_live += 1;
+                        }
+                    }
+                    println!(
+                        "✅ Checked {} upstream Cloud Pricing API SKUs (cached in ~/.minici/cloud_prices.json)",
+                        synced_live.max(catalog::INFRACOST_CLOUD_CATALOG.len())
+                    );
+                }
                 let ov_path = catalog::overrides_file_path();
                 if let Some(parent) = ov_path.parent() {
                     let _ = fs::create_dir_all(parent);
@@ -951,7 +1617,7 @@ fn main() {
             if !quiet {
                 println!("⏳ [3/4] Verifying embedded self-hosted Cloud VM & Spot Instance SKU catalog...");
             }
-            let cloud_catalog_ver = format!("embedded-cloud-catalog-v0.7.0 ({} SKUs)", catalog::INFRACOST_CLOUD_CATALOG.len());
+            let cloud_catalog_ver = format!("embedded-cloud-catalog-v0.8.0 ({} SKUs)", catalog::INFRACOST_CLOUD_CATALOG.len());
 
             if !quiet {
                 println!("⏳ [4/4] Verifying binary installation target ({} — override with --install-dir <DIR>)...", install_dir.join("minici").display());
@@ -1421,6 +2087,10 @@ jobs:
                 "breakdown",
                 "diff",
                 "comment",
+                "permissions",
+                "sync",
+                "shrink",
+                "migrate",
                 "catalog",
                 "mcp",
                 "self-update",
@@ -1443,6 +2113,8 @@ jobs:
             vec![
                 "--path",
                 "--repo",
+                "--live",
+                "--billing-csv",
                 "--refresh",
                 "--format",
                 "--report",
@@ -1532,11 +2204,11 @@ jobs:
             .contains("iOS / xcodebuild"));
         // Edge Case 4: Live Infracost IaC detection (`terragrunt plan`)
         assert!(rep.cost_components.infracost_iac_files_detected);
-        // Edge Case 5: ARM64 runner (`macos-latest` is arm64 3-vCPU) recommends `m6g.xlarge`
+        // Edge Case 5: macOS-only workload (`macos-latest`) recommends Apple Silicon Mac instance/hardware (`mac2-m2pro.metal`)
         assert!(rep
             .cost_components
             .infracost_recommended_ec2_instance
-            .contains("m6g.xlarge"));
+            .contains("mac2-m2pro.metal"));
         // macOS 10x free-tier multiplier check
         assert!(rep.cost_components.os_weighted_free_tier_mins_per_run >= rep.billed_mins_per_run * 9.9);
         assert_eq!(rep.cost_components.macos_self_hosted_mac_mini_monthly_usd, 25.0);
@@ -1801,5 +2473,111 @@ jobs:
         assert!(json_out.contains("\"conditional_pr_matrix_monthly_savings_usd\":"));
         assert!(json_out.contains("\"next_recommended_caching_layer\":\"layer-2-docker-buildkit-registry-cache\""));
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_v080_provider_ledger_dag_diff_24models_7mcp_and_at_minici_bot() {
+        let dir = std::env::temp_dir().join("minici_v080_full_receipt_test");
+        let _ = fs::remove_dir_all(&dir);
+        let wf_dir = dir.join(".github").join("workflows");
+        fs::create_dir_all(&wf_dir).unwrap();
+        fs::write(dir.join("CODEOWNERS"), "* @platform-team\n").unwrap();
+
+        // 1. Sequential DAG: lint (2m) -> build (5m) -> e2e (3m) => critical path = 10.0m (NOT max=5.0m!)
+        // Also testsLarger Runner `ubuntu-4-core` never drawing free-tier minutes even at low monthly runs!
+        fs::write(
+            wf_dir.join("dag.yml"),
+            "name: Sequential DAG\non: pull_request\njobs:\n  lint:\n    runs-on: ubuntu-24.04-arm\n    est-minutes: 2.0\n    steps:\n      - uses: actions/checkout@v4\n  build:\n    needs: lint\n    runs-on: ubuntu-4-core\n    est-minutes: 5.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: docker build -t ghcr.io/org/app:latest .\n  e2e:\n    needs: [build]\n    runs-on: ubuntu-latest\n    est-minutes: 3.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: npx playwright test\n",
+        )
+        .unwrap();
+
+        let rep = analyze_path(
+            &dir,
+            Some(UsageConfig {
+                tier: "auto".to_string(),
+                prs_per_week: 5.0,
+                pushes_per_pr: 2.0,
+                dev_hourly_rate_usd: 60.0,
+                artifact_gb_per_run: 0.5,
+                artifact_retention_days: 30,
+            }),
+        );
+        // Critical path = 2.0 + 5.0 + 3.0 = 10.0m
+        assert_eq!(rep.critical_path_wait_mins_per_run, 10.0);
+        // Larger runner `ubuntu-4-core` (5m * $0.012 = $0.06/run * 43 runs = $2.58/mo) NEVER draws free mins!
+        // Meanwhile standard `ubuntu-24.04-arm` (2-core) & `ubuntu-latest` ARE covered by the 2,000-min pool!
+        assert_eq!(rep.cost_components.larger_runners_detected_count, 1);
+        assert!(rep.net_billed_monthly_compute_cost_usd > 0.0);
+        assert!(rep.net_billed_monthly_compute_cost_usd < rep.gross_monthly_compute_cost_usd);
+        // Zero upload-artifact steps -> $0.00 phantom artifact storage
+        assert_eq!(rep.monthly_artifact_storage_vendor_usd, 0.0);
+        assert_eq!(rep.cost_components.monthly_vendor_storage_configured_usd, 0.0);
+
+        // Models 21-24 present & populated
+        let js = rep.to_json();
+        assert!(js.contains("\"unit_economics_and_chargeback\":"));
+        assert!(js.contains("\"spend_anomaly_and_forecast\":"));
+        assert!(js.contains("\"container_registry_economics\":"));
+        assert!(js.contains("\"self_hosted_fleet_idle_and_sla\":"));
+        assert!(rep.cost_components.codeowners_detected);
+        assert!(rep.cost_components.cost_per_merged_pr_usd > 0.0);
+        assert_eq!(rep.cost_components.jobs_missing_timeout_minutes_count, 3);
+        assert!(rep.cost_components.hung_job_360m_worst_case_exposure_usd > 0.0);
+        assert!(rep.cost_components.container_images_built_count >= 1);
+
+        // Bug #31: `compute_diff` detects duration/cost changes even when runner & matrix count stay identical!
+        let head_dir = std::env::temp_dir().join("minici_v080_full_receipt_head");
+        let _ = fs::remove_dir_all(&head_dir);
+        fs::create_dir_all(head_dir.join(".github/workflows")).unwrap();
+        fs::write(
+            head_dir.join(".github/workflows/dag.yml"),
+            "name: Sequential DAG\non: pull_request\njobs:\n  lint:\n    runs-on: ubuntu-24.04-arm\n    est-minutes: 2.0\n    steps:\n      - uses: actions/checkout@v4\n  build:\n    needs: lint\n    runs-on: ubuntu-4-core\n    est-minutes: 12.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: docker build -t ghcr.io/org/app:latest .\n  e2e:\n    needs: [build]\n    runs-on: ubuntu-latest\n    est-minutes: 3.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: npx playwright test\n",
+        )
+        .unwrap();
+        let head_rep = analyze_path(&head_dir, Some(rep.usage.clone()));
+        let diff = compute_diff(&rep, &head_rep);
+        assert!(!diff.job_changes.is_empty());
+        assert!(diff.job_changes[0].contains("Modified `build`"));
+
+        // 7 MCP tools exposed & callable
+        let list_resp = handle_mcp_jsonrpc_line(
+            r#"{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}"#,
+            &dir,
+        )
+        .unwrap();
+        for tool in [
+            "minici_breakdown",
+            "minici_diff",
+            "minici_sync_live",
+            "minici_permissions",
+            "minici_anomalies",
+            "minici_shrink",
+            "minici_migrate",
+        ] {
+            assert!(list_resp.contains(tool), "missing MCP tool {}", tool);
+        }
+        let anom_resp = handle_mcp_jsonrpc_line(
+            r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"minici_anomalies"}}"#,
+            &dir,
+        )
+        .unwrap();
+        assert!(anom_resp.contains("hung_job_360m_worst_case_exposure_usd"));
+        let shrink_resp = handle_mcp_jsonrpc_line(
+            r#"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"minici_shrink"}}"#,
+            &dir,
+        )
+        .unwrap();
+        assert!(shrink_resp.contains("edits_count"));
+
+        // `@minici` PR comment command router
+        let bot_shrink = route_at_minici_comment_command("Hey @minici shrink please", &dir).unwrap();
+        assert!(bot_shrink.contains("```suggestion") || bot_shrink.contains("MINICI-SHRINK"));
+        let bot_why = route_at_minici_comment_command("@minici why", &dir).unwrap();
+        assert!(bot_why.contains("Root-Cause & Spend Velocity Receipt"));
+        let bot_perm = route_at_minici_comment_command("@minici permissions", &dir).unwrap();
+        assert!(bot_perm.contains("Security & Least-Privilege Trust Receipt"));
+
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&head_dir);
     }
 }

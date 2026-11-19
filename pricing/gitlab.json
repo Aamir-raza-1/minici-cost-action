@@ -10,7 +10,7 @@
     "compute_minute_usd": 0.01,
     "public_repo_standard_free": true,
     "minutes_rollover": false,
-    "job_rounding": "ceil_minute_per_job",
+    "job_rounding": "per_second",
     "allowance_os_multipliers": {
       "linux": 1,
       "windows": 1,

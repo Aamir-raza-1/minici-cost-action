@@ -154,6 +154,7 @@ OFFICIAL_2026_RATES = {
     "self-hosted-llama-server-macOS-ARM64": 0.0024,
     "self-hosted-macOS-ARM64": 0.0024,
     "self-hosted-opencode": 0.0024,
+    "aws-ec2-runs-on": 0.0024,
 }
 
 
@@ -215,7 +216,7 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
     if expected_monthly_cost > 0:
         cost_delta_pct = abs(reported_monthly_cost - expected_monthly_cost) / expected_monthly_cost * 100.0
 
-    # Verify all 20 MiniCI cost_components (6 invoice + 5 hidden payroll/pipeline + 5 team-stage/pipeline-shape + 4 calculator/stack intelligence models)
+    # Verify all 24 MiniCI cost_components (6 invoice + 5 hidden payroll/pipeline + 5 team-stage/pipeline-shape + 4 calculator/stack + 4 FinOps telemetry/anomaly/registry/fleet models)
     cc = breakdown_json.get("cost_components", {})
     for comp_key in (
         "build_minutes_cost",
@@ -238,6 +239,10 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
         "build_phase_breakdown",
         "compute_class_explorer",
         "stack_specific_economics",
+        "unit_economics_and_chargeback",
+        "spend_anomaly_and_forecast",
+        "container_registry_economics",
+        "self_hosted_fleet_idle_and_sla",
     ):
         if comp_key not in cc:
             canonical_drifts.append(f"Missing cost_components.{comp_key} in JSON output")
@@ -282,8 +287,8 @@ def validate_single_repo_all_modes(
     )
     assert rc_df == 0, f"CLI diff failed on {repo_name}: {err_df}"
     df_data = json.loads(out_df_json)
-    assert "cost_components" in df_data and len(df_data["cost_components"]) == 20, (
-        f"CLI diff JSON missing 20 cost_components on {repo_name}"
+    assert "cost_components" in df_data and len(df_data["cost_components"]) == 24, (
+        f"CLI diff JSON missing 24 cost_components on {repo_name}"
     )
 
     for ext in ("html", "json", "csv", "md"):
@@ -322,9 +327,10 @@ def validate_single_repo_all_modes(
     assert rc_mcp == 0, f"MCP server failed on {repo_name}: {err_mcp}"
     mcp_lines = [json.loads(line) for line in out_mcp.strip().splitlines() if line.strip()]
     assert len(mcp_lines) == 4, f"Expected 4 JSON-RPC responses on {repo_name}, got {len(mcp_lines)}"
+    assert len(mcp_lines[1]["result"]["tools"]) == 7, f"Expected 7 MCP tools on {repo_name}"
     mcp_bd_payload = json.loads(mcp_lines[2]["result"]["content"][0]["text"])
     assert abs(float(mcp_bd_payload["gross_monthly_compute_cost_usd"]) - float(bd_data["gross_monthly_compute_cost_usd"])) < 0.01
-    assert "cost_components" in mcp_bd_payload and len(mcp_bd_payload["cost_components"]) == 20
+    assert "cost_components" in mcp_bd_payload and len(mcp_bd_payload["cost_components"]) == 24
 
     hook_payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "git push"}}) + "\n"
     rc_hk, out_hk, err_hk, wall_hk_ms = run_timed(
@@ -422,6 +428,14 @@ def validate_single_repo_all_modes(
         "p3_recommended_runner_tier": cc["compute_class_explorer"]["best_net_roi_runner_tier"],
         "p4_detected_stack_archetype": cc["stack_specific_economics"]["detected_stack_archetype"],
         "p4_stack_specific_savings_usd": cc["stack_specific_economics"]["stack_specific_monthly_savings_usd"],
+        "m21_cost_per_merged_pr_usd": cc["unit_economics_and_chargeback"]["cost_per_merged_pr_usd"],
+        "m21_cost_per_active_dev_usd": cc["unit_economics_and_chargeback"]["cost_per_active_dev_monthly_usd"],
+        "m22_projected_eom_usd": cc["spend_anomaly_and_forecast"]["projected_eom_compute_usd"],
+        "m22_missing_timeouts": cc["spend_anomaly_and_forecast"]["jobs_missing_timeout_minutes_count"],
+        "m23_container_images_count": cc["container_registry_economics"]["container_images_built_count"],
+        "m23_registry_monthly_usd": cc["container_registry_economics"]["monthly_registry_storage_and_pull_usd"],
+        "m24_est_p95_queue_sec": cc["self_hosted_fleet_idle_and_sla"]["est_p95_queue_wait_sec"],
+        "m24_idle_warm_pool_usd": cc["self_hosted_fleet_idle_and_sla"]["monthly_always_on_idle_waste_usd"],
         "engine_time_us": engine_us,
         "engine_time_ms": engine_ms,
         "cli_wall_ms": round(wall_bd_ms, 2),
@@ -442,11 +456,11 @@ def write_markdown_baseline_doc(
     fresh_results: list[dict],
 ) -> None:
     lines = [
-        "# Locked 27-Repository Golden Baseline: KPIs, 20 Unified CI/CD Cost Models & 3-Mode Latency (`v0.7.0`)",
+        "# Locked 27-Repository Golden Baseline: KPIs, 24 Unified CI/CD Cost Models & 3-Mode Latency (`v0.8.0`)",
         "",
-        "**Locked Version:** `minici 0.7.0` (`tag: v0.7.0`)  ",
+        "**Locked Version:** `minici 0.8.0` (`tag: v0.8.0`)  ",
         "**Total Repositories Locked:** `27` (`10` Primary + `7` Internal Edge-Case + `10` Fresh World-Scale OSS)  ",
-        "**Execution Modes Verified on Every Repo:** `Mode 1: CLI` • `Mode 2: GitHub Action Workflow` • `Mode 3: MCP JSON-RPC 2.0 + Shift-Left Hook`  ",
+        "**Execution Modes Verified on Every Repo:** `Mode 1: CLI` • `Mode 2: GitHub Action Workflow` • `Mode 3: MCP JSON-RPC 2.0 (7 Tools) + Shift-Left Hook`  ",
         "**Machine-Readable Companion Lock:** [`tests/golden_baseline_10_repos.json`](../tests/golden_baseline_10_repos.json)",
         "",
         "## How to Re-Verify Zero Deviation in Future Sessions",
@@ -459,7 +473,7 @@ def write_markdown_baseline_doc(
         "python3 tools/verify_10_repos_all_modes.py",
         "```",
         "",
-        "If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or any of the 20 unified CI/CD cost models (`6` invoice components + `5` hidden payroll/pipeline models + `5` team-stage & pipeline-shape models + `4` multi-vendor calculator & stack intelligence models) on any of the 27 repositories, `verify_10_repos_all_modes.py` exits non-zero and prints the exact field delta.",
+        "If any commit alters job expansion, 1-minute ceiling rounding, SKU pricing, or any of the 24 unified CI/CD cost models (`6` invoice components + `5` hidden payroll/pipeline models + `5` team-stage & pipeline-shape models + `4` multi-vendor calculator & stack intelligence models + `4` unit economics, anomaly/timeout, container registry & fleet SLA models) on any of the 27 repositories, `verify_10_repos_all_modes.py` exits non-zero and prints the exact field delta.",
         "",
         "---",
         "",
@@ -532,6 +546,21 @@ def write_markdown_baseline_doc(
             f"| `{r['p2_best_first_optimization_phase']}` (`${r['p2_reducible_phase_savings_usd']:,.2f}/mo`) "
             f"| `{r['p3_workload_compute_profile']}` (`{r['p3_larger_runners_detected_count']}` • `${r['p3_arm64_migration_savings_usd']:,.2f}/mo` • `{r['p3_recommended_runner_tier']}`) "
             f"| `{r['p4_detected_stack_archetype']}` (`${r['p4_stack_specific_savings_usd']:,.2f}/mo`) |"
+        )
+
+    lines.extend([
+        "",
+        "### Part 1F: 10 Primary Repositories — 4 FinOps Unit Economics, Anomaly/Timeout, Registry & Fleet SLA Models (`M21–M24`)",
+        "",
+        "| Repository | M21: Cost / Merged PR (`$/Dev/Mo`) | M22: Projected EOM (`Missing Timeouts`) | M23: Container Images (`Registry $/mo`) | M24: Est. P95 Queue (`Idle Warm Pool $/mo`) |",
+        "| :--- | :---: | :---: | :---: | :---: |",
+    ])
+    for r in ten_results:
+        lines.append(
+            f"| **`{r['repo']}`** | `${r['m21_cost_per_merged_pr_usd']:,.2f}` (`${r['m21_cost_per_active_dev_usd']:,.2f}/dev`) "
+            f"| `${r['m22_projected_eom_usd']:,.2f}/mo` (`{r['m22_missing_timeouts']}` jobs) "
+            f"| `{r['m23_container_images_count']}` (`${r['m23_registry_monthly_usd']:,.2f}/mo`) "
+            f"| `{r['m24_est_p95_queue_sec']:.1f}s` (`${r['m24_idle_warm_pool_usd']:,.2f}/mo`) |"
         )
 
     lines.extend([
@@ -611,6 +640,21 @@ def write_markdown_baseline_doc(
 
     lines.extend([
         "",
+        "### Part 2F: 10 Fresh World-Scale Repositories — 4 FinOps Unit Economics, Anomaly/Timeout, Registry & Fleet SLA Models (`M21–M24`)",
+        "",
+        "| Repository | M21: Cost / Merged PR (`$/Dev/Mo`) | M22: Projected EOM (`Missing Timeouts`) | M23: Container Images (`Registry $/mo`) | M24: Est. P95 Queue (`Idle Warm Pool $/mo`) |",
+        "| :--- | :---: | :---: | :---: | :---: |",
+    ])
+    for r in fresh_results:
+        lines.append(
+            f"| **`{r['repo']}`** | `${r['m21_cost_per_merged_pr_usd']:,.2f}` (`${r['m21_cost_per_active_dev_usd']:,.2f}/dev`) "
+            f"| `${r['m22_projected_eom_usd']:,.2f}/mo` (`{r['m22_missing_timeouts']}` jobs) "
+            f"| `{r['m23_container_images_count']}` (`${r['m23_registry_monthly_usd']:,.2f}/mo`) "
+            f"| `{r['m24_est_p95_queue_sec']:.1f}s` (`${r['m24_idle_warm_pool_usd']:,.2f}/mo`) |"
+        )
+
+    lines.extend([
+        "",
         "---",
         "",
         "## Part 3: 7 Internal Edge-Case Repositories — KPIs & Latency",
@@ -651,7 +695,7 @@ def main():
     edge_case_results = []
 
     print("=" * 118)
-    print(" MINICI-COST-ACTION (v0.7.0) — 27-REPOSITORY (17 EXISTING + 10 FRESH) x 3-MODE PARALLEL VALIDATION & GOLDEN LOCK")
+    print(" MINICI-COST-ACTION (v0.8.0) — 27-REPOSITORY (17 EXISTING + 10 FRESH) x 3-MODE PARALLEL VALIDATION & GOLDEN LOCK")
     print("=" * 118)
 
     with tempfile.TemporaryDirectory(prefix="minici-27repo-reports-") as tmp_rep_dir:
@@ -684,7 +728,7 @@ def main():
 
         if fresh_results:
             print("-" * 118)
-            print(" 10 FRESH WORLD-SCALE GITHUB REPOSITORIES (CLI + WORKFLOW + MCP 4-RPC + 20 COST MODELS):")
+            print(" 10 FRESH WORLD-SCALE GITHUB REPOSITORIES (CLI + WORKFLOW + MCP 7-TOOL + 24 COST MODELS):")
             for row in fresh_results:
                 warn_tag = f"⚠️ {len(row['math_audit']['custom_label_warnings'])} custom-label note(s)" if row["math_audit"]["custom_label_warnings"] else "✅ 0.00% drift"
                 print(
@@ -786,14 +830,22 @@ def main():
             "p3_recommended_runner_tier": r["p3_recommended_runner_tier"],
             "p4_detected_stack_archetype": r["p4_detected_stack_archetype"],
             "p4_stack_specific_savings_usd": r["p4_stack_specific_savings_usd"],
+            "m21_cost_per_merged_pr_usd": r["m21_cost_per_merged_pr_usd"],
+            "m21_cost_per_active_dev_usd": r["m21_cost_per_active_dev_usd"],
+            "m22_projected_eom_usd": r["m22_projected_eom_usd"],
+            "m22_missing_timeouts": r["m22_missing_timeouts"],
+            "m23_container_images_count": r["m23_container_images_count"],
+            "m23_registry_monthly_usd": r["m23_registry_monthly_usd"],
+            "m24_est_p95_queue_sec": r["m24_est_p95_queue_sec"],
+            "m24_idle_warm_pool_usd": r["m24_idle_warm_pool_usd"],
         }
 
     # Golden Locked Baseline Write or Verification
     golden_path = Path(args.golden_baseline)
     md_path = Path(args.markdown_baseline)
     locked_deterministic = {
-        "schema_version": "1.5.0",
-        "minici_version": "0.7.0",
+        "schema_version": "1.6.0",
+        "minici_version": "0.8.0",
         "repos": {r["repo"]: extract_locked_kpi(r) for r in results},
         "fresh_10_repos": {r["repo"]: extract_locked_kpi(r) for r in fresh_results},
         "edge_case_repos": {
@@ -849,7 +901,7 @@ def main():
     summary_payload = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "binary": str(MINICI_BIN),
-        "minici_version": "0.7.0",
+        "minici_version": "0.8.0",
         "ten_repos": results,
         "fresh_10_repos": fresh_results,
         "edge_case_repos": edge_case_results,

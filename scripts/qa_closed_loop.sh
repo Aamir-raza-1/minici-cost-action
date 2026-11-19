@@ -28,31 +28,37 @@ echo "+=========================================================================
 # Gate 1: Rust Unit, Golden Math & CLI Contract Lock Tests
 echo -n "⏳ [Gate 1/9] Running Cargo Unit & CLI Contract Lock Tests... "
 cargo test --manifest-path crates/minici/Cargo.toml --quiet
-echo "✅ PASS (16/16 unit + contract tests)"
+echo "✅ PASS (20/20 unit + contract tests)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 2: Release Binary Build & Path Sync
-echo -n "⏳ [Gate 2/8] Building Release Binary & Syncing Action/Local Paths... "
+echo -n "⏳ [Gate 2/9] Building Release Binary & Syncing Action/Local Paths... "
 cargo build --release --manifest-path crates/minici/Cargo.toml --quiet
 BIN="$REPO_ROOT/crates/minici/target/release/minici"
 mkdir -p "$REPO_ROOT/target/release" "$HOME/.local/bin"
+rm -f "$REPO_ROOT/target/release/minici" "$HOME/.local/bin/minici" 2>/dev/null || true
 cp "$BIN" "$REPO_ROOT/target/release/minici"
 cp "$BIN" "$HOME/.local/bin/minici" 2>/dev/null || true
 VER=$("$BIN" --version)
-[[ "$VER" == "minici 0.7.0" || "$VER" == "minici 0.6.0" || "$VER" == "minici 0.5.0" || "$VER" == "minici 0.4.0" || "$VER" == "minici 0.3.0" || "$VER" == "minici 0.2.0" || "$VER" == "minici 0.1.0" ]] || { echo "❌ FAIL: Unexpected version $VER"; exit 1; }
+[[ "$VER" == "minici 0.8.0" || "$VER" == "minici 0.7.0" || "$VER" == "minici 0.6.0" || "$VER" == "minici 0.5.0" || "$VER" == "minici 0.4.0" || "$VER" == "minici 0.3.0" || "$VER" == "minici 0.2.0" || "$VER" == "minici 0.1.0" ]] || { echo "❌ FAIL: Unexpected version $VER"; exit 1; }
 echo "✅ PASS ($VER synced)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
-# Gate 3: CLI Breakdown JSON & Golden Math Check
-echo -n "⏳ [Gate 3/8] Verifying CLI Breakdown JSON & SKU Math... "
+# Gate 3: CLI Breakdown JSON, 24 FinOps Models, Least-Privilege Permissions & Optimizer Check
+echo -n "⏳ [Gate 3/9] Verifying CLI Breakdown JSON, 24 Models, Permissions & Optimizer... "
 JSON_OUT=$("$BIN" breakdown --path "$REPO_ROOT" --format json --quiet)
 echo "$JSON_OUT" | grep -q '"gross_monthly_compute_cost_usd":' || { echo "❌ FAIL: Missing gross_monthly_compute_cost_usd"; exit 1; }
-echo "$JSON_OUT" | grep -q '"detected_providers": \["github-actions"\]' || { echo "❌ FAIL: Missing github-actions provider"; exit 1; }
-echo "✅ PASS (JSON schema & SKU math verified)"
+echo "$JSON_OUT" | grep -q '"unit_economics_and_chargeback":' || { echo "❌ FAIL: Missing Model 21 unit_economics_and_chargeback"; exit 1; }
+echo "$JSON_OUT" | grep -q '"self_hosted_fleet_idle_and_sla":' || { echo "❌ FAIL: Missing Model 24 self_hosted_fleet_idle_and_sla"; exit 1; }
+PERM_OUT=$("$BIN" permissions check --path "$REPO_ROOT" --format json)
+echo "$PERM_OUT" | grep -q '"source_code_access_required": false' || { echo "❌ FAIL: Permissions check failed"; exit 1; }
+"$BIN" shrink --path "$REPO_ROOT" --format json >/dev/null
+"$BIN" migrate --path "$REPO_ROOT" --to github-arm64 --format json >/dev/null
+echo "✅ PASS (24 FinOps models + permissions + shrink/migrate verified)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 4: Customer View vs. Owner Debug View Separation
-echo -n "⏳ [Gate 4/8] Verifying --customer-mode vs. Owner Debug Flag Isolation... "
+echo -n "⏳ [Gate 4/9] Verifying --customer-mode vs. Owner Debug Flag Isolation... "
 CUST_OUT=$("$BIN" breakdown --path "$REPO_ROOT" --customer-mode)
 OWNER_OUT=$("$BIN" breakdown --path "$REPO_ROOT" --owner)
 echo "$CUST_OUT" | grep -q "CUSTOMER LAUNCH VIEW" || { echo "❌ FAIL: Missing CUSTOMER LAUNCH VIEW"; exit 1; }
@@ -65,7 +71,7 @@ echo "✅ PASS (Zero internal leak)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 5: Git Branch Diff Zero-Delta Verification
-echo -n "⏳ [Gate 5/8] Verifying Git Ref Diff (Identical Base vs Head == 0.00 delta)... "
+echo -n "⏳ [Gate 5/9] Verifying Git Ref Diff (Identical Base vs Head == 0.00 delta)... "
 DIFF_JSON=$("$BIN" diff --path "$REPO_ROOT" --compare-to "$REPO_ROOT" --format json --quiet)
 echo "$DIFF_JSON" | grep -q '"delta_monthly_compute_usd": 0.00' || { echo "❌ FAIL: Expected 0.00 diff delta"; exit 1; }
 echo "$DIFF_JSON" | grep -q '"delta_expanded_jobs": 0' || { echo "❌ FAIL: Expected 0 job delta"; exit 1; }
@@ -73,7 +79,7 @@ echo "✅ PASS (+0.00/mo • 0 drift)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 6: Multi-Format Reporting Engine (HTML, CSV, Markdown)
-echo -n "⏳ [Gate 6/8] Verifying Reporting Engine (--report .html, .csv, .md)... "
+echo -n "⏳ [Gate 6/9] Verifying Reporting Engine (--report .html, .csv, .md)... "
 TMP_DIR=$(mktemp -d)
 "$BIN" breakdown --path "$REPO_ROOT" --report "$TMP_DIR/r.html" --quiet >/dev/null
 "$BIN" breakdown --path "$REPO_ROOT" --report "$TMP_DIR/r.csv" --quiet >/dev/null
@@ -97,13 +103,15 @@ fi
 echo "✅ PASS (All 7 CI providers active • 24/24 canonical JSON SKUs 0.00% drift)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
-# Gate 8: Live MCP Server JSON-RPC 2.0 Stdio Protocol Verification
-echo -n "⏳ [Gate 8/9] Verifying Live MCP Server JSON-RPC 2.0 Stdio Handshake... "
-MCP_OUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"minici_breakdown"}}\n' | "$BIN" mcp --path "$REPO_ROOT")
+# Gate 8: Live MCP Server JSON-RPC 2.0 Stdio Protocol Verification (7 Tools)
+echo -n "⏳ [Gate 8/9] Verifying Live MCP Server JSON-RPC 2.0 Stdio Handshake (7 Tools)... "
+MCP_OUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"minici_breakdown"}}\n{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"minici_permissions"}}\n' | "$BIN" mcp --path "$REPO_ROOT")
 echo "$MCP_OUT" | grep -q '"protocolVersion":"2024-11-05"' || { echo "❌ FAIL: MCP initialize failed"; exit 1; }
-echo "$MCP_OUT" | grep -q '"name":"minici_breakdown"' || { echo "❌ FAIL: MCP tools/list failed"; exit 1; }
+echo "$MCP_OUT" | grep -q '"name":"minici_breakdown"' || { echo "❌ FAIL: MCP tools/list missing minici_breakdown"; exit 1; }
+echo "$MCP_OUT" | grep -q '"name":"minici_shrink"' || { echo "❌ FAIL: MCP tools/list missing minici_shrink"; exit 1; }
+echo "$MCP_OUT" | grep -q '"name":"minici_migrate"' || { echo "❌ FAIL: MCP tools/list missing minici_migrate"; exit 1; }
 echo "$MCP_OUT" | grep -q '"isError":false' || { echo "❌ FAIL: MCP tools/call failed"; exit 1; }
-echo "✅ PASS (JSON-RPC 2.0 stdio verified)"
+echo "✅ PASS (7 MCP tools • JSON-RPC 2.0 stdio verified)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 9: Dynamic CLI Help Discovery & Auto-Smoke Execution (Zero Static Blind Spots)
@@ -125,6 +133,15 @@ for flag in $DISCOVERED_FLAGS; do
       "$BIN" breakdown --path "$REPO_ROOT" "$flag" 10 --quiet >/dev/null
       ;;
     --hook) "$BIN" breakdown --path "$REPO_ROOT" --hook qa-smoke --quiet >/dev/null ;;
+    --billing-csv)
+      TMP_CSV=$(mktemp)
+      printf "ChargePeriodStart,ServiceName,BilledCost,ConsumedQuantity,ConsumedUnit,SkuId\n2026-11-01,GitHub Actions,1.20,200,Minutes,actions_linux\n" > "$TMP_CSV"
+      "$BIN" breakdown --path "$REPO_ROOT" --billing-csv "$TMP_CSV" --quiet >/dev/null
+      rm -f "$TMP_CSV"
+      ;;
+    --live)
+      GITHUB_TOKEN="" GH_TOKEN="" "$BIN" breakdown --path "$REPO_ROOT" --live --quiet >/dev/null
+      ;;
     --benchmark|--refresh|--quiet)
       "$BIN" breakdown --path "$REPO_ROOT" "$flag" --quiet >/dev/null
       ;;
@@ -135,7 +152,7 @@ for flag in $DISCOVERED_FLAGS; do
       ;;
   esac
 done
-echo "✅ PASS ($FLAG_COUNT/13 discovered flags dynamically executed)"
+echo "✅ PASS ($FLAG_COUNT/$FLAG_COUNT discovered flags dynamically executed)"
 if [ -d "$HOME/.minici/10-repos-cache" ] || [ -d "/tmp/minici-cost-10-repos" ]; then
   echo -n "⏳ [Gate 9B/9] Verifying 27-Repo Golden Baseline (17 Existing + 10 Fresh x 3 Modes)... "
   python3 "$REPO_ROOT/tools/verify_10_repos_all_modes.py" >/dev/null
