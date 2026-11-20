@@ -129,9 +129,6 @@ pub trait CiProvider {
             }
         }
 
-        let monthly_os_weighted_pool =
-            ((os_weighted_per_run * monthly_runs) * 100.0).round() / 100.0;
-
         // Public repository exemption for GitHub standard hosted runners ($0.00 unlimited!)
         if visibility == RepoVisibility::Public && self.provider_id() == "github-actions" {
             let net_public =
@@ -156,7 +153,23 @@ pub trait CiProvider {
             };
         }
 
-        let burn_pct = if pool_limit > 0.0 {
+        // GitLab Official Public OSS (`0.5x`) and Public Fork MR (`0.008x`) cost factors multiply compute-minute quota consumption!
+        let gl_cost_factor = if visibility == RepoVisibility::Public && self.provider_id() == "gitlab-ci" {
+            let is_fork_mr = env::var("MINICI_GITLAB_FORK_MR")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            if is_fork_mr {
+                0.008
+            } else {
+                0.50
+            }
+        } else {
+            1.0
+        };
+        let os_weighted_per_run = ((os_weighted_per_run * gl_cost_factor) * 100.0).round() / 100.0;
+        let monthly_os_weighted_pool = ((os_weighted_per_run * monthly_runs) * 100.0).round() / 100.0;
+
+        let burn_pct = if pool_limit > 0.0 && !pool_limit.is_infinite() {
             ((monthly_os_weighted_pool / pool_limit) * 100.0 * 10.0).round() / 10.0
         } else {
             0.0
@@ -174,12 +187,7 @@ pub trait CiProvider {
             }
         };
 
-        // Marginal pool burn (Fixes Bug #1 Paid-Tier Step-Cliff & Bug #7 Multi-OS Pool Drawdown):
-        // Sort eligible jobs so highest-value per pool-minute draws or chronological order burns cleanly:
-        // Linux (1x = $0.006/pool-min), Windows (2x = $0.005/pool-min), macOS (10x = $0.0062/pool-min).
         let mut remaining_pool = if tier_mode == "paid" {
-            // Explicit `--tier paid` models pure sticker compute when user opts out of free pool,
-            // EXCEPT when tier_mode == "auto" or "free" where included quota is always deducted marginally!
             0.0
         } else {
             pool_limit
@@ -187,7 +195,7 @@ pub trait CiProvider {
 
         let mut overage_std_usd = 0.0_f64;
         for (job_mins, mult, rate) in eligible_buckets {
-            let m = mult.max(1.0);
+            let m = (mult * gl_cost_factor).max(0.0001);
             let needed_pool = job_mins * m;
             if remaining_pool >= needed_pool {
                 remaining_pool -= needed_pool;
@@ -195,7 +203,7 @@ pub trait CiProvider {
                 let covered_job_mins = remaining_pool / m;
                 remaining_pool = 0.0;
                 let billable_overage_mins = (job_mins - covered_job_mins).max(0.0);
-                overage_std_usd += billable_overage_mins * rate;
+                overage_std_usd += billable_overage_mins * rate * gl_cost_factor;
             }
         }
 
@@ -309,13 +317,14 @@ impl CiProvider for GitHubProvider {
     }
     fn plan_pool_minutes(&self, tier_mode: &str) -> f64 {
         match tier_mode {
-            "team" => 3000.0,
+            "pro" | "team" => 3000.0,
             "enterprise" => 50000.0,
             _ => 2000.0,
         }
     }
     fn plan_included_storage_gb(&self, tier_mode: &str) -> f64 {
         match tier_mode {
+            "pro" => 1.0,
             "team" => 2.0,
             "enterprise" => 50.0,
             _ => 0.5,
@@ -554,6 +563,36 @@ fn regional_cloud_multiplier(region: &str) -> f64 {
     }
 }
 
+/// Fast `< 0.1 ms` lookup into `~/.minici/cloud_prices.json` used directly by `catalog.rs` and `engine.rs`
+/// when the user has synced live cloud prices (`minici catalog sync --cloud`). Returns `(od_hr, spot_hr, vcpus, ram_gb)`.
+pub fn load_cached_cloud_price(instance_type: &str, region: &str) -> Option<(f64, f64, u32, f64)> {
+    let cache_path = cloud_prices_cache_path();
+    if !cache_path.exists() {
+        return None;
+    }
+    let raw = fs::read_to_string(&cache_path).ok()?;
+    let lower_inst = instance_type.trim().to_ascii_lowercase();
+    let lower_reg = region.trim().to_ascii_lowercase();
+    for candidate_reg in [lower_reg.as_str(), "us-east-1"] {
+        let needle = format!("\"{}@{}\":", lower_inst, candidate_reg);
+        if let Some(idx) = raw.find(&needle) {
+            let sub = &raw[idx + needle.len()..];
+            if let Some(end_brace) = sub.find('}') {
+                let obj = &sub[..=end_brace];
+                if let (Some(od), Some(sp)) = (
+                    extract_num_field(obj, "od_hr"),
+                    extract_num_field(obj, "spot_hr"),
+                ) {
+                    let vcpus = extract_num_field(obj, "vcpus").unwrap_or(4.0) as u32;
+                    let ram_gb = extract_num_field(obj, "ram_gb").unwrap_or(8.0);
+                    return Some((od, sp, vcpus, ram_gb));
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Queries live upstream cloud pricing API when `allow_network == true` and caches into `~/.minici/cloud_prices.json`,
 /// falling back cleanly in `< 0.05 ms` to the embedded cloud catalog with regional adjustment when offline.
 pub fn resolve_cloud_instance_price(
@@ -566,31 +605,19 @@ pub fn resolve_cloud_instance_price(
     let cache_key = format!("{}@{}", lower_inst, lower_reg);
     let cache_path = cloud_prices_cache_path();
 
-    // 1. Check local `~/.minici/cloud_prices.json` hot cache first (< 0.1 ms)
-    if let Ok(raw) = fs::read_to_string(&cache_path) {
-        let needle = format!("\"{}\":", cache_key);
-        if let Some(idx) = raw.find(&needle) {
-            let sub = &raw[idx + needle.len()..];
-            if let Some(end_brace) = sub.find('}') {
-                let obj = &sub[..=end_brace];
-                if let (Some(od), Some(sp)) = (
-                    extract_num_field(obj, "od_hr"),
-                    extract_num_field(obj, "spot_hr"),
-                ) {
-                    let vcpus = extract_num_field(obj, "vcpus").unwrap_or(4.0) as u32;
-                    let ram_gb = extract_num_field(obj, "ram_gb").unwrap_or(8.0);
-                    return CloudInstanceQuote {
-                        vendor: infer_cloud_vendor(&lower_inst).to_string(),
-                        instance_type: lower_inst,
-                        region: lower_reg,
-                        vcpus,
-                        ram_gb,
-                        on_demand_hourly_usd: od,
-                        spot_hourly_usd: sp,
-                        source: "hot_cache".to_string(),
-                    };
-                }
-            }
+    // 1. Check local `~/.minici/cloud_prices.json` hot cache first (< 0.1 ms) when not forcing a live refresh
+    if !allow_network {
+        if let Some((od, sp, vcpus, ram_gb)) = load_cached_cloud_price(&lower_inst, &lower_reg) {
+            return CloudInstanceQuote {
+                vendor: infer_cloud_vendor(&lower_inst).to_string(),
+                instance_type: lower_inst,
+                region: lower_reg,
+                vcpus,
+                ram_gb,
+                on_demand_hourly_usd: od,
+                spot_hourly_usd: sp,
+                source: "hot_cache".to_string(),
+            };
         }
     }
 
@@ -607,13 +634,22 @@ pub fn resolve_cloud_instance_price(
                 "azure" => "Virtual Machines",
                 _ => "AmazonEC2",
             };
+            // Filter strictly to Linux Shared Used instances on AWS so Windows/Dedicated Host prices never pollute quotes
+            let attr_filters = if vendor == "aws" {
+                format!(
+                    "[{{ key: \\\"instanceType\\\", value: \\\"{}\\\" }}, {{ key: \\\"operatingSystem\\\", value: \\\"Linux\\\" }}, {{ key: \\\"tenancy\\\", value: \\\"Shared\\\" }}, {{ key: \\\"capacityStatus\\\", value: \\\"Used\\\" }}]",
+                    lower_inst
+                )
+            } else {
+                format!("[{{ key: \\\"instanceType\\\", value: \\\"{}\\\" }}]", lower_inst)
+            };
             let gql = format!(
-                "{{\"query\":\"{{ products(filter: {{ vendorName: \\\"{}\\\", service: \\\"{}\\\", region: \\\"{}\\\", attributeFilters: [{{ key: \\\"instanceType\\\", value: \\\"{}\\\" }}] }}) {{ prices(filter: {{ purchaseOption: \\\"on_demand\\\" }}) {{ USD }} }} }}\"}}",
-                vendor, service, lower_reg, lower_inst
+                "{{\"query\":\"{{ products(filter: {{ vendorName: \\\"{}\\\", service: \\\"{}\\\", region: \\\"{}\\\", attributeFilters: {} }}) {{ onDemand: prices(filter: {{ purchaseOption: \\\"on_demand\\\" }}) {{ USD }} spot: prices(filter: {{ purchaseOption: \\\"spot\\\" }}) {{ USD }} }} }}\"}}",
+                vendor, service, lower_reg, attr_filters
             );
             if let Ok(out) = Command::new("curl")
                 .args([
-                    "-sSL",
+                    "-fsSL",
                     "--connect-timeout",
                     "2",
                     "-m",
@@ -632,13 +668,28 @@ pub fn resolve_cloud_instance_price(
             {
                 if out.status.success() {
                     let body = String::from_utf8_lossy(&out.stdout);
-                    if let Some(usd_hr) = extract_graphql_usd_price(&body) {
+                    if let Some(usd_hr) = extract_named_graphql_usd(&body, "\"onDemand\":")
+                        .or_else(|| extract_graphql_usd_price(&body))
+                    {
                         if usd_hr > 0.0 && usd_hr < 500.0 {
                             let seed = lookup_infracost_cloud_spec(&lower_inst);
-                            let vcpus = seed.map(|s| s.vcpus).unwrap_or_else(|| resolve_runner_sku(&lower_inst).vcpus);
-                            let ram_gb = seed.map(|s| s.ram_gb).unwrap_or_else(|| resolve_runner_sku(&lower_inst).ram_gb);
-                            let spot_hr = (usd_hr * 0.33 * 10000.0).round() / 10000.0;
-                            persist_cloud_price_entry(&cache_path, &cache_key, usd_hr, spot_hr, vcpus, ram_gb);
+                            let vcpus = seed
+                                .map(|s| s.vcpus)
+                                .unwrap_or_else(|| resolve_runner_sku(&lower_inst).vcpus);
+                            let ram_gb = seed
+                                .map(|s| s.ram_gb)
+                                .unwrap_or_else(|| resolve_runner_sku(&lower_inst).ram_gb);
+                            let spot_hr = extract_named_graphql_usd(&body, "\"spot\":")
+                                .filter(|v| *v > 0.0 && *v < usd_hr)
+                                .unwrap_or_else(|| (usd_hr * 0.33 * 10000.0).round() / 10000.0);
+                            persist_cloud_price_entry(
+                                &cache_path,
+                                &cache_key,
+                                usd_hr,
+                                spot_hr,
+                                vcpus,
+                                ram_gb,
+                            );
                             return CloudInstanceQuote {
                                 vendor: vendor.to_string(),
                                 instance_type: lower_inst,
@@ -653,6 +704,23 @@ pub fn resolve_cloud_instance_price(
                     }
                 }
             }
+        }
+        // Even if API key is absent, persist regional embedded quote into hot-cache so `cloud_prices.json` is populated and verifiable
+        let reg_mult = regional_cloud_multiplier(&lower_reg);
+        if let Some(seed) = lookup_infracost_cloud_spec(&lower_inst) {
+            let od_hr = ((seed.on_demand_per_min_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
+            let sp_hr = ((seed.spot_per_min_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
+            persist_cloud_price_entry(&cache_path, &cache_key, od_hr, sp_hr, seed.vcpus, seed.ram_gb);
+            return CloudInstanceQuote {
+                vendor: infer_cloud_vendor(&lower_inst).to_string(),
+                instance_type: seed.instance_type.to_string(),
+                region: lower_reg,
+                vcpus: seed.vcpus,
+                ram_gb: seed.ram_gb,
+                on_demand_hourly_usd: od_hr,
+                spot_hourly_usd: sp_hr,
+                source: "hot_cache".to_string(),
+            };
         }
     }
 
@@ -717,6 +785,11 @@ fn extract_graphql_usd_price(body: &str) -> Option<f64> {
     rest[..end].parse::<f64>().ok()
 }
 
+fn extract_named_graphql_usd(body: &str, section_key: &str) -> Option<f64> {
+    let idx = body.find(section_key)?;
+    extract_graphql_usd_price(&body[idx + section_key.len()..])
+}
+
 fn persist_cloud_price_entry(
     cache_path: &Path,
     key: &str,
@@ -762,8 +835,9 @@ pub struct PlatformSwitchingVerdict {
     pub engineering_hours: f64,
     pub total_switching_cost_usd: f64,
     pub payback_months: f64,
+    pub three_year_net_benefit_usd: f64,
     pub meets_2x_annual_rule: bool,
-    pub verdict: &'static str, // "GO NOW" | "STRATEGIC" | "STAY" | "MORE EXPENSIVE"
+    pub verdict: &'static str, // "GO NOW" | "GO IF STRATEGIC" | "STAY" | "MORE EXPENSIVE"
 }
 
 pub fn compute_5layer_platform_switching_tco(
@@ -781,46 +855,75 @@ pub fn compute_5layer_platform_switching_tco(
             engineering_hours: 0.0,
             total_switching_cost_usd: 0.0,
             payback_months: 0.0,
+            three_year_net_benefit_usd: 0.0,
             meets_2x_annual_rule: false,
             verdict: "STAY",
         };
     }
 
-    // Layer 1 & 2: Pipeline YAML + Custom Action/Orb rewrite hours
-    let (base_h, per_wf_h) = if source_vendor.contains("jenkins") {
-        (60.0, 6.0)
-    } else if target_vendor.contains("buildkite") {
-        (50.0, 5.0)
+    // Layer 1: Auto-measured per-pipeline rewrite hours (14.0 base hrs × source friction × complexity)
+    let source_friction = if source_vendor.contains("jenkins") {
+        1.40
+    } else if source_vendor.contains("buildkite") || target_vendor.contains("buildkite") {
+        1.30
+    } else if source_vendor.contains("codebuild") {
+        1.25
+    } else if source_vendor.contains("gitlab") {
+        1.20
+    } else if source_vendor.contains("circleci") {
+        1.10
+    } else if source_vendor.contains("bitbucket") {
+        1.00
     } else {
-        (40.0, 4.0)
+        0.90
     };
-    let raw_conv_h = base_h + (workflow_count as f64) * per_wf_h;
-    // `minici-yaml-fixer` AST automation reduces YAML conversion labor by 35% on YAML-to-YAML transitions
+    let complexity_mult = if workflow_count <= 3 {
+        0.55
+    } else if workflow_count <= 15 {
+        1.00
+    } else {
+        1.35
+    };
+    let raw_conv_h = (workflow_count.max(1) as f64) * 14.0 * complexity_mult * source_friction;
+    // Automated YAML AST conversion reduces YAML-to-YAML rewrite labor by 35%
     let conv_h = if ast_autofix_available && !source_vendor.contains("jenkins") {
         raw_conv_h * 0.65
     } else {
         raw_conv_h
     };
-    // Layer 3: Developer onboarding / workflow training (~0.5h per active dev, capped at 40h)
-    let training_h = ((active_devs as f64) * 0.5).min(40.0);
-    // Layer 5: Secrets / OIDC / branch-protection platform setup (8h)
-    let platform_setup_h = 8.0;
+
+    // Layer 2: Developer onboarding & training (4.0 hrs/dev, capped at 120h)
+    let training_h = ((active_devs.max(1) as f64) * 4.0).min(120.0);
+
+    // Layer 3 & 4: Stage-aware parallel dual-run overlap + platform OIDC/secrets/runner setup
+    let (overlap_months, platform_setup_usd) = if active_devs <= 8 && current_monthly_tco_usd < 500.0 {
+        (0.50, 1200.0)
+    } else if active_devs <= 40 && current_monthly_tco_usd < 3000.0 {
+        (1.25, 4500.0)
+    } else {
+        (2.00, 8500.0)
+    };
+    let dual_run_overlap_usd = current_monthly_tco_usd * overlap_months;
+    let platform_setup_h = platform_setup_usd / loaded_hourly_rate_usd.max(1.0);
+
     let subtotal_h = conv_h + training_h + platform_setup_h;
-    // 20% FinOps risk & validation buffer
+    // Layer 5: 20% Unforeseen migration risk & validation buffer
     let total_eng_h = ((subtotal_h * 1.20) * 10.0).round() / 10.0;
-    // Layer 4: 2-week (0.5 month) parallel dual-run compute overlap
-    let dual_run_overlap_usd = current_monthly_tco_usd * 0.50;
-    let total_cost_usd =
-        (((total_eng_h * loaded_hourly_rate_usd) + dual_run_overlap_usd) * 100.0).round() / 100.0;
+    let subtotal_usd =
+        (conv_h + training_h) * loaded_hourly_rate_usd + dual_run_overlap_usd + platform_setup_usd;
+    let total_cost_usd = ((subtotal_usd * 1.20) * 100.0).round() / 100.0;
 
     let monthly_saving = current_monthly_tco_usd - target_monthly_tco_usd;
-    if monthly_saving <= 1.0 {
+    let three_yr_net = (((monthly_saving * 36.0) - total_cost_usd) * 100.0).round() / 100.0;
+
+    if monthly_saving <= 0.01 {
         return PlatformSwitchingVerdict {
             engineering_hours: total_eng_h,
             total_switching_cost_usd: total_cost_usd,
             payback_months: 0.0,
+            three_year_net_benefit_usd: three_yr_net,
             meets_2x_annual_rule: false,
-            verdict: if monthly_saving < 0.0 {
+            verdict: if monthly_saving < -0.01 {
                 "MORE EXPENSIVE"
             } else {
                 "STAY"
@@ -830,10 +933,10 @@ pub fn compute_5layer_platform_switching_tco(
 
     let payback = (((total_cost_usd / monthly_saving) * 100.0).round() / 100.0).min(120.0);
     let worth_2x = (monthly_saving * 12.0) >= (2.0 * total_cost_usd);
-    let verdict = if payback <= 6.0 {
+    let verdict = if payback < 18.0 && three_yr_net > 0.0 {
         "GO NOW"
-    } else if payback <= 18.0 {
-        "STRATEGIC"
+    } else if payback < 36.0 && three_yr_net > 0.0 {
+        "GO IF STRATEGIC"
     } else {
         "STAY"
     };
@@ -842,6 +945,7 @@ pub fn compute_5layer_platform_switching_tco(
         engineering_hours: total_eng_h,
         total_switching_cost_usd: total_cost_usd,
         payback_months: payback,
+        three_year_net_benefit_usd: three_yr_net,
         meets_2x_annual_rule: worth_2x,
         verdict,
     }

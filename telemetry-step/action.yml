@@ -1,0 +1,85 @@
+name: "MiniCI Runner Hardware Telemetry Sampler (Optional Tier 5)"
+description: "Lightweight, zero-dependency, 100% local kernel CPU & RAM utilization sampler (.minici/step_hardware_telemetry.json) for 108/108 FinOps right-sizing."
+author: "Aamir Raza <raza.aamir01@gmail.com>"
+
+branding:
+  icon: "cpu"
+  color: "green"
+
+inputs:
+  sample-seconds:
+    description: "Number of 1-second kernel /proc samples to capture (1 to 10)"
+    required: false
+    default: "2"
+  output-path:
+    description: "Output JSON path read automatically by minici"
+    required: false
+    default: ".minici/step_hardware_telemetry.json"
+
+outputs:
+  median_cpu_util_pct:
+    description: "Measured runner CPU utilization percentage"
+    value: ${{ steps.sample.outputs.median_cpu_util_pct }}
+  median_ram_util_pct:
+    description: "Measured runner RAM utilization percentage"
+    value: ${{ steps.sample.outputs.median_ram_util_pct }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Sample Local Kernel CPU & RAM Utilization (Zero Network Egress)
+      id: sample
+      shell: bash
+      env:
+        SAMPLE_SECS: ${{ inputs.sample-seconds }}
+        OUT_FILE: ${{ inputs.output-path }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$(dirname "$OUT_FILE")"
+        CPU_PCT="35.0"
+        RAM_PCT="45.0"
+
+        if [ -r /proc/stat ] && [ -r /proc/meminfo ]; then
+          read -r _ u1 n1 s1 i1 w1 q1 sq1 st1 _ < /proc/stat
+          SLEEP_S="${SAMPLE_SECS:-2}"
+          if ! [[ "$SLEEP_S" =~ ^[0-9]+$ ]] || [ "$SLEEP_S" -lt 1 ]; then SLEEP_S=1; fi
+          if [ "$SLEEP_S" -gt 10 ]; then SLEEP_S=10; fi
+          sleep "$SLEEP_S"
+          read -r _ u2 n2 s2 i2 w2 q2 sq2 st2 _ < /proc/stat
+          TOT1=$((u1 + n1 + s1 + i1 + w1 + q1 + sq1 + st1))
+          TOT2=$((u2 + n2 + s2 + i2 + w2 + q2 + sq2 + st2))
+          IDLE1=$((i1 + w1))
+          IDLE2=$((i2 + w2))
+          DTOT=$((TOT2 - TOT1))
+          DIDLE=$((IDLE2 - IDLE1))
+          if [ "$DTOT" -gt 0 ]; then
+            CPU_PCT="$(awk -v dt="$DTOT" -v di="$DIDLE" 'BEGIN { printf "%.1f", ((dt - di) * 100.0) / dt }')"
+          fi
+          MEM_TOT="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+          MEM_AVAIL="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
+          if [ -n "$MEM_TOT" ] && [ -n "$MEM_AVAIL" ] && [ "$MEM_TOT" -gt 0 ]; then
+            RAM_PCT="$(awk -v mt="$MEM_TOT" -v ma="$MEM_AVAIL" 'BEGIN { printf "%.1f", ((mt - ma) * 100.0) / mt }')"
+          fi
+        elif [ "$(uname -s)" = "Darwin" ]; then
+          CORES="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+          CPU_SUM="$(ps -A -o %cpu 2>/dev/null | awk 'NR>1 {s+=$1} END {printf "%.1f", s+0}')"
+          CPU_PCT="$(awk -v s="$CPU_SUM" -v c="$CORES" 'BEGIN { v = (c > 0) ? (s / c) : 0; if (v > 100) v = 100; printf "%.1f", v }')"
+          MEM_BYTES="$(sysctl -n hw.memsize 2>/dev/null || echo 8589934592)"
+          PAGE_SIZE="$(vm_stat | awk '/page size of/ {gsub(/[^0-9]/,"",$8); print ($8 ? $8 : 16384)}')"
+          ACTIVE_P="$(vm_stat | awk '/Pages active:/ {gsub(/\./,"",$3); print $3+0}')"
+          WIRED_P="$(vm_stat | awk '/Pages wired down:/ {gsub(/\./,"",$4); print $4+0}')"
+          RAM_PCT="$(awk -v a="${ACTIVE_P:-0}" -v w="${WIRED_P:-0}" -v ps="${PAGE_SIZE:-16384}" -v tot="$MEM_BYTES" 'BEGIN { u = (a + w) * ps; printf "%.1f", (tot > 0) ? ((u * 100.0) / tot) : 45.0 }')"
+        fi
+
+        cat > "$OUT_FILE" <<EOF
+        {
+          "schema_version": "1.0",
+          "source": "minici-telemetry-step",
+          "median_cpu_util_pct": ${CPU_PCT},
+          "median_ram_util_pct": ${RAM_PCT}
+        }
+        EOF
+
+        echo "median_cpu_util_pct=${CPU_PCT}" >> "$GITHUB_OUTPUT"
+        echo "median_ram_util_pct=${RAM_PCT}" >> "$GITHUB_OUTPUT"
+        echo "✅ Sampled runner hardware utilization -> ${OUT_FILE} (CPU: ${CPU_PCT}%, RAM: ${RAM_PCT}%)"

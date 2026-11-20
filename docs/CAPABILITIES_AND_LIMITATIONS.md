@@ -1,7 +1,7 @@
 # 🔬 MiniCI (`minici-cost-action`) — Capabilities, Math Models & Known Limitations
 
 This document provides complete engineering transparency into:
-1. **What `minici` computes** (all 20 unified CI/CD FinOps & engineering velocity models).
+1. **What `minici` computes** (all 24 unified CI/CD FinOps & engineering velocity models).
 2. **How build duration is calculated** (exact static step-level formula + overrides).
 3. **Standalone architecture proof** (zero runtime third-party CLIs or external pricing APIs).
 4. **Exact crash & failure boundaries** (where `minici` will fail or under/over-estimate).
@@ -60,35 +60,39 @@ jobs:
 
 ---
 
-## 3. All 20 Unified Cost & Engineering Velocity Models
+## 3. All 24 Unified Cost & Engineering Velocity Models
 
-`minici` evaluates 20 models simultaneously and applies **Strict Applicability Filtering** in CLI, Markdown, and HTML views (non-applicable `$0` hypothetical items are never dumped onto unrelated repositories; full telemetry is always available via `--format json`):
+`minici` evaluates 24 models simultaneously and applies **Strict Applicability Filtering** in CLI, Markdown, and HTML views (non-applicable `$0` hypothetical items are never dumped onto unrelated repositories; full telemetry is always available via `--format json`):
 
 ### Core CI/CD Invoice Components (`C1–C6`)
 1. **Build Minutes & Sub-Minute Rounding Tax (`build_minutes_cost`):** Linux/Windows/macOS minute split, OS free-tier multipliers (`1x` Linux, `2x` Windows, `10x` macOS), and whole-minute ceiling overhead.
 2. **Runner Compute & Self-Hosted Breakeven (`runner_cost`):** Hosted SaaS spend vs. right-sized cloud Spot/On-Demand VMs, always-on idle utilization %, and `5,000 mins/mo` self-hosted breakeven check.
-3. **Artifact Storage (`artifact_storage_cost`):** Steady-state GB accumulation using the workflow's actual `retention-days` (`$0.25/GB-month` hosted vs. object-storage lifecycle retention). Shown in summary only when `jobs_uploading_artifacts > 0`.
-4. **Concurrency & Parallelism Cap Tax (`parallelism_cost`):** Detects when concurrent matrix fan-out approaches or exceeds plan runner slot caps.
-5. **Log Retention & External SIEM Shipping (`log_retention_cost`):** Native vendor retention (`$0/mo`) vs. external log ingestion when log-shipping steps are detected.
+3. **Artifact Storage (`artifact_storage_cost`):** Steady-state GB accumulation using the workflow's actual `retention-days` (`$0.083/GB-month` 2026 GitHub Actions rate after plan storage allowance vs. object-storage lifecycle retention). Shown in summary only when `jobs_uploading_artifacts > 0`.
+4. **Concurrency & Parallelism Cap Tax (`parallelism_cost`):** Stage-by-stage `needs:` DAG concurrent job fan-out vs. plan runner slot caps.
+5. **Log Retention & External SIEM Shipping (`log_retention_cost`):** Native vendor retention (`$0/mo`) vs. external log ingestion strictly when log-shipping steps are detected.
 6. **Cloud VPC & NAT Gateway Egress (`cross_region_egress_cost`):** Shown only when self-hosted cloud VPC runners (`self-hosted`, `aws-*`, `gcp-*`, `azure-*`, `codebuild`) or cloud registry transfers are active (`$0/mo` on standard hosted SaaS runners).
 
 ### Hidden Engineering Payroll & Hygiene Models (`H1–H5`)
-7. **Developer Wait-Time & Context-Switch Loss (`developer_wait_time_cost`):** Critical-path wait cost at `--dev-hourly-rate` plus `40%` productive context-switch recovery loss.
+7. **Developer Wait-Time & Context-Switch Loss (`developer_wait_time_cost`):** Human PR critical-path wait cost at `--dev-hourly-rate` weighted by the `40%` DORA productive context-switch factor.
 8. **Immediate Failed-Build Rerun Cost (`failed_build_rerun_cost`):** Compute rerun waste + `8-minute` engineer triage cost per flaky failure.
-9. **Unrealized Dependency & Build Cache Savings (`build_cache_savings`):** Identifies uncached setup/build jobs and estimates monthly cache hit savings.
+9. **Unrealized Dependency & Build Cache Savings (`build_cache_savings`):** Identifies uncached setup/build jobs (respecting explicit `cache: false`) and estimates monthly cache hit savings.
 10. **Combined Flaky Test Velocity Drag (`flaky_test_ci_cd_tax`):** Immediate rerun waste + `2x` downstream merge-queue/review drag.
 11. **Branch Protection & Trigger Hygiene (`branch_protection_cost`):** Quantifies superseded PR push waste (missing `concurrency.cancel-in-progress: true`) and unfiltered docs-only push waste (missing `paths-ignore`).
 
-### Dynamic Team-Stage, Pipeline-Shape & Stack Intelligence (`S1–S5`, `P17–P20`)
+### Dynamic Team-Stage, Pipeline-Shape, Stack & Unit Economics (`S1–S5`, `P17–P20`, `M21–M24`)
 12. **Startup Stage & Hardware Payback (`startup_stage_cost`):** Implied active developer count and local Apple Silicon Mac mini runner payback months for macOS-heavy pipelines.
 13. **Scale-Up Recoverable Waste & Platform ROI (`scaleup_stage_cost`):** Total recoverable compute + wait-time dollars vs. dedicated platform engineering investment.
-14. **Enterprise Compliance & Audit Controls (`enterprise_compliance_cost`):** Regional data-residency multipliers and 1-year audit retention sizing.
+14. **Enterprise Compliance & Audit Controls (`enterprise_stage_cost`):** Regional data-residency multipliers and 1-year audit retention sizing (strictly gated to compliance/SIEM repos).
 15. **Monorepo Pipeline Shape & Affected-Only Graph (`monorepo_ci_cost`):** Detects `pnpm`/`nx`/`turborepo`/`cargo`/`go.work` workspaces and models affected-only graph execution savings.
 16. **Microservices Shared Setup Overhead (`microservices_ci_cost`):** Measures duplicated container/setup bootstrap share across jobs and unpinned template refs.
-17. **Multi-Vendor TCO Comparison (`vendor_tco_comparison`):** Compares monthly TCO across CI platforms and checks the `2x` annual engineering migration payback rule.
+17. **Multi-Vendor 5-Layer Switching TCO (`vendor_tco_comparison`):** Compares monthly TCO across 7 CI platforms + self-hosted fleets and evaluates 5-layer switching payback (`GO NOW`, `GO IF STRATEGIC`, `STAY`, or `MORE EXPENSIVE`).
 18. **6-Phase Build Breakdown (`build_phase_breakdown`):** Splits spend across Checkout, Dependencies, Compile, Test, Container/Package, and Deploy to rank the highest-ROI first optimization phase.
-19. **Workload Compute Profile & ARM64 Explorer (`compute_class_explorer`):** Classifies workloads (`compile-heavy`, `test-heavy`, `balanced-web-backend`, `io-bound`) and calculates eligible Linux `x86_64 -> ARM64` savings (`-37.5%` on GitHub Actions).
+19. **Workload Compute Profile & ARM64 Explorer (`compute_class_explorer`):** Classifies workloads (`compile-heavy`, `test-heavy`, `balanced-web-backend`, `io-bound`) and calculates eligible Linux `x86_64 -> ARM64` savings (`-16.7%` on standard 2-core `$0.006 -> $0.005/min`, `-33%` to `-39%` on Larger Runners).
 20. **Stack-Specific Economics (`stack_specific_economics`):** Detects primary language/build stack (`Rust`, `Node/TS`, `Python`, `Go`, `Java/JVM`, `Docker`, etc.) and recommends stack-native speed/cost levers.
+21. **Unit Economics & CODEOWNERS Chargeback (`unit_economics_and_chargeback`):** Computes `$/merged PR`, `$/deployment`, `$/active developer`, cadence-weighted cron spend, and top `CODEOWNERS` team attribution.
+22. **Spend Velocity Anomaly & Quota Exhaustion Forecast (`spend_anomaly_and_forecast`):** Flags `>= 1.50x` 7-day vs. prior 23-day burn spikes, projects end-of-month spend, forecasts free-tier exhaustion day, and counts jobs missing `timeout-minutes` (`360m` exposure).
+23. **Container Registry Storage & Egress Economics (`container_registry_economics`):** Models `GHCR` / `ECR` / `GAR` / `ACR` steady-state image accumulation and untagged retention cleanup savings.
+24. **Self-Hosted Fleet Off-Hours Idle Waste & Queue SLA Risk (`self_hosted_fleet_idle_and_sla`):** Quantifies nights/weekends (`128/168h`) idle capacity waste on always-on fleets and `p95 > 60s` runner queue SLA breach risk.
 
 ---
 

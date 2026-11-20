@@ -37,27 +37,32 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "⏳ Downloading ${ASSET} from ${REPO} (${VERSION})..."
-if curl -fsSL "${BASE_URL}/${ASSET}" -o "${TMP_DIR}/minici" 2>/dev/null; then
-  if curl -fsSL "${BASE_URL}/SHA256SUMS.txt" -o "${TMP_DIR}/SHA256SUMS.txt" 2>/dev/null; then
-    EXPECTED="$(grep " ${ASSET}\$" "${TMP_DIR}/SHA256SUMS.txt" | awk '{print $1}' || true)"
-    if [ -n "$EXPECTED" ]; then
-      if command -v sha256sum >/dev/null 2>&1; then
-        ACTUAL="$(sha256sum "${TMP_DIR}/minici" | awk '{print $1}')"
-      else
-        ACTUAL="$(shasum -a 256 "${TMP_DIR}/minici" | awk '{print $1}')"
-      fi
-      if [ "$EXPECTED" != "$ACTUAL" ]; then
-        echo "❌ Checksum mismatch for ${ASSET}! Expected ${EXPECTED}, got ${ACTUAL}"
-        exit 1
-      fi
-      echo "✅ Verified SHA-256 checksum (${ACTUAL:0:16}...)"
-    fi
+INSTALLED_PREBUILT=0
+if curl -fsSL "${BASE_URL}/${ASSET}" -o "${TMP_DIR}/minici" 2>/dev/null \
+  && curl -fsSL "${BASE_URL}/SHA256SUMS.txt" -o "${TMP_DIR}/SHA256SUMS.txt" 2>/dev/null; then
+  EXPECTED="$(grep " ${ASSET}\$" "${TMP_DIR}/SHA256SUMS.txt" | awk '{print $1}' || true)"
+  if [ -z "$EXPECTED" ]; then
+    echo "❌ Release asset ${ASSET} missing from SHA256SUMS.txt! Refusing unverified binary."
+    exit 1
   fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL="$(sha256sum "${TMP_DIR}/minici" | awk '{print $1}')"
+  else
+    ACTUAL="$(shasum -a 256 "${TMP_DIR}/minici" | awk '{print $1}')"
+  fi
+  if [ "$EXPECTED" != "$ACTUAL" ]; then
+    echo "❌ Checksum mismatch for ${ASSET}! Expected ${EXPECTED}, got ${ACTUAL}"
+    exit 1
+  fi
+  echo "✅ Verified SHA-256 checksum (${ACTUAL:0:16}...)"
   chmod +x "${TMP_DIR}/minici"
   rm -f "${INSTALL_DIR}/minici"
   mv "${TMP_DIR}/minici" "${INSTALL_DIR}/minici"
-else
-  echo "⚙️ Release asset not yet cached; compiling std-only Rust binary from source (< 2s)..."
+  INSTALLED_PREBUILT=1
+fi
+
+if [ "$INSTALLED_PREBUILT" = "0" ]; then
+  echo "⚙️ Verified release asset + SHA256SUMS.txt not yet cached; compiling std-only Rust binary from source (< 2s)..."
   git clone --depth 1 "https://github.com/${REPO}.git" "${TMP_DIR}/src"
   cargo build --release --manifest-path "${TMP_DIR}/src/crates/minici/Cargo.toml"
   rm -f "${INSTALL_DIR}/minici"

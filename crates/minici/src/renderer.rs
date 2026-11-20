@@ -276,11 +276,10 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         String::new()
     };
     out.push_str(&format!(
-        " • Dev Wait-Time    : {:.1}m critical path (${:.2}/run • ${:.2}/mo gross | ${:.2}/mo at 40% context-switch loss){}\n",
+        " • Dev Wait-Time    : {:.1}m critical path (${:.2}/run • ${:.2}/mo at 40% DORA context-switch loss){}\n",
         r.critical_path_wait_mins_per_run,
         r.dev_wait_cost_per_run_usd,
         r.monthly_dev_wait_cost_usd,
-        cc.monthly_productive_payroll_loss_usd,
         concurrency_suffix
     ));
 
@@ -329,14 +328,14 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
         hygiene_parts.push(format!(
             "Cache {}/{} jobs (caching {} uncached saves ~${:.2}/mo)",
             cc.jobs_with_cache,
-            cc.peak_concurrent_jobs_per_run,
+            r.total_expanded_matrix_jobs,
             cc.jobs_missing_cache,
             cc.monthly_unrealized_cache_savings_usd
         ));
     } else if cc.jobs_with_cache > 0 {
         hygiene_parts.push(format!(
             "Cache {}/{} jobs ({:.0}% est hit rate)",
-            cc.jobs_with_cache, cc.peak_concurrent_jobs_per_run, cc.estimated_cache_hit_rate_pct
+            cc.jobs_with_cache, r.total_expanded_matrix_jobs, cc.estimated_cache_hit_rate_pct
         ));
     }
     if cc.workflows_missing_concurrency_cancel > 0 && cc.monthly_superseded_run_waste_usd >= 1.0 {
@@ -496,14 +495,17 @@ pub fn render_breakdown_csv(r: &BreakdownReport) -> String {
 
 fn build_contextual_recommendation(r: &BreakdownReport) -> String {
     let cc = &r.cost_components;
+    let hosted_total_jobs = r
+        .total_expanded_matrix_jobs
+        .saturating_sub(cc.self_hosted_or_microvm_jobs_per_run);
     if cc.self_hosted_or_microvm_jobs_per_run > 0
-        && cc.self_hosted_or_microvm_jobs_per_run >= cc.hosted_concurrent_jobs_per_run
+        && cc.self_hosted_or_microvm_jobs_per_run >= hosted_total_jobs
     {
         if cc.jobs_uploading_artifacts > 0 && cc.configured_retention_days > 14 {
             return format!(
                 "Pipeline compute already optimized ({}/{} jobs on custom runners); set artifact `retention-days: 14` to cut storage from ${:.2}/mo to ${:.2}/mo",
                 cc.self_hosted_or_microvm_jobs_per_run,
-                cc.peak_concurrent_jobs_per_run,
+                r.total_expanded_matrix_jobs,
                 cc.monthly_vendor_storage_configured_usd,
                 cc.monthly_vendor_storage_14d_usd
             );
@@ -511,8 +513,8 @@ fn build_contextual_recommendation(r: &BreakdownReport) -> String {
         return format!(
             "Pipeline already optimized ({}/{} jobs on custom runners; remaining {} lightweight hosted job(s) are optimal as-is)",
             cc.self_hosted_or_microvm_jobs_per_run,
-            cc.peak_concurrent_jobs_per_run,
-            cc.hosted_concurrent_jobs_per_run
+            r.total_expanded_matrix_jobs,
+            hosted_total_jobs
         );
     }
 
@@ -604,7 +606,7 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
         hygiene_items.push(format!(
             "Cache {}/{} jobs (caching {} uncached saves ~${:.2}/mo)",
             cc.jobs_with_cache,
-            cc.peak_concurrent_jobs_per_run,
+            r.total_expanded_matrix_jobs,
             cc.jobs_missing_cache,
             cc.monthly_unrealized_cache_savings_usd
         ));
@@ -642,10 +644,52 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
             cc.best_first_optimization_payback_months
         ));
     }
+    if cc.jobs_missing_timeout_minutes_count > 0 && cc.hung_job_360m_worst_case_exposure_usd >= 5.0 {
+        hygiene_items.push(format!(
+            "{} job(s) missing timeout-minutes (${:.2} 6h hung-run exposure)",
+            cc.jobs_missing_timeout_minutes_count, cc.hung_job_360m_worst_case_exposure_usd
+        ));
+    }
+    if cc.spend_anomaly_alert_active {
+        hygiene_items.push(format!(
+            "Spend velocity {:.2}x baseline (proj EOM ${:.2}/mo)",
+            cc.burn_velocity_7d_vs_30d_ratio, cc.projected_eom_compute_usd
+        ));
+    }
     if !hygiene_items.is_empty() {
         extra_summary.push_str(&format!(
             "<p style=\"margin:6px 0 0\"><strong>Pipeline Hygiene:</strong> {}</p>",
             hygiene_items.join(" • ")
+        ));
+    }
+    if r.gross_monthly_compute_cost_usd > 0.0 && cc.cost_per_merged_pr_usd > 0.0 {
+        let mut econ_parts = vec![
+            format!("<strong>${:.2}</strong>/merged PR", cc.cost_per_merged_pr_usd),
+            format!(
+                "<strong>${:.2}</strong>/active dev/mo",
+                cc.cost_per_active_dev_monthly_usd
+            ),
+        ];
+        if cc.codeowners_detected && cc.top_codeowners_team != "unassigned" {
+            econ_parts.push(format!("Owner: <code>{}</code>", cc.top_codeowners_team));
+        }
+        if cc.container_images_built_count > 0 && cc.monthly_registry_storage_and_pull_usd > 0.0 {
+            econ_parts.push(format!(
+                "Container Registry: <strong>${:.2}/mo</strong> ({:.1} GB, {} image(s))",
+                cc.monthly_registry_storage_and_pull_usd,
+                cc.est_registry_storage_gb,
+                cc.container_images_built_count
+            ));
+        }
+        if cc.monthly_always_on_idle_waste_usd > 0.0 {
+            econ_parts.push(format!(
+                "Self-Hosted Idle: {:.0}% (<strong>${:.2}/mo</strong> waste)",
+                cc.off_hours_idle_capacity_pct, cc.monthly_always_on_idle_waste_usd
+            ));
+        }
+        extra_summary.push_str(&format!(
+            "<p style=\"margin:6px 0 0\"><strong>Unit Economics:</strong> {}</p>",
+            econ_parts.join(" • ")
         ));
     }
     format!(
@@ -786,7 +830,7 @@ fn render_applicable_summary_notes_markdown(r: &BreakdownReport) -> String {
         notes.push(format!(
             "- **Build Cache Opportunity:** `{}/{}` jobs cached; caching remaining `{}` job(s) saves **`~${:.2}/mo`** (`{:.0}-{:.0}%` typical for `{}`)",
             cc.jobs_with_cache,
-            cc.peak_concurrent_jobs_per_run,
+            r.total_expanded_matrix_jobs,
             cc.jobs_missing_cache,
             cc.monthly_unrealized_cache_savings_usd,
             cc.realistic_saving_pct_min,
@@ -1047,7 +1091,7 @@ pub fn generate_post_tool_use_launch_pack(feature_name: &str, sample_latency_us:
 - **Founder:** Aamir Raza (`raza.aamir01@gmail.com`)\n\
 - **Company / Project:** MiniCI — **Deterministic CI/CD FinOps & Workflow Economics**\n\
 - **50-Character Description:** Sub-ms Rust CI/CD cost breakdown & PR diff engine.\n\
-- **What we built (`{feature_name}`):** AI coding agents push 4x more commits per day, silently expanding CI matrices and burning runner budgets. We built `minici` 100% in **Rust** (`{sample_latency_us} µs` execution, zero runtime dependencies). Every `git push` or PR gets an instant `< 1 ms` receipt showing **Free-Tier Quota Burn %**, **Developer Wait-Time Dollars (`$65/hr` default)**, **Billed Compute Cost (with GitHub's 1-minute per-job ceiling rounding and macOS 10x multiplier)**, **Artifact Storage Optimization (`$0.25/GB-mo` vs `$0.023` S3)**, and **Self-Hosted Spot Break-Even (`5,000 mins/mo`)**.\n\n\
+- **What we built (`{feature_name}`):** AI coding agents push 4x more commits per day, silently expanding CI matrices and burning runner budgets. We built `minici` 100% in **Rust** (`{sample_latency_us} µs` execution, zero runtime dependencies). Every `git push` or PR gets an instant `< 1 ms` receipt showing **Free-Tier Quota Burn %**, **Developer Wait-Time Dollars (`$65/hr` default, 40% DORA context-switch loss)**, **Billed Compute Cost (with GitHub's 1-minute per-job ceiling rounding and macOS 10x multiplier)**, **Artifact Storage Optimization (`$0.083/GB-mo` vs `$0.023` S3)**, and **Self-Hosted Spot Break-Even (`5,000 mins/mo`)**.\n\n\
 ## 2. Product Hunt — Maker Launch Listing\n\
 - **Name:** MiniCI — Sub-Millisecond CI/CD Cost & PR Diff Engine\n\
 - **Maker Contact:** Aamir Raza (`raza.aamir01@gmail.com`)\n\
@@ -1055,7 +1099,7 @@ pub fn generate_post_tool_use_launch_pack(feature_name: &str, sample_latency_us:
 - **Maker Comment (Natural Voice):** Hey Product Hunt! AI coding agents are shipping code faster than ever, but CI/CD hasn't caught up—one tiny `strategy.matrix` edit in a PR can silently multiply your GitHub Actions or GitLab bill by 10x. I built `minici` in pure Rust (`{sample_latency_us} µs` execution, zero dependencies): it shows your exact Free Quota Burn %, Developer Wait-Time cost, and Per-PR Compute Invoice before merge.\n\n\
 ## 3. Reddit (`r/devops`, `r/rust`, `r/sre`) Technical Post (Natural Engineer Voice)\n\
 - **Title:** `I built a zero-dependency Rust CLI that expands GitHub/GitLab/CircleCI workflow matrices and calculates PR cost diffs in {sample_latency_us} µs`\n\
-- **Body:** GitHub Actions and GitLab CI only show you a lump-sum bill at the end of the month—they never tell you which PR or `strategy.matrix` change spiked your runner bill or burned your 2,000 free minutes. I wrote `minici` in pure Rust with an embedded zero-copy SKU catalog (supporting 1-minute per-job ceiling rounding, macOS 10x multipliers, `$0.25/GB` artifact storage tax, developer wait-time cost, and the 5,000 min/mo self-hosted break-even threshold). Always exits `0` so it never blocks a build. Feedback welcome: `raza.aamir01@gmail.com`.\n\n\
+- **Body:** GitHub Actions and GitLab CI only show you a lump-sum bill at the end of the month—they never tell you which PR or `strategy.matrix` change spiked your runner bill or burned your 2,000 free minutes. I wrote `minici` in pure Rust with an embedded zero-copy SKU catalog (supporting 1-minute per-job ceiling rounding, macOS 10x multipliers, `$0.083/GB-mo` artifact storage overage, developer wait-time cost, and the 5,000 min/mo self-hosted break-even threshold). Always exits `0` so it never blocks a build. Feedback welcome: `raza.aamir01@gmail.com`.\n\n\
 ## 4. LinkedIn — Founder Build-in-Public Post (Natural Staff SRE Voice)\n\
 - **Post:** AI coding agents expanded PR volume 4x, and one `strategy.matrix` change can silently multiply your GitHub Actions bill overnight. So I built **MiniCI (`minici`)** in pure Rust. In **{sample_latency_us} microseconds** (`< 1 ms`), it expands your CI matrices and posts the exact Per-PR & Monthly Cost Diff, Free-Tier Quota Burn %, and Developer Wait-Time cost right on the PR or local `pre-push` hook. Open-source CLI, Action, and MCP server (`Apache-2.0`). Reach out anytime at `raza.aamir01@gmail.com`.\n\n\
 ## 5. AI Coding Agent & IDE (`PreToolUse` / `PostToolUse` / MCP) Profile\n\

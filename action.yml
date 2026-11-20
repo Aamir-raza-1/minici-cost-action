@@ -140,6 +140,12 @@ outputs:
   jobs_missing_timeout_minutes_count:
     description: "Count of defined CI jobs missing an explicit timeout-minutes guardrail"
     value: ${{ steps.minici.outputs.jobs_missing_timeout_minutes_count }}
+  spend_anomaly_alert_active:
+    description: "True when 7-day burn velocity reaches >= 1.50x prior 23-day baseline"
+    value: ${{ steps.minici.outputs.spend_anomaly_alert_active }}
+  provenance_mode:
+    description: "Telemetry provenance mode (static_heuristic, live_telemetry, or invoice_reconciled)"
+    value: ${{ steps.minici.outputs.provenance_mode }}
 
 runs:
   using: "composite"
@@ -147,10 +153,24 @@ runs:
     - name: Run MiniCI Sub-Millisecond Rust CI/CD Cost Breakdown & PR Diff
       id: minici
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        MINICI_REPO_VISIBILITY: ${{ github.event.repository.visibility }}
+        ACTION_PATH: ${{ github.action_path }}
+        ACTION_REF: ${{ github.action_ref }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_COMPARE_TO: ${{ inputs.compare-to }}
+        INPUT_TIER: ${{ inputs.tier }}
+        INPUT_PRS_PER_WEEK: ${{ inputs.prs-per-week }}
+        INPUT_PUSHES_PER_PR: ${{ inputs.pushes-per-pr }}
+        INPUT_DEV_HOURLY_RATE: ${{ inputs.dev-hourly-rate }}
+        INPUT_LIVE_TELEMETRY: ${{ inputs.live-telemetry }}
+        INPUT_BILLING_CSV: ${{ inputs.billing-csv }}
+        INPUT_POST_PR_COMMENT: ${{ inputs.post-pr-comment }}
       run: |
-        BIN_PATH="${{ github.action_path }}/target/release/minici"
+        BIN_PATH="${ACTION_PATH}/target/release/minici"
         if ! "$BIN_PATH" --version >/dev/null 2>&1; then
-          mkdir -p "${{ github.action_path }}/target/release"
+          mkdir -p "${ACTION_PATH}/target/release"
           OS_RAW="$(uname -s)"
           ARCH_RAW="$(uname -m)"
           ASSET=""
@@ -158,55 +178,78 @@ runs:
           if [ "$OS_RAW" = "Linux" ] && { [ "$ARCH_RAW" = "aarch64" ] || [ "$ARCH_RAW" = "arm64" ]; }; then ASSET="minici-linux-aarch64"; fi
           if [ "$OS_RAW" = "Darwin" ] && [ "$ARCH_RAW" = "arm64" ]; then ASSET="minici-macos-aarch64"; fi
           if [ "$OS_RAW" = "Darwin" ] && [ "$ARCH_RAW" = "x86_64" ]; then ASSET="minici-macos-x86_64"; fi
-          if [ -n "$ASSET" ] && curl -fsSL "https://github.com/Aamir-raza-1/minici-cost-action/releases/latest/download/${ASSET}" -o "$BIN_PATH" 2>/dev/null; then
-            chmod +x "$BIN_PATH"
+          REL_BASE="https://github.com/Aamir-raza-1/minici-cost-action/releases/latest/download"
+          if [[ "${ACTION_REF:-}" == v* ]]; then
+            REL_BASE="https://github.com/Aamir-raza-1/minici-cost-action/releases/download/${ACTION_REF}"
           fi
+          TMP_DL="$(mktemp -d)"
+          if [ -n "$ASSET" ] && curl -fsSL "${REL_BASE}/${ASSET}" -o "${TMP_DL}/${ASSET}" 2>/dev/null; then
+            VERIFIED_OK=0
+            if curl -fsSL "${REL_BASE}/SHA256SUMS.txt" -o "${TMP_DL}/SHA256SUMS.txt" 2>/dev/null; then
+              EXP_HASH="$(grep " ${ASSET}\$" "${TMP_DL}/SHA256SUMS.txt" | awk '{print $1}' || true)"
+              if command -v sha256sum >/dev/null 2>&1; then
+                ACT_HASH="$(sha256sum "${TMP_DL}/${ASSET}" | awk '{print $1}')"
+              else
+                ACT_HASH="$(shasum -a 256 "${TMP_DL}/${ASSET}" | awk '{print $1}')"
+              fi
+              if [ -n "$EXP_HASH" ] && [ "$EXP_HASH" = "$ACT_HASH" ]; then
+                VERIFIED_OK=1
+              fi
+            fi
+            if [ "$VERIFIED_OK" = "1" ]; then
+              rm -f "$BIN_PATH"
+              mv "${TMP_DL}/${ASSET}" "$BIN_PATH"
+              chmod +x "$BIN_PATH"
+            fi
+          fi
+          rm -rf "$TMP_DL"
         fi
         if ! "$BIN_PATH" --version >/dev/null 2>&1; then
-          cargo build --release --manifest-path "${{ github.action_path }}/crates/minici/Cargo.toml"
-          mkdir -p "${{ github.action_path }}/target/release"
-          cp "${{ github.action_path }}/crates/minici/target/release/minici" "$BIN_PATH"
+          cargo build --release --manifest-path "${ACTION_PATH}/crates/minici/Cargo.toml"
+          mkdir -p "${ACTION_PATH}/target/release"
+          rm -f "$BIN_PATH"
+          cp "${ACTION_PATH}/crates/minici/target/release/minici" "$BIN_PATH"
         fi
         EXTRA_BD_ARGS=()
-        if [ "${{ inputs.live-telemetry }}" = "true" ]; then
+        if [ "$INPUT_LIVE_TELEMETRY" = "true" ]; then
           EXTRA_BD_ARGS+=(--live)
         fi
-        if [ -n "${{ inputs.billing-csv }}" ]; then
-          EXTRA_BD_ARGS+=(--billing-csv "${{ inputs.billing-csv }}")
+        if [ -n "$INPUT_BILLING_CSV" ]; then
+          EXTRA_BD_ARGS+=(--billing-csv "$INPUT_BILLING_CSV")
         fi
         "$BIN_PATH" breakdown \
-          --path "${{ inputs.path }}" \
-          --tier "${{ inputs.tier }}" \
-          --prs-per-week "${{ inputs.prs-per-week }}" \
-          --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
-          --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+          --path "$INPUT_PATH" \
+          --tier "$INPUT_TIER" \
+          --prs-per-week "$INPUT_PRS_PER_WEEK" \
+          --pushes-per-pr "$INPUT_PUSHES_PER_PR" \
+          --dev-hourly-rate "$INPUT_DEV_HOURLY_RATE" \
           "${EXTRA_BD_ARGS[@]}" \
           --format table
         "$BIN_PATH" breakdown \
-          --path "${{ inputs.path }}" \
-          --tier "${{ inputs.tier }}" \
-          --prs-per-week "${{ inputs.prs-per-week }}" \
-          --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
-          --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+          --path "$INPUT_PATH" \
+          --tier "$INPUT_TIER" \
+          --prs-per-week "$INPUT_PRS_PER_WEEK" \
+          --pushes-per-pr "$INPUT_PUSHES_PER_PR" \
+          --dev-hourly-rate "$INPUT_DEV_HOURLY_RATE" \
           "${EXTRA_BD_ARGS[@]}" \
           --format markdown \
           --out-file .minici_breakdown.md \
           --quiet
-        if [ -n "${{ inputs.compare-to }}" ]; then
+        if [ -n "$INPUT_COMPARE_TO" ]; then
           "$BIN_PATH" diff \
-            --path "${{ inputs.path }}" \
-            --compare-to "${{ inputs.compare-to }}" \
+            --path "$INPUT_PATH" \
+            --compare-to "$INPUT_COMPARE_TO" \
             --format table
           "$BIN_PATH" diff \
-            --path "${{ inputs.path }}" \
-            --compare-to "${{ inputs.compare-to }}" \
+            --path "$INPUT_PATH" \
+            --compare-to "$INPUT_COMPARE_TO" \
             --format markdown \
             --out-file .minici_diff.md \
             --quiet
-          if [ "${{ inputs.post-pr-comment }}" = "true" ] && [ -n "${GITHUB_EVENT_PATH:-}" ]; then
+          if [ "$INPUT_POST_PR_COMMENT" = "true" ] && [ -n "${GITHUB_EVENT_PATH:-}" ]; then
             "$BIN_PATH" comment github \
-              --path "${{ inputs.path }}" \
-              --compare-to "${{ inputs.compare-to }}" \
+              --path "$INPUT_PATH" \
+              --compare-to "$INPUT_COMPARE_TO" \
               --event-path "$GITHUB_EVENT_PATH" \
               --behavior update \
               --post \
@@ -223,11 +266,11 @@ runs:
         fi
         if [ -n "${GITHUB_OUTPUT:-}" ]; then
           "$BIN_PATH" breakdown \
-            --path "${{ inputs.path }}" \
-            --tier "${{ inputs.tier }}" \
-            --prs-per-week "${{ inputs.prs-per-week }}" \
-            --pushes-per-pr "${{ inputs.pushes-per-pr }}" \
-            --dev-hourly-rate "${{ inputs.dev-hourly-rate }}" \
+            --path "$INPUT_PATH" \
+            --tier "$INPUT_TIER" \
+            --prs-per-week "$INPUT_PRS_PER_WEEK" \
+            --pushes-per-pr "$INPUT_PUSHES_PER_PR" \
+            --dev-hourly-rate "$INPUT_DEV_HOURLY_RATE" \
             "${EXTRA_BD_ARGS[@]}" \
             --format json \
             --out-file .minici_breakdown.json \
@@ -242,11 +285,11 @@ runs:
             wf("gross_monthly_compute_cost_usd", d.get("gross_monthly_compute_cost_usd", 0.0))
             wf("net_billed_monthly_compute_cost_usd", d.get("net_billed_monthly_compute_cost_usd", 0.0))
             wf("monthly_rounding_tax_usd", cc.get("build_minutes_cost", {}).get("monthly_rounding_tax_usd", 0.0))
-            ws("recommended_ec2_instance", cc.get("runner_cost", {}).get("infracost_recommended_ec2_instance", ""))
+            ws("recommended_ec2_instance", cc.get("runner_cost", {}).get("recommended_cloud_instance", ""))
             wf("artifact_storage_90d_usd", cc.get("artifact_storage_cost", {}).get("monthly_vendor_storage_90d_usd", 0.0))
             wf("parallelism_tier_upgrade_tax_usd", cc.get("parallelism_cost", {}).get("parallelism_tier_upgrade_tax_monthly_usd", 0.0))
-            wf("external_log_shipping_90d_usd", cc.get("log_retention_cost", {}).get("monthly_datadog_90d_log_shipping_usd", 0.0))
-            wf("nat_egress_worst_case_usd", cc.get("cross_region_egress_cost", {}).get("monthly_infracost_private_subnet_nat_worst_case_usd", 0.0))
+            wf("external_log_shipping_90d_usd", cc.get("log_retention_cost", {}).get("monthly_external_siem_90d_log_shipping_usd", 0.0))
+            wf("nat_egress_worst_case_usd", cc.get("cross_region_egress_cost", {}).get("monthly_private_subnet_nat_worst_case_usd", 0.0))
             wf("monthly_productive_payroll_loss_usd", cc.get("developer_wait_time_cost", {}).get("monthly_productive_payroll_loss_usd", 0.0))
             wf("monthly_total_immediate_flake_cost_usd", cc.get("failed_build_rerun_cost", {}).get("monthly_total_immediate_flake_cost_usd", 0.0))
             wf("monthly_unrealized_cache_savings_usd", cc.get("build_cache_savings", {}).get("monthly_unrealized_cache_savings_usd", 0.0))
@@ -271,5 +314,7 @@ runs:
             wf("cost_per_merged_pr_usd", cc.get("unit_economics_and_chargeback", {}).get("cost_per_merged_pr_usd", 0.0))
             wf("projected_eom_compute_usd", cc.get("spend_anomaly_and_forecast", {}).get("projected_eom_compute_usd", 0.0))
             ws("jobs_missing_timeout_minutes_count", cc.get("spend_anomaly_and_forecast", {}).get("jobs_missing_timeout_minutes_count", 0))
+            ws("spend_anomaly_alert_active", str(cc.get("spend_anomaly_and_forecast", {}).get("spend_anomaly_alert_active", False)).lower())
+            ws("provenance_mode", d.get("provenance_mode", "static_heuristic"))
         '
         fi

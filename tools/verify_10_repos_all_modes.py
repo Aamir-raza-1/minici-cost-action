@@ -247,8 +247,13 @@ def verify_official_math_and_edge_cases(breakdown_json: dict) -> dict:
         if comp_key not in cc:
             canonical_drifts.append(f"Missing cost_components.{comp_key} in JSON output")
     for ic_key in ("runner_cost", "artifact_storage_cost", "log_retention_cost", "cross_region_egress_cost"):
-        if not cc.get(ic_key, {}).get("infracost_delegated"):
-            canonical_drifts.append(f"Missing infracost_delegated=true on cost_components.{ic_key}")
+        if not cc.get(ic_key, {}).get("cloud_catalog_delegated"):
+            canonical_drifts.append(f"Missing cloud_catalog_delegated=true on cost_components.{ic_key}")
+
+    raw_json_low = json.dumps(breakdown_json).lower()
+    for forbidden in ("infracost", "datadog", "splunk", "codemagic", "cicdcost.com"):
+        if forbidden in raw_json_low:
+            canonical_drifts.append(f"First-party branding leak: '{forbidden}' found in JSON output")
 
     return {
         "canonical_drifts": canonical_drifts,
@@ -373,21 +378,21 @@ def validate_single_repo_all_modes(
         "dev_wait_mins": bd_data["critical_path_wait_mins_per_run"],
         "monthly_dev_wait_usd": bd_data["monthly_dev_wait_cost_usd"],
         "c1_rounding_tax_usd": cc["build_minutes_cost"]["monthly_rounding_tax_usd"],
-        "c2_ec2_instance": cc["runner_cost"]["infracost_recommended_ec2_instance"],
-        "c2_spot_monthly_usd": bd_data.get("monthly_self_hosted_spot_cost_usd", cc["runner_cost"]["infracost_ec2_on_demand_monthly_usd"]),
+        "c2_ec2_instance": cc["runner_cost"]["recommended_cloud_instance"],
+        "c2_spot_monthly_usd": bd_data.get("monthly_self_hosted_spot_cost_usd", cc["runner_cost"]["cloud_vm_on_demand_monthly_usd"]),
         "c2_always_on_utilization_pct": cc["runner_cost"]["always_on_runner_utilization_pct"],
         "c2_ephemeral_mode": cc["runner_cost"]["ephemeral_runner_recommended_mode"],
         "c2_spot_ineligible_jobs": cc["runner_cost"]["spot_ineligible_jobs_count"],
         "c2_hybrid_spot_od_monthly_usd": cc["runner_cost"]["hybrid_spot_plus_on_demand_monthly_usd"],
         "c3_artifact_90d_usd": cc["artifact_storage_cost"]["monthly_vendor_storage_90d_usd"],
-        "c3_artifact_s3_14d_usd": cc["artifact_storage_cost"]["monthly_infracost_s3_intelligent_14d_usd"],
+        "c3_artifact_s3_14d_usd": cc["artifact_storage_cost"]["monthly_s3_intelligent_14d_usd"],
         "c4_parallelism_tax_usd": cc["parallelism_cost"]["parallelism_tier_upgrade_tax_monthly_usd"],
         "c4_matrix_profile": cc["parallelism_cost"]["detected_repo_matrix_profile"],
         "c4_conditional_pr_matrix_savings_usd": cc["parallelism_cost"]["conditional_pr_matrix_monthly_savings_usd"],
         "c5_log_profile": cc["log_retention_cost"]["detected_log_language_profile"],
-        "c5_datadog_90d_usd": cc["log_retention_cost"]["monthly_datadog_90d_log_shipping_usd"],
-        "c6_nat_worst_case_usd": cc["cross_region_egress_cost"]["monthly_infracost_private_subnet_nat_worst_case_usd"],
-        "c6_vpc_cache_opt_usd": cc["cross_region_egress_cost"]["monthly_infracost_vpc_endpoint_cache_optimized_usd"],
+        "c5_datadog_90d_usd": cc["log_retention_cost"]["monthly_external_siem_90d_log_shipping_usd"],
+        "c6_nat_worst_case_usd": cc["cross_region_egress_cost"]["monthly_private_subnet_nat_worst_case_usd"],
+        "c6_vpc_cache_opt_usd": cc["cross_region_egress_cost"]["monthly_vpc_endpoint_cache_optimized_usd"],
         "h1_productive_payroll_loss_usd": cc["developer_wait_time_cost"]["monthly_productive_payroll_loss_usd"],
         "h2_immediate_flake_cost_usd": cc["failed_build_rerun_cost"]["monthly_total_immediate_flake_cost_usd"],
         "h3_cached_jobs": cc["build_cache_savings"]["jobs_with_cache"],
@@ -872,6 +877,7 @@ def main():
             for repo_name, curr_vals in locked_deterministic.get(section_key, {}).items():
                 exp_vals = existing_golden.get(section_key, {}).get(repo_name)
                 if not exp_vals:
+                    deviations.append(f"{section_key}[{repo_name}]: missing repository entry in locked golden baseline")
                     continue
                 for k, v in curr_vals.items():
                     if k not in exp_vals:

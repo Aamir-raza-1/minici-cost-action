@@ -21,7 +21,8 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request &&
-       contains(github.event.comment.body, '@minici'))
+       contains(github.event.comment.body, '@minici') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -32,20 +33,30 @@ jobs:
       - name: Run MiniCI Sticky PR Diff or @minici Command Router
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINICI_REPO_VISIBILITY: ${{ github.event.repository.visibility }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          BASE_REF_DEFAULT: ${{ github.base_ref }}
         run: |
           cargo build --release --manifest-path crates/minici/Cargo.toml
-          BIN="./crates/minici/target/release/minici"
-          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+          BIN="$(pwd)/crates/minici/target/release/minici"
+          if [ "$EVENT_NAME" = "issue_comment" ]; then
+            PR_JSON="$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+            BASE_REF="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("base",{}).get("ref","main"))' <<< "$PR_JSON")"
+            git fetch origin "refs/pull/${PR_NUMBER}/head:minici-pr-head" "refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+            git checkout minici-pr-head
             "$BIN" comment github \
               --path . \
+              --compare-to "origin/${BASE_REF}" \
+              --pr "$PR_NUMBER" \
               --event-path "$GITHUB_EVENT_PATH" \
               --behavior new \
               --post
           else
             "$BIN" comment github \
               --path . \
-              --compare-to "origin/${{ github.base_ref }}" \
-              --pr "${{ github.event.pull_request.number }}" \
+              --compare-to "origin/${BASE_REF_DEFAULT}" \
+              --pr "$PR_NUMBER" \
               --behavior update \
               --post
           fi

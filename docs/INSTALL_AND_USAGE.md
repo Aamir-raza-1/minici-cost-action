@@ -1,6 +1,6 @@
 # 📘 MiniCI (`minici-cost-action`) — Installation & Complete Usage Guide
 
-This guide walks through every way to install and run `minici` (`v0.7.0`) as a **Local CLI**, **GitHub Action**, **Git Pre-Push Hook**, and **MCP Server for AI Coding Agents**.
+This guide walks through every way to install and run `minici` (`v0.8.0`) as a **Local CLI**, **GitHub Action**, **Git Pre-Push / MCP Hook**, and **`7`-Tool MCP Server for AI Coding Agents**.
 
 * ▶️ **Video Walkthrough (`.mp4`):** [`../web/how-to-install-and-use.mp4`](../web/how-to-install-and-use.mp4)
 * 📼 **Asciinema Recording (`.cast`):** [`../web/how-to-install-and-use.cast`](../web/how-to-install-and-use.cast)
@@ -21,7 +21,7 @@ cargo build --release --manifest-path crates/minici/Cargo.toml
 mkdir -p ~/.local/bin
 cp crates/minici/target/release/minici ~/.local/bin/minici
 minici --version
-# -> minici 0.7.0
+# -> minici 0.8.0
 ```
 
 ### Option B: Install via `cargo install`
@@ -154,18 +154,21 @@ jobs:
 | :--- | :---: | :--- |
 | `path` | `.` | Repository root or workflow directory |
 | `compare-to` | `""` | Optional base Git ref (e.g., `origin/main`) to also append a PR cost delta table |
-| `tier` | `auto` | Pricing tier mode (`auto`, `free`, or `paid`) |
+| `tier` | `auto` | Pricing tier mode (`auto`, `free`, `pro`, `team`, `enterprise`, or `paid`) |
 | `prs-per-week` | `25` | Pull requests per week for monthly run projection |
 | `pushes-per-pr` | `4` | Average pushes per pull request |
 | `dev-hourly-rate` | `65` | Developer hourly rate in USD for wait-time calculations |
+| `live-telemetry` | `false` | Sync live CI run history (`ETag 304` cached) before computing receipt |
+| `billing-csv` | `""` | Optional `FOCUS v1.1` or vendor billing CSV/TSV path for exact invoice reconciliation |
+| `post-pr-comment` | `false` | Post or update a single idempotent sticky PR comment (`<!-- minici-cost-comment -->`) |
 
 ---
 
-## 4. Shift-Left Git Pre-Push Hook & MCP Server
+## 4. Shift-Left Hooks & 7-Tool MCP Server
 
 Run `minici init-hooks --path .` inside any repository to scaffold:
-1. `.git/hooks/pre-push` — Prints a non-blocking `< 2 ms` cost delta receipt whenever `.github/workflows/` changes before `git push`.
-2. `.mcp.json` — Registers the stdio JSON-RPC 2.0 MCP server (`minici mcp --path .`) so AI agents can call `minici_breakdown`, `minici_diff`, and `minici_catalog` directly during workflow edits.
+1. `.minici/hooks.json` — Configures shift-left workflow cost-delta hook automation (`minici breakdown --hook pre-edit`).
+2. `.mcp.json` — Registers the stdio JSON-RPC 2.0 MCP server (`minici mcp --path .`) so AI agents can call all `7` live tools (`minici_breakdown`, `minici_diff`, `minici_sync_live`, `minici_permissions`, `minici_anomalies`, `minici_shrink`, and `minici_migrate`) directly during workflow edits.
 
 Test the MCP server directly from your shell:
 

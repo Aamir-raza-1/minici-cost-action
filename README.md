@@ -77,21 +77,25 @@ jobs:
 | :--- | :---: | :--- |
 | `path` | `.` | Path to repository root or workflow directory |
 | `compare-to` | `""` | Optional base Git ref (e.g., `origin/main`) to also render a Pull Request cost diff table |
-| `tier` | `auto` | Pricing tier mode (`auto`, `free`, or `paid`) |
+| `tier` | `auto` | Pricing tier (`auto`, `free`, `pro`, `team`, `enterprise`, or `paid`) |
 | `prs-per-week` | `25` | Pull requests per week for monthly run-rate projection |
 | `pushes-per-pr` | `4` | Average pushes per pull request |
 | `dev-hourly-rate` | `65` | Developer hourly engineering rate (`USD`) for wait-time cost |
+| `live-telemetry` | `false` | Sync live CI run history (`ETag 304` cached) before computing receipt |
+| `billing-csv` | `""` | Optional `FOCUS v1.1` or vendor billing CSV/TSV path for exact invoice reconciliation |
+| `post-pr-comment` | `false` | Post or update a single idempotent sticky PR comment (`<!-- minici-cost-comment -->`) |
 
 | Key Action Output (`steps.<id>.outputs.*`) | Description |
 | :--- | :--- |
 | `gross_monthly_compute_cost_usd` | Gross monthly CI/CD compute cost (`USD`) |
-| `net_billed_monthly_compute_cost_usd` | Net billed monthly CI/CD compute cost after free-tier allowance (`USD`) |
+| `net_billed_monthly_compute_cost_usd` | Net billed monthly CI/CD compute cost after plan/OSS allowance (`USD`) |
 | `monthly_rounding_tax_usd` | Monthly sub-minute ceiling rounding overhead (`USD`) |
-| `monthly_productive_payroll_loss_usd` | Monthly developer wait-time payroll loss at `40%` context-switch factor (`USD`) |
+| `monthly_productive_payroll_loss_usd` | Monthly developer wait-time payroll loss at `40%` DORA context-switch factor (`USD`) |
 | `arm64_migration_monthly_savings_usd` | Monthly compute savings from migrating eligible Linux `x64` jobs to `ARM64` (`USD`) |
-| `recoverable_ci_and_wait_monthly_usd` | Total monthly recoverable CI compute and developer wait-time waste (`USD`) |
-| `detected_stack_archetype` | Detected language/build stack archetype (`Rust`, `Node/TS`, `Python`, `Go`, `Docker`, etc.) |
-| *(+ 22 additional FinOps outputs)* | Full 29-output schema documented in [`action.yml`](action.yml) |
+| `cost_per_merged_pr_usd` | Unit economics cost per merged pull request (`USD`) |
+| `spend_anomaly_alert_active` | `true` when 7-day burn velocity exceeds `1.50x` prior 23-day baseline |
+| `provenance_mode` | Telemetry provenance (`static_heuristic`, `live_telemetry`, or `invoice_reconciled`) |
+| *(+ 26 additional FinOps outputs)* | Full `34`-output schema documented in [`action.yml`](action.yml); optional kernel CPU/RAM sampler in [`telemetry-step/action.yml`](telemetry-step/action.yml) |
 
 ---
 
@@ -119,31 +123,32 @@ mkdir -p ~/.local/bin && cp crates/minici/target/release/minici ~/.local/bin/min
 # 1. Instant executive cost, unit economics ($/PR) & quota summary (< 2 ms)
 minici breakdown --path .
 
-# 2. Sync live GitHub Actions telemetry (ETag 304 zero-quota cache) or reconcile a FOCUS v1.1 billing CSV
-minici sync --repo owner/repo
+# 2. Sync live CI telemetry (ETag 304 zero-quota cache) or reconcile a FOCUS v1.1 / vendor billing CSV
+minici telemetry pull --repo owner/repo
 minici breakdown --path . --live
 minici breakdown --path . --billing-csv ./billing-export.csv
 
 # 3. Verify Read-Only Least-Privilege Security (`Contents: None` + 108-attribute coverage receipt)
 minici permissions check --repo owner/repo
 
-# 4. Generate or apply comment-preserving surgical optimizations & safe ARM64 migrations
+# 4. Generate or apply comment-preserving surgical optimizations & 6-gate verified migrations
 minici shrink --path .
-minici migrate --path . --to arm64
+minici migrate --path . --to github-arm64
 
 # 5. Compare your feature branch against `main` BEFORE opening a Pull Request
 minici diff --path . --compare-to main
 
-# 3. Audit ANY public GitHub repository without cloning it first (cached in ~/.minici/cache/repos/)
+# 6. Audit ANY public GitHub repository without cloning it first (cached in ~/.minici/cache/repos/)
 minici breakdown --repo open-webui/open-webui
 minici breakdown --repo https://github.com/astral-sh/uv
 
-# 4. Export standalone HTML, JSON, CSV, or GitHub PR Markdown reports
+# 7. Export standalone HTML, JSON, CSV, or GitHub PR Markdown reports
 minici breakdown --path . --report ci-cost-report.html
 minici breakdown --path . --report ci-cost-report.json --quiet
 minici diff --path . --compare-to main --format markdown --out-file pr-comment.md
 
-# 5. Inspect compiled 7-provider SKU catalog or install Git pre-push + MCP hooks
+# 8. Query live/cached AWS/GCP/Azure VM Spot & On-Demand rates, SKU catalog, or install Git/MCP hooks
+minici cloud-price c7g.xlarge --region us-east-1
 minici catalog
 minici init-hooks --path .
 ```

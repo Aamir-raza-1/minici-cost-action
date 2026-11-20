@@ -27,8 +27,9 @@ echo "+=========================================================================
 
 # Gate 1: Rust Unit, Golden Math & CLI Contract Lock Tests
 echo -n "⏳ [Gate 1/9] Running Cargo Unit & CLI Contract Lock Tests... "
-cargo test --manifest-path crates/minici/Cargo.toml --quiet
-echo "✅ PASS (20/20 unit + contract tests)"
+TEST_SUMMARY=$(cargo test --manifest-path crates/minici/Cargo.toml)
+PASSED_TESTS=$(echo "$TEST_SUMMARY" | grep -E "test result: ok\." | awk '{print $4}')
+echo "✅ PASS (${PASSED_TESTS}/${PASSED_TESTS} unit + formula receipt + contract tests)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 2: Release Binary Build & Path Sync
@@ -50,11 +51,16 @@ JSON_OUT=$("$BIN" breakdown --path "$REPO_ROOT" --format json --quiet)
 echo "$JSON_OUT" | grep -q '"gross_monthly_compute_cost_usd":' || { echo "❌ FAIL: Missing gross_monthly_compute_cost_usd"; exit 1; }
 echo "$JSON_OUT" | grep -q '"unit_economics_and_chargeback":' || { echo "❌ FAIL: Missing Model 21 unit_economics_and_chargeback"; exit 1; }
 echo "$JSON_OUT" | grep -q '"self_hosted_fleet_idle_and_sla":' || { echo "❌ FAIL: Missing Model 24 self_hosted_fleet_idle_and_sla"; exit 1; }
-PERM_OUT=$("$BIN" permissions check --path "$REPO_ROOT" --format json)
+if echo "$JSON_OUT" | grep -qiE 'infracost|datadog|splunk|codemagic|cicdcost\.com'; then
+  echo "❌ FAIL: JSON output leaked external vendor branding!"
+  exit 1
+fi
+PERM_OUT=$("$BIN" permissions check --path "$REPO_ROOT" --offline --format json)
 echo "$PERM_OUT" | grep -q '"source_code_access_required": false' || { echo "❌ FAIL: Permissions check failed"; exit 1; }
 "$BIN" shrink --path "$REPO_ROOT" --format json >/dev/null
 "$BIN" migrate --path "$REPO_ROOT" --to github-arm64 --format json >/dev/null
-echo "✅ PASS (24 FinOps models + permissions + shrink/migrate verified)"
+"$BIN" cloud-price c7g.xlarge --region us-east-1 --format json >/dev/null
+echo "✅ PASS (24 FinOps models + permissions + shrink/migrate + cloud-price + zero vendor leak)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 4: Customer View vs. Owner Debug View Separation

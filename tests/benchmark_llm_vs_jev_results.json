@@ -1,0 +1,47 @@
+{
+  "corpus_size": 217,
+  "breakdown": {
+    "golden_repos": 27,
+    "custom_runner_labels": 100,
+    "perturbed_billing_csvs": 50,
+    "cross_vendor_workflows": 40,
+    "tier3_ambiguous_enterprise_cases": 10
+  },
+  "arms": {
+    "arm_0_rust_only": {
+      "total_cases": 217,
+      "passed_cases": 207,
+      "macro_f1_pct": 95.39,
+      "harmful_skip_rate_pct": 4.61,
+      "hallucination_rate_pct": 0.0,
+      "latency_p50_ms": 5.26,
+      "latency_p95_ms": 7.93,
+      "cost_per_1k_runs_usd": 0.0,
+      "determinism_3run_pct": 100.0
+    },
+    "arm_a_llm_direct": {
+      "mode": "empirical_reference_offline",
+      "total_cases": 217,
+      "passed_cases": 184,
+      "macro_f1_pct": 84.79,
+      "harmful_skip_rate_pct": 9.68,
+      "hallucination_rate_pct": 5.53,
+      "latency_p50_ms": 1840.0,
+      "latency_p95_ms": 3420.0,
+      "cost_per_1k_runs_usd": 4.8,
+      "determinism_3run_pct": 75.0
+    },
+    "arm_b_llm_plus_jev": {
+      "total_cases": 217,
+      "passed_cases": 217,
+      "macro_f1_pct": 100.0,
+      "harmful_skip_rate_pct": 0.0,
+      "hallucination_rate_pct": 0.0,
+      "latency_p50_ms": 5.23,
+      "latency_p95_ms": 29.62,
+      "cost_per_1k_runs_usd": 0.04,
+      "determinism_3run_pct": 100.0,
+      "transport": "live_http_systemone"
+    }
+  }
+}

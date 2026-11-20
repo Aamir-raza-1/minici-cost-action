@@ -86,11 +86,11 @@ pub fn infracost_ec2_runner_profile(
     has_linux_arm_only: bool,
     is_macos_only: bool,
 ) -> (&'static str, f64, f64, f64) {
-    if is_macos_only {
+    let base = if is_macos_only {
         (
             "mac2-m2pro.metal (Dedicated 24h) / Mac mini M4",
             0.900,
-            25.0,
+            657.0,
             0.900,
         )
     } else if has_linux_arm_only && max_vcpus <= 4 {
@@ -103,7 +103,14 @@ pub fn infracost_ec2_runner_profile(
         ("c5.2xlarge (8 vCPU / 16 GB)", 0.34, 245.0, 0.10)
     } else {
         ("c5.4xlarge (16 vCPU / 32 GB)", 0.68, 490.0, 0.17)
+    };
+    let inst_token = base.0.split_whitespace().next().unwrap_or("");
+    let reg = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+    if let Some((od_hr, spot_hr, _, _)) = crate::providers::load_cached_cloud_price(inst_token, &reg) {
+        let od_mo = ((od_hr * 730.0) * 100.0).round() / 100.0;
+        return (base.0, od_hr, od_mo, spot_hr);
     }
+    base
 }
 
 /// Per-vendor OS free-tier minute multiplier.
@@ -702,7 +709,17 @@ pub fn pricing_catalog_status() -> String {
     let p = overrides_file_path();
     if p.exists() {
         if let Ok(raw) = std::fs::read_to_string(&p) {
-            let count = raw.matches("\":").count().saturating_sub(1);
+            let count = raw
+                .lines()
+                .filter(|l| {
+                    let t = l.trim();
+                    t.starts_with('"')
+                        && t.contains("\":")
+                        && !t.starts_with("\"_")
+                        && !t.starts_with("\"updated_at\"")
+                        && !t.starts_with("\"source\"")
+                })
+                .count();
             return format!(
                 "Hot-Reload Active (~/.minici/pricing_overrides.json • {} SKUs + Dynamic Cloud VM Estimator)",
                 count
@@ -855,24 +872,36 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         }
     }
 
-    // 1. Exact Cloud Catalog Cloud Instance Catalog match (AWS EC2, GCP Compute Engine, Azure VM — zero custom vCPU guessing!)
-    if let Some(cloud) = lookup_infracost_cloud_spec(&lower) {
-        let mut s = RunnerSkuSpec {
-            provider: cloud.provider,
-            sku_label: cloud.instance_type,
-            os: "Linux",
-            arch: cloud.arch,
-            vcpus: cloud.vcpus,
-            ram_gb: cloud.ram_gb,
-            rate_per_min_usd: cloud.on_demand_per_min_usd,
-            ceil_to_whole_minute: false,
-            free_tier_mins_per_month: 0.0,
-            paid_team_included_mins: 0.0,
-            blacksmith_equiv_rate_usd: (cloud.vcpus as f64) * 0.0020,
-            self_hosted_spot_rate_usd: cloud.spot_per_min_usd,
-        };
-        apply_live_override(&mut s, raw_label);
-        return s;
+    // 1. Exact Cloud Instance Catalog match (AWS EC2, GCP Compute Engine, Azure VM — excluding managed `cloud-build` SaaS labels!)
+    if !lower.contains("cloudbuild") && !lower.contains("cloud-build") {
+        if let Some(cloud) = lookup_infracost_cloud_spec(&lower) {
+            let reg = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+            let (od_per_min, spot_per_min) =
+                if let Some((od_hr, sp_hr, _, _)) = crate::providers::load_cached_cloud_price(cloud.instance_type, &reg) {
+                    (
+                        ((od_hr / 60.0) * 100000.0).round() / 100000.0,
+                        ((sp_hr / 60.0) * 100000.0).round() / 100000.0,
+                    )
+                } else {
+                    (cloud.on_demand_per_min_usd, cloud.spot_per_min_usd)
+                };
+            let mut s = RunnerSkuSpec {
+                provider: cloud.provider,
+                sku_label: cloud.instance_type,
+                os: "Linux",
+                arch: cloud.arch,
+                vcpus: cloud.vcpus,
+                ram_gb: cloud.ram_gb,
+                rate_per_min_usd: od_per_min,
+                ceil_to_whole_minute: false,
+                free_tier_mins_per_month: 0.0,
+                paid_team_included_mins: 0.0,
+                blacksmith_equiv_rate_usd: (cloud.vcpus as f64) * 0.0020,
+                self_hosted_spot_rate_usd: spot_per_min,
+            };
+            apply_live_override(&mut s, raw_label);
+            return s;
+        }
     }
 
     let is_arm = lower.contains("arm")
@@ -909,26 +938,54 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         } else {
             EMBEDDED_SKU_CATALOG[10].clone()
         }
-    } else if lower.contains("circleci") || lower.starts_with("docker-") {
-        let mut s = if lower.contains("large") {
-            EMBEDDED_SKU_CATALOG[15].clone()
+    } else if lower.contains("circleci")
+        || lower.starts_with("docker-")
+        || lower.starts_with("macos.m")
+        || lower.starts_with("arm.")
+    {
+        if lower.contains("macos") {
+            let mut s = EMBEDDED_SKU_CATALOG[29].clone();
+            if lower.contains("large") {
+                s.sku_label = "macos.m2pro.large";
+                s.vcpus = 12;
+                s.ram_gb = 30.0;
+                s.rate_per_min_usd = 0.180;
+                scale_equiv_rates_for_vcpus(&mut s);
+            } else if lower.contains("m2pro") {
+                s.sku_label = "macos.m2pro.medium";
+            }
+            s
+        } else if lower.contains("arm") {
+            let mut s = EMBEDDED_SKU_CATALOG[30].clone();
+            if lower.contains("large") {
+                s.sku_label = "arm.large";
+                s.vcpus = 4;
+                s.ram_gb = 16.0;
+                s.rate_per_min_usd = 0.0156;
+                scale_equiv_rates_for_vcpus(&mut s);
+            }
+            s
         } else {
-            EMBEDDED_SKU_CATALOG[14].clone()
-        };
-        if lower.contains("2xlarge") {
-            s.sku_label = "docker-2xlarge";
-            s.vcpus = 16;
-            s.ram_gb = 32.0;
-            s.rate_per_min_usd = 0.048;
-            scale_equiv_rates_for_vcpus(&mut s);
-        } else if lower.contains("xlarge") {
-            s.sku_label = "docker-xlarge";
-            s.vcpus = 8;
-            s.ram_gb = 16.0;
-            s.rate_per_min_usd = 0.024;
-            scale_equiv_rates_for_vcpus(&mut s);
+            let mut s = if lower.contains("large") {
+                EMBEDDED_SKU_CATALOG[15].clone()
+            } else {
+                EMBEDDED_SKU_CATALOG[14].clone()
+            };
+            if lower.contains("2xlarge") {
+                s.sku_label = "docker-2xlarge";
+                s.vcpus = 16;
+                s.ram_gb = 32.0;
+                s.rate_per_min_usd = 0.048;
+                scale_equiv_rates_for_vcpus(&mut s);
+            } else if lower.contains("xlarge") {
+                s.sku_label = "docker-xlarge";
+                s.vcpus = 8;
+                s.ram_gb = 16.0;
+                s.rate_per_min_usd = 0.024;
+                scale_equiv_rates_for_vcpus(&mut s);
+            }
+            s
         }
-        s
     } else if lower.contains("bitbucket") {
         if lower.contains("32x") {
             let mut s = EMBEDDED_SKU_CATALOG[17].clone();
@@ -985,14 +1042,26 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         if lower.contains("build_lambda") {
             let mut s = EMBEDDED_SKU_CATALOG[18].clone();
             s.ceil_to_whole_minute = false;
+            let mem_gb = if lower.contains("10gb") {
+                10.0
+            } else if lower.contains("8gb") {
+                8.0
+            } else if lower.contains("4gb") {
+                4.0
+            } else if lower.contains("2gb") {
+                2.0
+            } else {
+                1.0
+            };
+            s.ram_gb = mem_gb;
             if is_arm {
                 s.sku_label = "BUILD_LAMBDA_ARM";
                 s.arch = "arm64";
-                s.rate_per_min_usd = 0.0006;
+                s.rate_per_min_usd = ((0.0006 * mem_gb) * 100000.0).round() / 100000.0;
             } else {
                 s.sku_label = "BUILD_LAMBDA_X86";
                 s.arch = "x86_64";
-                s.rate_per_min_usd = 0.0009;
+                s.rate_per_min_usd = ((0.0009 * mem_gb) * 100000.0).round() / 100000.0;
             }
             s
         } else if lower.contains("arm1") {
@@ -1255,12 +1324,120 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         s
     } else if is_arm {
         EMBEDDED_SKU_CATALOG[1].clone()
+    } else if matches!(
+        lower.as_str(),
+        "ubuntu-latest"
+            | "ubuntu-24.04"
+            | "ubuntu-22.04"
+            | "ubuntu-20.04"
+            | "linux"
+            | "docker"
+            | "default"
+    ) || lower.contains("ubuntu")
+    {
+        EMBEDDED_SKU_CATALOG[0].clone()
+    } else if let Some(jev_sku) = tier3_jev_systemone_runner_choice(raw_label) {
+        resolve_runner_sku(jev_sku)
     } else {
         EMBEDDED_SKU_CATALOG[0].clone()
     };
 
     apply_live_override(&mut resolved, raw_label);
     resolved
+}
+
+fn tier3_jev_systemone_runner_choice(raw_label: &str) -> Option<&'static str> {
+    let mode = std::env::var("MINICI_INTERNAL_REASONER").unwrap_or_default();
+    let explicit_url = std::env::var("MINICI_SYSTEMONE_URL")
+        .ok()
+        .or_else(|| std::env::var("JEV_SYSTEMONE_URL").ok())
+        .filter(|u| !u.trim().is_empty());
+    if mode != "llm_plus_jev" && explicit_url.is_none() {
+        return None;
+    }
+    let endpoint = explicit_url.unwrap_or_else(|| "http://127.0.0.1:8000/v1/systemone".to_string());
+    let choices = [
+        "ubuntu-latest",
+        "ubuntu-24.04-arm",
+        "ubuntu-4-core",
+        "ubuntu-8-core",
+        "ubuntu-16-core",
+        "macos-latest",
+        "gpu-t4-4-core",
+        "self-hosted-linux-x64",
+    ];
+    let choices_json = choices
+        .iter()
+        .map(|c| format!("\"{}\"", c))
+        .collect::<Vec<_>>()
+        .join(",");
+    let safe_lbl = raw_label.trim().replace('\\', "\\\\").replace('"', "\\\"");
+    if let Some(fpath) = endpoint.strip_prefix("file://") {
+        let raw_dict = std::fs::read_to_string(fpath).ok()?;
+        let key_needle = format!("\"{}\":", safe_lbl);
+        let idx = raw_dict.find(&key_needle)?;
+        let sub = &raw_dict[idx + key_needle.len()..];
+        let end = sub.find('}').map(|e| e + 1).unwrap_or(sub.len());
+        let entry = &sub[..end];
+        if extract_json_score(entry).unwrap_or(1.0) < 0.80 {
+            return None;
+        }
+        for &c in &choices {
+            let pat1 = format!("\"choice\":\"{}\"", c);
+            let pat2 = format!("\"choice\": \"{}\"", c);
+            if entry.contains(&pat1) || entry.contains(&pat2) {
+                return Some(c);
+            }
+        }
+        return None;
+    }
+    let payload = format!(
+        "{{\"prompt\":\"Classify ambiguous CI runner pool label '{}' to canonical SKU.\",\"choice\":[{}],\"noul\":true,\"score\":true}}",
+        safe_lbl, choices_json
+    );
+    let out = std::process::Command::new("curl")
+        .args([
+            "-fsSL",
+            "--connect-timeout",
+            "1",
+            "-m",
+            "2",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            &payload,
+            &endpoint,
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let body = String::from_utf8_lossy(&out.stdout);
+    if extract_json_score(&body).unwrap_or(1.0) < 0.80 {
+        return None;
+    }
+    for &c in &choices {
+        let pat1 = format!("\"choice\":\"{}\"", c);
+        let pat2 = format!("\"choice\": \"{}\"", c);
+        let pat3 = format!("\"result\":\"{}\"", c);
+        if body.contains(&pat1) || body.contains(&pat2) || body.contains(&pat3) {
+            return Some(c);
+        }
+    }
+    None
+}
+
+fn extract_json_score(raw: &str) -> Option<f64> {
+    let idx = raw.find("\"score\":")?;
+    let rest = raw[idx + 8..].trim_start();
+    let num: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
+        .collect();
+    num.parse::<f64>().ok()
 }
 
 #[cfg(test)]
@@ -1315,10 +1492,13 @@ mod tests {
         assert_eq!(cb.vcpus, 8);
         assert!(cb.ceil_to_whole_minute);
 
-        let cb_lambda = resolve_runner_sku("BUILD_LAMBDA_ARM_2GB");
-        assert_eq!(cb_lambda.provider, "aws-codebuild");
-        assert!(!cb_lambda.ceil_to_whole_minute);
-        assert!((cb_lambda.rate_per_min_usd - 0.0006).abs() < 1e-6);
+        let cb_lambda_1g = resolve_runner_sku("BUILD_LAMBDA_ARM_1GB");
+        assert_eq!(cb_lambda_1g.provider, "aws-codebuild");
+        assert!(!cb_lambda_1g.ceil_to_whole_minute);
+        assert!((cb_lambda_1g.rate_per_min_usd - 0.0006).abs() < 1e-6);
+
+        let cb_lambda_2g = resolve_runner_sku("BUILD_LAMBDA_ARM_2GB");
+        assert!((cb_lambda_2g.rate_per_min_usd - 0.0012).abs() < 1e-6);
 
         let mac_xl = resolve_runner_sku("macos-15-xlarge");
         assert_eq!(mac_xl.vcpus, 12);

@@ -1,10 +1,11 @@
 //! Live Telemetry Collector (`--live` / `minici sync`), Pure-`std` HTTP `ETag 304` Cache,
-//! Atomic `.minici/telemetry.lock.json` (`< 1 ms` Warm Load), and 3-Tier Universal Billing CSV Normalizer
-//! (`crates/minici/src/telemetry.rs` — Zero External Crate Dependencies).
+//! Atomic `.minici/telemetry.lock.json` (`< 1 ms` Warm Load), Native GitLab/Bitbucket Telemetry Bridges,
+//! and 3-Tier Universal Billing CSV Normalizer (`crates/minici/src/telemetry.rs` — Zero External Dependencies).
 
+use crate::catalog::resolve_runner_sku;
 use crate::engine::json_escape;
 use crate::permissions::{discover_github_token, infer_repo_slug};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,7 @@ pub struct CanonicalTelemetrySnapshot {
     pub etag_304_hits: usize,
     pub rate_limit_remaining: u32,
     pub observed_monthly_runs: Option<f64>,
+    pub observed_human_pr_monthly_runs: Option<f64>,
     pub observed_runs_last_7d: Option<f64>,
     pub observed_runs_prev_23d: Option<f64>,
     pub observed_merged_prs_30d: Option<usize>,
@@ -37,6 +39,7 @@ pub struct CanonicalTelemetrySnapshot {
     pub invoice_net_billed_usd: Option<f64>,
     pub median_cpu_util_pct: Option<f64>,
     pub median_ram_util_pct: Option<f64>,
+    pub workflow_monthly_runs: Vec<(String, f64)>,
     pub job_durations_mins: Vec<(String, f64)>,
     pub real_phase_shares: Option<[f64; 6]>,
 }
@@ -60,6 +63,12 @@ impl CanonicalTelemetrySnapshot {
             v.map(|x| x.to_string())
                 .unwrap_or_else(|| "null".to_string())
         };
+        let wf_runs_json = self
+            .workflow_monthly_runs
+            .iter()
+            .map(|(k, v)| format!("{{\"workflow\":\"{}\",\"runs_30d\":{:.2}}}", json_escape(k), v))
+            .collect::<Vec<_>>()
+            .join(",");
         let jobs_json = self
             .job_durations_mins
             .iter()
@@ -77,7 +86,7 @@ impl CanonicalTelemetrySnapshot {
             .unwrap_or_else(|| "null".to_string());
 
         format!(
-            "{{\n  \"provenance_mode\": \"{}\",\n  \"repo_slug\": \"{}\",\n  \"visibility\": \"{}\",\n  \"synced_at_epoch_s\": {},\n  \"api_calls_used\": {},\n  \"etag_304_hits\": {},\n  \"rate_limit_remaining\": {},\n  \"observed_monthly_runs\": {},\n  \"observed_runs_last_7d\": {},\n  \"observed_runs_prev_23d\": {},\n  \"observed_merged_prs_30d\": {},\n  \"observed_deploys_30d\": {},\n  \"observed_active_devs_30d\": {},\n  \"observed_flake_rate_pct\": {},\n  \"observed_p95_queue_wait_sec\": {},\n  \"observed_off_hours_run_share_pct\": {},\n  \"observed_cache_active_gb\": {},\n  \"observed_artifact_storage_gb\": {},\n  \"observed_ghcr_storage_gb\": {},\n  \"invoice_gross_usd\": {},\n  \"invoice_discount_usd\": {},\n  \"invoice_net_billed_usd\": {},\n  \"median_cpu_util_pct\": {},\n  \"median_ram_util_pct\": {},\n  \"real_phase_shares\": {},\n  \"job_durations_mins\": [{}]\n}}\n",
+            "{{\n  \"provenance_mode\": \"{}\",\n  \"repo_slug\": \"{}\",\n  \"visibility\": \"{}\",\n  \"synced_at_epoch_s\": {},\n  \"api_calls_used\": {},\n  \"etag_304_hits\": {},\n  \"rate_limit_remaining\": {},\n  \"observed_monthly_runs\": {},\n  \"observed_human_pr_monthly_runs\": {},\n  \"observed_runs_last_7d\": {},\n  \"observed_runs_prev_23d\": {},\n  \"observed_merged_prs_30d\": {},\n  \"observed_deploys_30d\": {},\n  \"observed_active_devs_30d\": {},\n  \"observed_flake_rate_pct\": {},\n  \"observed_p95_queue_wait_sec\": {},\n  \"observed_off_hours_run_share_pct\": {},\n  \"observed_cache_active_gb\": {},\n  \"observed_artifact_storage_gb\": {},\n  \"observed_ghcr_storage_gb\": {},\n  \"invoice_gross_usd\": {},\n  \"invoice_discount_usd\": {},\n  \"invoice_net_billed_usd\": {},\n  \"median_cpu_util_pct\": {},\n  \"median_ram_util_pct\": {},\n  \"real_phase_shares\": {},\n  \"workflow_monthly_runs\": [{}],\n  \"job_durations_mins\": [{}]\n}}\n",
             json_escape(&self.provenance_mode),
             json_escape(&self.repo_slug),
             json_escape(&self.visibility),
@@ -86,6 +95,7 @@ impl CanonicalTelemetrySnapshot {
             self.etag_304_hits,
             self.rate_limit_remaining,
             fmt_opt_f64(self.observed_monthly_runs),
+            fmt_opt_f64(self.observed_human_pr_monthly_runs),
             fmt_opt_f64(self.observed_runs_last_7d),
             fmt_opt_f64(self.observed_runs_prev_23d),
             fmt_opt_usize(self.observed_merged_prs_30d),
@@ -103,6 +113,7 @@ impl CanonicalTelemetrySnapshot {
             fmt_opt_f64(self.median_cpu_util_pct),
             fmt_opt_f64(self.median_ram_util_pct),
             phases_json,
+            wf_runs_json,
             jobs_json
         )
     }
@@ -119,11 +130,43 @@ impl CanonicalTelemetrySnapshot {
         Ok(dest)
     }
 
-    /// Sub-millisecond (`< 0.3 ms`) zero-allocation parser loading `.minici/telemetry.lock.json`.
+    /// Sub-millisecond (`< 0.3 ms`) zero-allocation parser loading `.minici/telemetry.lock.json`
+    /// (and merging `.minici/step_hardware_telemetry.json` kernel CPU/RAM metrics when present).
     pub fn load_lockfile(repo_dir: &Path) -> Option<Self> {
+        let base = if repo_dir.is_file() {
+            repo_dir.parent().unwrap_or(Path::new("."))
+        } else {
+            repo_dir
+        };
+        let hw_path = base.join(".minici").join("step_hardware_telemetry.json");
+        let hw_raw = fs::read_to_string(&hw_path).ok();
+
         let p = Self::lockfile_path(repo_dir);
-        let raw = fs::read_to_string(p).ok()?;
-        Some(Self::from_json_str(&raw))
+        if let Ok(raw) = fs::read_to_string(p) {
+            let mut snap = Self::from_json_str(&raw);
+            if let Some(ref hr) = hw_raw {
+                if snap.median_cpu_util_pct.is_none() {
+                    snap.median_cpu_util_pct = parse_num_field(hr, "median_cpu_util_pct");
+                }
+                if snap.median_ram_util_pct.is_none() {
+                    snap.median_ram_util_pct = parse_num_field(hr, "median_ram_util_pct");
+                }
+            }
+            return Some(snap);
+        }
+
+        if let Some(hr) = hw_raw {
+            let cpu = parse_num_field(&hr, "median_cpu_util_pct");
+            let ram = parse_num_field(&hr, "median_ram_util_pct");
+            if cpu.is_some() || ram.is_some() {
+                let mut snap = Self::from_json_str("{}");
+                snap.provenance_mode = "kernel_hardware_telemetry".to_string();
+                snap.median_cpu_util_pct = cpu;
+                snap.median_ram_util_pct = ram;
+                return Some(snap);
+            }
+        }
+        None
     }
 
     pub fn from_json_str(raw: &str) -> Self {
@@ -139,6 +182,7 @@ impl CanonicalTelemetrySnapshot {
             rate_limit_remaining: parse_num_field(raw, "rate_limit_remaining").unwrap_or(60.0)
                 as u32,
             observed_monthly_runs: parse_num_field(raw, "observed_monthly_runs"),
+            observed_human_pr_monthly_runs: parse_num_field(raw, "observed_human_pr_monthly_runs"),
             observed_runs_last_7d: parse_num_field(raw, "observed_runs_last_7d"),
             observed_runs_prev_23d: parse_num_field(raw, "observed_runs_prev_23d"),
             observed_merged_prs_30d: parse_num_field(raw, "observed_merged_prs_30d")
@@ -160,13 +204,44 @@ impl CanonicalTelemetrySnapshot {
             invoice_net_billed_usd: parse_num_field(raw, "invoice_net_billed_usd"),
             median_cpu_util_pct: parse_num_field(raw, "median_cpu_util_pct"),
             median_ram_util_pct: parse_num_field(raw, "median_ram_util_pct"),
+            workflow_monthly_runs: Vec::new(),
             job_durations_mins: Vec::new(),
             real_phase_shares: None,
         };
 
+        if let Some(p_idx) = raw.find("\"real_phase_shares\":") {
+            let after = raw[p_idx + 20..].trim_start();
+            if after.starts_with('[') {
+                if let Some(end_b) = after.find(']') {
+                    let nums: Vec<f64> = after[1..end_b]
+                        .split(',')
+                        .filter_map(|t| t.trim().parse::<f64>().ok())
+                        .collect();
+                    if nums.len() == 6 {
+                        s.real_phase_shares =
+                            Some([nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]]);
+                    }
+                }
+            }
+        }
+
+        if let Some(w_idx) = raw.find("\"workflow_monthly_runs\":") {
+            let after = &raw[w_idx..];
+            let section = after.find(']').map(|e| &after[..e]).unwrap_or(after);
+            for item in section.split("{\"workflow\":\"") {
+                if let Some(end_q) = item.find('"') {
+                    let wname = &item[..end_q];
+                    if let Some(r) = parse_num_field(item, "runs_30d") {
+                        s.workflow_monthly_runs.push((wname.to_string(), r));
+                    }
+                }
+            }
+        }
+
         if let Some(j_idx) = raw.find("\"job_durations_mins\":") {
             let after = &raw[j_idx..];
-            for item in after.split("{\"job\":\"") {
+            let section = after.find(']').map(|e| &after[..e]).unwrap_or(after);
+            for item in section.split("{\"job\":\"") {
                 if let Some(end_q) = item.find('"') {
                     let jname = &item[..end_q];
                     if let Some(m) = parse_num_field(item, "p50_mins") {
@@ -227,23 +302,40 @@ fn sanitize_url_key(url: &str) -> String {
 }
 
 #[allow(dead_code)]
-struct EtagHttpResponse {
-    status_code: u16,
-    was_304_hit: bool,
-    rate_remaining: Option<u32>,
-    body: String,
+pub struct EtagHttpResponse {
+    pub status_code: u16,
+    pub was_304_hit: bool,
+    pub rate_remaining: Option<u32>,
+    pub body: String,
 }
 
-fn github_get_with_etag(url: &str, token: Option<&str>) -> Option<EtagHttpResponse> {
+pub fn http_get_with_etag(
+    url: &str,
+    auth_header: Option<&str>,
+    accept_header: &str,
+) -> Option<EtagHttpResponse> {
+    http_get_with_etag_inner(url, auth_header, accept_header, true)
+}
+
+fn http_get_with_etag_inner(
+    url: &str,
+    auth_header: Option<&str>,
+    accept_header: &str,
+    use_cached_etag: bool,
+) -> Option<EtagHttpResponse> {
     let dir = etag_cache_dir();
     let _ = fs::create_dir_all(&dir);
     let key = sanitize_url_key(url);
     let etag_file = dir.join(format!("{}.etag", key));
     let body_file = dir.join(format!("{}.json", key));
-    let cached_etag = fs::read_to_string(&etag_file)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    let cached_etag = if use_cached_etag {
+        fs::read_to_string(&etag_file)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    } else {
+        None
+    };
 
     let mut cmd = Command::new("curl");
     cmd.args([
@@ -252,14 +344,14 @@ fn github_get_with_etag(url: &str, token: Option<&str>) -> Option<EtagHttpRespon
         "--connect-timeout",
         "2",
         "-m",
-        "5",
+        "6",
         "-H",
-        "Accept: application/vnd.github+json",
+        &format!("Accept: {}", accept_header),
         "-H",
-        "User-Agent: minici-telemetry-sync",
+        "User-Agent: minici-telemetry-sync/0.8.0",
     ]);
-    if let Some(tok) = token {
-        cmd.arg("-H").arg(format!("Authorization: Bearer {}", tok));
+    if let Some(hdr) = auth_header {
+        cmd.arg("-H").arg(hdr);
     }
     if let Some(ref et) = cached_etag {
         cmd.arg("-H").arg(format!("If-None-Match: {}", et));
@@ -271,7 +363,10 @@ fn github_get_with_etag(url: &str, token: Option<&str>) -> Option<EtagHttpRespon
         return None;
     }
     let raw = String::from_utf8_lossy(&out.stdout);
-    let (headers, body_part) = raw.split_once("\r\n\r\n").unwrap_or((&raw, ""));
+    let (headers, body_part) = raw
+        .split_once("\r\n\r\n")
+        .or_else(|| raw.split_once("\n\n"))
+        .unwrap_or((&raw, ""));
     let first_line = headers.lines().next().unwrap_or("");
     let status_code = first_line
         .split_whitespace()
@@ -302,6 +397,11 @@ fn github_get_with_etag(url: &str, token: Option<&str>) -> Option<EtagHttpRespon
                 body: cached_body,
             });
         }
+        // Cached body file missing on disk: delete stale `.etag` and re-fetch unconditionally
+        let _ = fs::remove_file(&etag_file);
+        if use_cached_etag {
+            return http_get_with_etag_inner(url, auth_header, accept_header, false);
+        }
     }
 
     if status_code == 200 {
@@ -321,6 +421,11 @@ fn github_get_with_etag(url: &str, token: Option<&str>) -> Option<EtagHttpRespon
     }
 
     None
+}
+
+fn github_get_with_etag(url: &str, token: Option<&str>) -> Option<EtagHttpResponse> {
+    let auth = token.map(|t| format!("Authorization: Bearer {}", t));
+    http_get_with_etag(url, auth.as_deref(), "application/vnd.github+json")
 }
 
 // =====================================================================================
@@ -356,11 +461,56 @@ pub fn parse_iso8601_utc_epoch(ts: &str) -> Option<(u64, u32, u32)> {
     Some((epoch, hour, weekday))
 }
 
-/// Syncs live GitHub Actions telemetry (`<= 12` API calls in Zero-Token Public mode; full cache/artifacts in Read-PAT mode)
-/// with `std::thread::scope` parallel requests and HTTP `ETag 304` zero-quota caching.
+fn classify_step_phase(step_name: &str) -> usize {
+    let low = step_name.to_ascii_lowercase();
+    if low.contains("checkout") || low.contains("clone") || low.contains("set up job") {
+        0 // Clone/Checkout
+    } else if low.contains("cache")
+        || low.contains("setup-")
+        || low.contains("install")
+        || low.contains("restore")
+        || low.contains("deps")
+    {
+        1 // Dependency Install
+    } else if low.contains("docker")
+        || low.contains("container")
+        || low.contains("image")
+        || low.contains("buildx")
+    {
+        4 // Docker Build/Push
+    } else if low.contains("test")
+        || low.contains("pytest")
+        || low.contains("jest")
+        || low.contains("vitest")
+        || low.contains("spec")
+    {
+        3 // Test Suite
+    } else if low.contains("deploy")
+        || low.contains("release")
+        || low.contains("upload")
+        || low.contains("post ")
+        || low.contains("complete job")
+    {
+        5 // Deploy/Cleanup
+    } else {
+        2 // Compile/Typecheck
+    }
+}
+
 pub fn sync_github_live_telemetry(
     repo_or_path: &str,
     save_dir: Option<&Path>,
+) -> Result<CanonicalTelemetrySnapshot, String> {
+    sync_github_live_telemetry_with_limit(repo_or_path, save_dir, 100)
+}
+
+/// Syncs live GitHub Actions telemetry (`<= 16` API calls in Zero-Token Public mode; full cache/artifacts in Read-PAT mode)
+/// with `std::thread::scope` parallel requests, per-workflow run cadence, SHA-verified flake detection,
+/// `steps[]` 6-phase timing, and HTTP `ETag 304` zero-quota caching.
+pub fn sync_github_live_telemetry_with_limit(
+    repo_or_path: &str,
+    save_dir: Option<&Path>,
+    max_runs: usize,
 ) -> Result<CanonicalTelemetrySnapshot, String> {
     let slug = infer_repo_slug(repo_or_path);
     if slug == "local/workspace" {
@@ -368,6 +518,7 @@ pub fn sync_github_live_telemetry(
     }
     let token = discover_github_token();
     let tok_ref = token.as_deref();
+    let per_page = max_runs.clamp(1, 100);
 
     let now_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -376,23 +527,26 @@ pub fn sync_github_live_telemetry(
 
     let repo_url = format!("https://api.github.com/repos/{}", slug);
     let runs_url = format!(
-        "https://api.github.com/repos/{}/actions/runs?per_page=50",
-        slug
+        "https://api.github.com/repos/{}/actions/runs?per_page={}",
+        slug, per_page
     );
     let pulls_url = format!(
-        "https://api.github.com/repos/{}/pulls?state=closed&per_page=30",
+        "https://api.github.com/repos/{}/pulls?state=closed&per_page=50",
         slug
     );
+    let cache_url = format!("https://api.github.com/repos/{}/actions/cache/usage", slug);
 
-    // Parallel fetch of core metadata + runs + PRs using pure `std::thread::scope`
-    let (repo_resp, runs_resp, pulls_resp) = std::thread::scope(|s| {
+    // Parallel fetch of core metadata + runs + PRs + cache/usage (works zero-token on public repos!)
+    let (repo_resp, runs_resp, pulls_resp, cache_resp) = std::thread::scope(|s| {
         let h1 = s.spawn(|| github_get_with_etag(&repo_url, tok_ref));
         let h2 = s.spawn(|| github_get_with_etag(&runs_url, tok_ref));
         let h3 = s.spawn(|| github_get_with_etag(&pulls_url, tok_ref));
+        let h4 = s.spawn(|| github_get_with_etag(&cache_url, tok_ref));
         (
             h1.join().ok().flatten(),
             h2.join().ok().flatten(),
             h3.join().ok().flatten(),
+            h4.join().ok().flatten(),
         )
     });
 
@@ -415,6 +569,7 @@ pub fn sync_github_live_telemetry(
     record_resp(&repo_resp);
     record_resp(&runs_resp);
     record_resp(&pulls_resp);
+    record_resp(&cache_resp);
 
     let visibility = repo_resp
         .as_ref()
@@ -430,61 +585,109 @@ pub fn sync_github_live_telemetry(
         .unwrap_or_else(|| "unknown".to_string());
 
     let mut monthly_runs = None;
+    let mut human_pr_monthly_runs = None;
     let mut runs_7d = None;
     let mut runs_prev_23d = None;
     let mut flake_pct = None;
     let mut deploys_30d = None;
     let mut active_devs_30d = None;
     let mut off_hours_pct = None;
-    let mut run_ids: Vec<String> = Vec::new();
+    let mut workflow_monthly_runs: Vec<(String, f64)> = Vec::new();
+    // Keep `(run_id, workflow_basename)` for stratified `/jobs` sampling (up to 12 calls -> <=16 total zero-token!)
+    let mut stratified_run_ids: Vec<(String, String)> = Vec::new();
+    let mut seen_wf_samples: HashMap<String, usize> = HashMap::new();
 
     if let Some(ref rr) = runs_resp {
         let mut timestamps: Vec<u64> = Vec::new();
+        let mut wf_counts: HashMap<String, usize> = HashMap::new();
+        let mut human_pr_runs = 0usize;
         let mut off_hours_count = 0usize;
-        let mut retry_runs = 0usize;
         let mut total_runs_parsed = 0usize;
         let mut deploy_count = 0usize;
         let mut actors: Vec<String> = Vec::new();
+        // Track `(wf_base, head_sha) -> (saw_fail_attempt1, saw_pass_retry_or_later)` for true SHA-verified flake rate!
+        let mut sha_outcomes: HashMap<(String, String), (bool, bool)> = HashMap::new();
+        let mut retry_success_count = 0usize;
 
         for chunk in rr.body.split("{\"id\":") {
-            if total_runs_parsed == 0 && !chunk.contains("\"run_number\":") {
-                continue;
-            }
             if !chunk.contains("\"run_number\":") {
                 continue;
             }
+            if total_runs_parsed >= max_runs {
+                break;
+            }
             total_runs_parsed += 1;
+
             let rid: String = chunk.chars().take_while(|c| c.is_ascii_digit()).collect();
-            if !rid.is_empty() && run_ids.len() < 4 {
-                run_ids.push(rid);
+            let wf_path = parse_str_field(chunk, "path").unwrap_or_default();
+            let wf_base = wf_path
+                .rsplit('/')
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("workflow.yml")
+                .to_string();
+            *wf_counts.entry(wf_base.clone()).or_insert(0) += 1;
+
+            let max_job_samples = if token.is_some() { 12 } else { 10 };
+            let wf_sample_cnt = seen_wf_samples.entry(wf_base.clone()).or_insert(0);
+            if !rid.is_empty() && stratified_run_ids.len() < max_job_samples && *wf_sample_cnt < 3 {
+                *wf_sample_cnt += 1;
+                stratified_run_ids.push((rid, wf_base.clone()));
             }
-            if let Some(att) = parse_num_field(chunk, "run_attempt") {
-                if att > 1.0 {
-                    retry_runs += 1;
+
+            let att = parse_num_field(chunk, "run_attempt").unwrap_or(1.0);
+            let conclusion = parse_str_field(chunk, "conclusion").unwrap_or_default();
+            let head_sha = parse_str_field(chunk, "head_sha").unwrap_or_default();
+            if !head_sha.is_empty() {
+                let entry = sha_outcomes.entry((wf_base.clone(), head_sha)).or_insert((false, false));
+                if conclusion == "failure" || conclusion == "timed_out" {
+                    entry.0 = true;
                 }
-            }
-            if let Some(ev) = parse_str_field(chunk, "event") {
-                if ev.contains("release") || ev.contains("deployment") {
-                    deploy_count += 1;
+                if conclusion == "success" && att > 1.0 {
+                    entry.1 = true;
+                    retry_success_count += 1;
+                } else if conclusion == "success" {
+                    entry.1 = true;
                 }
+            } else if att > 1.0 && conclusion == "success" {
+                retry_success_count += 1;
             }
-            if let Some(nm) = parse_str_field(chunk, "name") {
-                let low = nm.to_ascii_lowercase();
-                if low.contains("deploy") || low.contains("release") {
-                    deploy_count += 1;
-                }
+
+            let ev = parse_str_field(chunk, "event").unwrap_or_default();
+            let nm = parse_str_field(chunk, "name")
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            // Single non-double-counted deploy check per run
+            if ev == "release"
+                || ev == "deployment"
+                || nm.contains("deploy")
+                || nm.contains("release")
+            {
+                deploy_count += 1;
             }
+
+            let mut is_bot_actor = false;
             if let Some(act_idx) = chunk.find("\"actor\":") {
                 if let Some(login) = parse_str_field(&chunk[act_idx..], "login") {
-                    if !login.ends_with("[bot]") && !actors.contains(&login) {
+                    if login.ends_with("[bot]") || login.contains("dependabot") || login.contains("renovate") {
+                        is_bot_actor = true;
+                    } else if !actors.contains(&login) {
                         actors.push(login);
                     }
                 }
             }
+            if !is_bot_actor
+                && (ev == "pull_request"
+                    || ev == "pull_request_target"
+                    || ev == "push"
+                    || ev == "merge_group")
+            {
+                human_pr_runs += 1;
+            }
+
             if let Some(cat) = parse_str_field(chunk, "created_at") {
                 if let Some((ep, hr, wd)) = parse_iso8601_utc_epoch(&cat) {
                     timestamps.push(ep);
-                    // Weekend (Sun=0, Sat=6) or overnight UTC
                     if wd == 0 || wd == 6 || !(7..=20).contains(&hr) {
                         off_hours_count += 1;
                     }
@@ -494,11 +697,23 @@ pub fn sync_github_live_telemetry(
 
         if total_runs_parsed > 0 {
             timestamps.sort_unstable();
-            if let (Some(&oldest), Some(&newest)) = (timestamps.first(), timestamps.last()) {
-                let span_days = (((newest.saturating_sub(oldest)) as f64) / 86400.0).max(0.5);
-                let extrapolated_30d = ((total_runs_parsed as f64 / span_days) * 30.0).round();
-                monthly_runs = Some(extrapolated_30d.clamp(1.0, 250_000.0));
+            let span_days = if let (Some(&oldest), Some(&newest)) = (timestamps.first(), timestamps.last()) {
+                (((newest.saturating_sub(oldest)) as f64) / 86400.0).max(0.5)
+            } else {
+                30.0
+            };
+            let scale_30d = 30.0 / span_days;
+            let extrapolated_30d = ((total_runs_parsed as f64) * scale_30d).round();
+            monthly_runs = Some(extrapolated_30d.clamp(1.0, 250_000.0));
+            human_pr_monthly_runs =
+                Some((((human_pr_runs as f64) * scale_30d).round()).clamp(0.0, 250_000.0));
+
+            for (wf_name, cnt) in wf_counts {
+                let wf_30d = (((cnt as f64) * scale_30d) * 10.0).round() / 10.0;
+                workflow_monthly_runs.push((wf_name, wf_30d));
             }
+            workflow_monthly_runs.sort_by(|a, b| a.0.cmp(&b.0));
+
             let cutoff_7d = now_epoch.saturating_sub(7 * 86400);
             let cutoff_30d = now_epoch.saturating_sub(30 * 86400);
             let c7 = timestamps.iter().filter(|&&t| t >= cutoff_7d).count() as f64;
@@ -508,13 +723,18 @@ pub fn sync_github_live_telemetry(
                 .count() as f64;
             runs_7d = Some(c7);
             runs_prev_23d = Some(c23);
-            flake_pct =
-                Some((((retry_runs as f64 / total_runs_parsed as f64) * 100.0) * 10.0).round() / 10.0);
+
+            let sha_flakes = sha_outcomes.values().filter(|&&(f, p)| f && p).count();
+            let verified_flakes = sha_flakes.max(retry_success_count);
+            flake_pct = Some(
+                (((verified_flakes as f64 / total_runs_parsed as f64) * 100.0) * 10.0).round()
+                    / 10.0,
+            );
             off_hours_pct = Some(
                 (((off_hours_count as f64 / total_runs_parsed as f64) * 100.0) * 10.0).round()
                     / 10.0,
             );
-            deploys_30d = Some(deploy_count);
+            deploys_30d = Some(((deploy_count as f64) * scale_30d).round() as usize);
             if !actors.is_empty() {
                 active_devs_30d = Some(actors.len());
             }
@@ -541,30 +761,39 @@ pub fn sync_github_live_telemetry(
         merged_prs_30d = Some(merged);
     }
 
-    // Fetch job durations & queue wait times on up to 3 recent runs concurrently
+    // Fetch job durations, queue wait times & step phase timings across stratified runs concurrently
     let mut job_samples: HashMap<String, Vec<f64>> = HashMap::new();
     let mut queue_waits_sec: Vec<f64> = Vec::new();
-    if !run_ids.is_empty() {
-        let job_resps: Vec<Option<EtagHttpResponse>> = std::thread::scope(|s| {
-            let handles: Vec<_> = run_ids
+    let mut phase_seconds = [0.0_f64; 6];
+
+    if !stratified_run_ids.is_empty() {
+        let job_resps: Vec<(String, Option<EtagHttpResponse>)> = std::thread::scope(|s| {
+            let handles: Vec<_> = stratified_run_ids
                 .iter()
-                .take(3)
-                .map(|rid| {
+                .map(|(rid, wf_base)| {
                     let u = format!(
                         "https://api.github.com/repos/{}/actions/runs/{}/jobs?per_page=100",
                         slug, rid
                     );
-                    s.spawn(move || github_get_with_etag(&u, tok_ref))
+                    let wfb = wf_base.clone();
+                    s.spawn(move || (wfb, github_get_with_etag(&u, tok_ref)))
                 })
                 .collect();
-            handles.into_iter().map(|h| h.join().ok().flatten()).collect()
+            handles
+                .into_iter()
+                .filter_map(|h| h.join().ok())
+                .collect()
         });
 
-        for jr_opt in job_resps {
+        for (wf_base, jr_opt) in job_resps {
             record_resp(&jr_opt);
             if let Some(jr) = jr_opt {
                 for jchunk in jr.body.split("{\"id\":") {
                     if !jchunk.contains("\"started_at\":") || !jchunk.contains("\"completed_at\":") {
+                        continue;
+                    }
+                    let conclusion = parse_str_field(jchunk, "conclusion").unwrap_or_default();
+                    if conclusion == "skipped" {
                         continue;
                     }
                     let jname = parse_str_field(jchunk, "name").unwrap_or_default();
@@ -585,13 +814,53 @@ pub fn sync_github_live_telemetry(
                     if let (Some(st), Some(co)) = (started, completed) {
                         if co >= st && !jname.is_empty() {
                             let mins = ((co - st) as f64 / 60.0).max(0.05);
+                            // Store both `wf_base#jname` and `jname` for exact + matrix prefix matching
+                            job_samples
+                                .entry(format!("{}#{}", wf_base, jname))
+                                .or_default()
+                                .push(mins);
                             job_samples.entry(jname).or_default().push(mins);
+                        }
+                    }
+
+                    // Parse `steps[]` timestamps to populate real 6-phase shares (`Model 18`)
+                    if let Some(steps_idx) = jchunk.find("\"steps\":") {
+                        let steps_sub = &jchunk[steps_idx..];
+                        for schunk in steps_sub.split("{\"name\":") {
+                            if let Some(end_q) = schunk.trim_start().strip_prefix('"').and_then(|s| s.find('"')) {
+                                let s_inner = schunk.trim_start();
+                                let step_name = &s_inner[1..1 + end_q];
+                                let sst = parse_str_field(schunk, "started_at")
+                                    .and_then(|s| parse_iso8601_utc_epoch(&s))
+                                    .map(|x| x.0);
+                                let sco = parse_str_field(schunk, "completed_at")
+                                    .and_then(|s| parse_iso8601_utc_epoch(&s))
+                                    .map(|x| x.0);
+                                if let (Some(a), Some(b)) = (sst, sco) {
+                                    if b >= a {
+                                        let sec = (b - a) as f64;
+                                        let p_idx = classify_step_phase(step_name);
+                                        phase_seconds[p_idx] += sec;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+    let total_phase_sec: f64 = phase_seconds.iter().sum();
+    let real_phase_shares = if total_phase_sec >= 5.0 {
+        let mut shares = [0.0_f64; 6];
+        for i in 0..6 {
+            shares[i] = (((phase_seconds[i] / total_phase_sec) * 100.0) * 10.0).round() / 10.0;
+        }
+        Some(shares)
+    } else {
+        None
+    };
 
     let p95_queue_wait_sec = if !queue_waits_sec.is_empty() {
         queue_waits_sec.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -612,36 +881,33 @@ pub fn sync_github_live_telemetry(
         .collect();
     job_durations_mins.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Optional Read-PAT endpoints (`/actions/cache/usage` & `/actions/artifacts`)
     let mut cache_gb = None;
+    if let Some(cr) = cache_resp {
+        if let Some(bytes) = parse_num_field(&cr.body, "active_caches_size_in_bytes") {
+            cache_gb = Some(((bytes / 1_073_741_824.0) * 100.0).round() / 100.0);
+        }
+    }
+
+    // Fetch `/actions/artifacts` (works zero-token on public repos and with Read-PAT on private repos),
+    // filtering strictly to `"expired":false` (`T080`)!
     let mut artifact_gb = None;
-    if token.is_some() {
-        let cache_url = format!("https://api.github.com/repos/{}/actions/cache/usage", slug);
+    if visibility == "public" || token.is_some() {
         let art_url = format!(
-            "https://api.github.com/repos/{}/actions/artifacts?per_page=50",
+            "https://api.github.com/repos/{}/actions/artifacts?per_page=100",
             slug
         );
-        let (c_resp, a_resp) = std::thread::scope(|s| {
-            let h1 = s.spawn(|| github_get_with_etag(&cache_url, tok_ref));
-            let h2 = s.spawn(|| github_get_with_etag(&art_url, tok_ref));
-            (h1.join().ok().flatten(), h2.join().ok().flatten())
-        });
-        record_resp(&c_resp);
+        let a_resp = github_get_with_etag(&art_url, tok_ref);
         record_resp(&a_resp);
-        if let Some(cr) = c_resp {
-            if let Some(bytes) = parse_num_field(&cr.body, "active_caches_size_in_bytes") {
-                cache_gb = Some(((bytes / 1_073_741_824.0) * 100.0).round() / 100.0);
-            }
-        }
         if let Some(ar) = a_resp {
             let mut sum_bytes = 0.0_f64;
-            for ch in ar.body.split("\"size_in_bytes\":") {
-                let n: String = ch
-                    .trim_start()
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect();
-                if let Ok(b) = n.parse::<f64>() {
+            for achunk in ar.body.split("{\"id\":") {
+                if !achunk.contains("\"size_in_bytes\":") {
+                    continue;
+                }
+                if achunk.contains("\"expired\":true") || achunk.contains("\"expired\": true") {
+                    continue;
+                }
+                if let Some(b) = parse_num_field(achunk, "size_in_bytes") {
                     sum_bytes += b;
                 }
             }
@@ -658,6 +924,7 @@ pub fn sync_github_live_telemetry(
         etag_304_hits: hits_304,
         rate_limit_remaining: rate_rem,
         observed_monthly_runs: monthly_runs,
+        observed_human_pr_monthly_runs: human_pr_monthly_runs,
         observed_runs_last_7d: runs_7d,
         observed_runs_prev_23d: runs_prev_23d,
         observed_merged_prs_30d: merged_prs_30d,
@@ -674,8 +941,9 @@ pub fn sync_github_live_telemetry(
         invoice_net_billed_usd: None,
         median_cpu_util_pct: None,
         median_ram_util_pct: None,
+        workflow_monthly_runs,
         job_durations_mins,
-        real_phase_shares: None,
+        real_phase_shares,
     };
 
     if let Some(dir) = save_dir {
@@ -685,25 +953,231 @@ pub fn sync_github_live_telemetry(
 }
 
 // =====================================================================================
-// 3-Tier Universal Billing CSV Normalizer (`FOCUS v1.1`, GitHub Billing, CircleCI 44-Col, GitLab)
+// Native GitLab CI & Bitbucket Pipelines Telemetry -> Canonical `FOCUS v1.1` CSV Bridges
 // =====================================================================================
 
-fn split_csv_row(line: &str) -> Vec<String> {
+pub fn pull_gitlab_telemetry_csv(project_id_or_slug: &str, out_csv: &Path) -> Result<usize, String> {
+    let encoded = project_id_or_slug.replace('/', "%2F");
+    let url = format!(
+        "https://gitlab.com/api/v4/projects/{}/jobs?per_page=100",
+        encoded
+    );
+    let tok = env::var("GITLAB_TOKEN")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let auth = tok.map(|t| format!("PRIVATE-TOKEN: {}", t));
+    let resp = http_get_with_etag(&url, auth.as_deref(), "application/json")
+        .ok_or_else(|| format!("Failed to reach GitLab Jobs API for {}", project_id_or_slug))?;
+
+    let mut rows = vec![
+        "ChargePeriodStart,ServiceName,ResourceName,SkuId,ConsumedQuantity,ConsumedUnit,ListCost,BilledCost".to_string(),
+    ];
+    let mut count = 0usize;
+    for chunk in resp.body.split("{\"id\":") {
+        if !chunk.contains("\"duration\":") {
+            continue;
+        }
+        let dur_sec = parse_num_field(chunk, "duration").unwrap_or(0.0);
+        if dur_sec <= 0.0 {
+            continue;
+        }
+        let created = parse_str_field(chunk, "created_at").unwrap_or_else(|| "2026-11-01".to_string());
+        let date_part = created.get(0..10).unwrap_or("2026-11-01");
+        let tag_label = if let Some(t_idx) = chunk.find("\"tag_list\":[") {
+            let sub = &chunk[t_idx + 12..];
+            sub.find(']')
+                .map(|e| {
+                    sub[..e]
+                        .split(',')
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .trim_matches('"')
+                })
+                .filter(|s| !s.is_empty())
+                .unwrap_or("saas-linux-small-amd64")
+        } else {
+            "saas-linux-small-amd64"
+        };
+        let mins = dur_sec / 60.0;
+        let sku = resolve_runner_sku(tag_label);
+        let usd = mins * sku.rate_per_min_usd;
+        rows.push(format!(
+            "{},GitLab CI,{},{},{:.4},minutes,{:.4},{:.4}",
+            date_part, project_id_or_slug, sku.sku_label, mins, usd, usd
+        ));
+        count += 1;
+    }
+    if let Some(p) = out_csv.parent() {
+        let _ = fs::create_dir_all(p);
+    }
+    fs::write(out_csv, rows.join("\n") + "\n").map_err(|e| e.to_string())?;
+    Ok(count)
+}
+
+pub fn pull_bitbucket_telemetry_csv(ws_repo: &str, out_csv: &Path) -> Result<usize, String> {
+    let url = format!(
+        "https://api.bitbucket.org/2.0/repositories/{}/pipelines/?pagelen=50&sort=-created_on",
+        ws_repo.trim_matches('/')
+    );
+    let tok = env::var("BITBUCKET_TOKEN")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let auth = tok.map(|t| format!("Authorization: Bearer {}", t));
+    let resp = http_get_with_etag(&url, auth.as_deref(), "application/json")
+        .ok_or_else(|| format!("Failed to reach Bitbucket Pipelines API for {}", ws_repo))?;
+
+    let mut rows = vec![
+        "ChargePeriodStart,ServiceName,ResourceName,SkuId,ConsumedQuantity,ConsumedUnit,ListCost,BilledCost".to_string(),
+    ];
+    let mut count = 0usize;
+    for chunk in resp.body.split("\"uuid\":") {
+        if !chunk.contains("\"build_seconds_used\":") {
+            continue;
+        }
+        let build_sec = parse_num_field(chunk, "build_seconds_used").unwrap_or(0.0);
+        if build_sec <= 0.0 {
+            continue;
+        }
+        let created = parse_str_field(chunk, "created_on").unwrap_or_else(|| "2026-11-01".to_string());
+        let date_part = created.get(0..10).unwrap_or("2026-11-01");
+        let billed_mins = (build_sec / 60.0).ceil().max(1.0);
+        let usd = billed_mins * 0.010;
+        rows.push(format!(
+            "{},Bitbucket Pipelines,{},bitbucket-1x,{:.2},minutes,{:.4},{:.4}",
+            date_part, ws_repo, billed_mins, usd, usd
+        ));
+        count += 1;
+    }
+    if let Some(p) = out_csv.parent() {
+        let _ = fs::create_dir_all(p);
+    }
+    fs::write(out_csv, rows.join("\n") + "\n").map_err(|e| e.to_string())?;
+    Ok(count)
+}
+
+// =====================================================================================
+// 3-Tier Universal Billing CSV Normalizer (`FOCUS v1.1`, GitHub Legacy & Enhanced,
+// CircleCI 44-Col, GitLab, Bitbucket, 120+ Aliases + Tier-3 `/v1/systemone` Choice)
+// =====================================================================================
+
+fn split_delimited_row(line: &str, delim: char) -> Vec<String> {
     let mut cols = Vec::new();
     let mut cur = String::new();
     let mut in_quotes = false;
     for ch in line.chars() {
-        match ch {
-            '"' => in_quotes = !in_quotes,
-            ',' if !in_quotes => {
-                cols.push(cur.trim().to_string());
-                cur.clear();
-            }
-            _ => cur.push(ch),
+        if ch == '"' {
+            in_quotes = !in_quotes;
+        } else if ch == delim && !in_quotes {
+            cols.push(cur.trim().to_string());
+            cur.clear();
+        } else {
+            cur.push(ch);
         }
     }
     cols.push(cur.trim().to_string());
     cols
+}
+
+fn normalize_header_token(h: &str) -> String {
+    let mut out = String::new();
+    let mut prev_us = false;
+    for ch in h.trim().to_ascii_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            prev_us = false;
+        } else if (ch == ' ' || ch == '_' || ch == '-' || ch == '/' || ch == '.') && !prev_us && !out.is_empty() {
+            out.push('_');
+            prev_us = true;
+        }
+    }
+    out.trim_matches('_').to_string()
+}
+
+/// Optional Tier-3 Founder In-Built OSS `Jev` (`POST /v1/systemone`) constrained token-trie `choice`
+/// for completely non-standard customer spreadsheet headers when `MINICI_INTERNAL_REASONER=llm_plus_jev`
+/// or `MINICI_SYSTEMONE_URL` / `JEV_SYSTEMONE_URL` is explicitly configured.
+fn tier3_jev_systemone_column_choice(raw_header: &str, sample_val: &str) -> Option<&'static str> {
+    let mode = env::var("MINICI_INTERNAL_REASONER").unwrap_or_default();
+    let explicit_url = env::var("MINICI_SYSTEMONE_URL")
+        .ok()
+        .or_else(|| env::var("JEV_SYSTEMONE_URL").ok())
+        .filter(|u| !u.trim().is_empty());
+    if mode != "llm_plus_jev" && explicit_url.is_none() {
+        return None;
+    }
+    let endpoint = explicit_url.unwrap_or_else(|| "http://127.0.0.1:8000/v1/systemone".to_string());
+    let choices = [
+        "repository",
+        "workflow",
+        "sku",
+        "quantity",
+        "unit_type",
+        "unit_price",
+        "gross_amount",
+        "discount_amount",
+        "net_amount",
+        "duration_seconds",
+        "total_credits",
+        "cpu_utilization",
+        "ram_utilization",
+        "ignore",
+    ];
+    if let Some(fpath) = endpoint.strip_prefix("file://") {
+        let raw_dict = fs::read_to_string(fpath).ok()?;
+        let key_needle = format!("\"{}\":", json_escape(raw_header));
+        let idx = raw_dict.find(&key_needle)?;
+        let sub = &raw_dict[idx + key_needle.len()..];
+        let end = sub.find('}').map(|e| e + 1).unwrap_or(sub.len());
+        let entry = &sub[..end];
+        let score = parse_num_field(entry, "score").unwrap_or(1.0);
+        if score < 0.80 {
+            return None;
+        }
+        let picked = parse_str_field(entry, "choice")?;
+        return choices.into_iter().find(|&c| c == picked);
+    }
+    let choices_json = choices
+        .iter()
+        .map(|c| format!("\"{}\"", c))
+        .collect::<Vec<_>>()
+        .join(",");
+    let prompt = format!(
+        "Map CI FinOps CSV column header '{}' (sample '{}') to canonical FOCUS column.",
+        json_escape(raw_header),
+        json_escape(sample_val)
+    );
+    let payload = format!(
+        "{{\"prompt\":\"{}\",\"choice\":[{}],\"noul\":true,\"score\":true}}",
+        prompt, choices_json
+    );
+    let out = Command::new("curl")
+        .args([
+            "-fsSL",
+            "--connect-timeout",
+            "1",
+            "-m",
+            "2",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            &payload,
+            &endpoint,
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let body = String::from_utf8_lossy(&out.stdout);
+    let score = parse_num_field(&body, "score").unwrap_or(1.0);
+    if score < 0.80 {
+        return None;
+    }
+    let picked = parse_str_field(&body, "choice").or_else(|| parse_str_field(&body, "result"))?;
+    choices.into_iter().find(|&c| c == picked)
 }
 
 pub fn parse_universal_billing_csv(
@@ -711,53 +1185,238 @@ pub fn parse_universal_billing_csv(
     repo_filter: Option<&str>,
 ) -> Result<CanonicalTelemetrySnapshot, String> {
     let raw = fs::read_to_string(csv_path).map_err(|e| format!("Failed to read CSV: {}", e))?;
-    let mut lines = raw.lines().filter(|l| !l.trim().is_empty());
-    let header_line = lines
+    let mut non_empty = raw.lines().filter(|l| !l.trim().is_empty());
+    let header_line = non_empty
         .next()
         .ok_or_else(|| "Billing CSV is empty".to_string())?;
-    let headers: Vec<String> = split_csv_row(header_line)
-        .into_iter()
-        .map(|h| h.to_ascii_lowercase())
+    let delim = if header_line.contains('\t') && !header_line.contains(',') {
+        '\t'
+    } else {
+        ','
+    };
+    let raw_headers = split_delimited_row(header_line, delim);
+    let headers: Vec<String> = raw_headers
+        .iter()
+        .map(|h| normalize_header_token(h))
         .collect();
 
-    let col_idx = |names: &[&str]| -> Option<usize> {
+    let data_lines: Vec<&str> = non_empty.collect();
+    let sample_cols = data_lines
+        .first()
+        .map(|l| split_delimited_row(l, delim))
+        .unwrap_or_default();
+
+    // Exact match ALWAYS wins over substring match (fixes CircleCI `TOTAL_CREDITS` vs `COMPUTE_CREDITS`!)
+    let col_idx = |exact_names: &[&str], contains_names: &[&str]| -> Option<usize> {
+        if let Some(pos) = headers
+            .iter()
+            .position(|h| exact_names.iter().any(|n| h == n))
+        {
+            return Some(pos);
+        }
         headers
             .iter()
-            .position(|h| names.iter().any(|n| h == n || h.contains(n)))
+            .position(|h| contains_names.iter().any(|n| h.contains(n)))
     };
 
-    // Detect schema: GitHub Enhanced Billing, FOCUS v1.1, CircleCI 44-col, or Legacy GitHub
-    let idx_repo = col_idx(&["repository", "repo_name", "project_name", "resourcename"]);
-    let idx_gross = col_idx(&["gross_amount", "listcost", "total_cost"]);
-    let idx_disc = col_idx(&["discount_amount"]);
-    let idx_net = col_idx(&["net_amount", "billedcost", "effectivecost"]);
-    let idx_qty = col_idx(&["quantity", "consumedquantity", "minutes"]);
-    let idx_rate = col_idx(&["applied_cost_per_quantity", "price_per_unit", "unit_price"]);
-    let idx_credits = col_idx(&["total_credits", "credits"]);
-    let idx_cpu = col_idx(&["median_cpu_utilization_pct", "cpu_utilization"]);
-    let idx_ram = col_idx(&["median_ram_utilization_pct", "ram_utilization"]);
-    let idx_product = col_idx(&["product", "servicename"]);
-    let idx_sku = col_idx(&["sku", "unit_type", "resourcetype"]);
+    let mut idx_repo = col_idx(
+        &[
+            "repository",
+            "repository_slug",
+            "repo_slug",
+            "repo_name",
+            "project_name",
+            "project_path",
+            "project",
+            "resourcename",
+            "pipe_ref",
+        ],
+        &["repository", "repo_slug", "project_path"],
+    );
+    let idx_wf = col_idx(
+        &[
+            "actions_workflow_path",
+            "actions_workflow",
+            "workflow_name",
+            "workflow",
+            "pipeline_name",
+        ],
+        &["workflow"],
+    );
+    let mut idx_gross = col_idx(
+        &[
+            "gross_amount",
+            "listcost",
+            "list_cost",
+            "list_cost_usd",
+            "gross_usd",
+            "gross_cost",
+        ],
+        &["gross_amount", "listcost"],
+    );
+    let idx_disc = col_idx(
+        &["discount_amount", "discount_allowance_usd", "allowance_usd"],
+        &["discount"],
+    );
+    let mut idx_net = col_idx(
+        &[
+            "net_amount",
+            "billedcost",
+            "billed_cost",
+            "effectivecost",
+            "effective_cost",
+            "net_charge_usd",
+            "total_cost",
+            "total_usd",
+            "cost_usd",
+            "amount_usd",
+        ],
+        &["net_amount", "billedcost", "net_charge"],
+    );
+    let mut idx_qty = col_idx(
+        &[
+            "quantity",
+            "consumedquantity",
+            "consumed_quantity",
+            "compute_minutes_used",
+            "minutes",
+            "billed_minutes",
+            "usage_qty",
+        ],
+        &["consumedquantity", "compute_minutes"],
+    );
+    let mut idx_sec = col_idx(
+        &[
+            "job_run_seconds",
+            "build_seconds_used",
+            "duration_in_seconds",
+            "duration_seconds",
+            "shared_runner_duration_seconds",
+            "dur_sec",
+            "run_seconds",
+        ],
+        &["seconds"],
+    );
+    let idx_unit = col_idx(
+        &["unit_type", "consumedunit", "consumed_unit", "unit", "usage_unit"],
+        &["consumedunit", "unit_type"],
+    );
+    let mut idx_rate = col_idx(
+        &[
+            "applied_cost_per_quantity",
+            "price_per_unit",
+            "unit_price",
+            "rate_per_min_usd",
+            "price",
+        ],
+        &["price_per_unit", "applied_cost", "unit_price"],
+    );
+    // Strict priority: `total_credits` BEFORE `compute_credits`!
+    let mut idx_credits = col_idx(
+        &["total_credits", "credits", "credits_used"],
+        &["total_credits"],
+    );
+    let idx_dlc_credits = col_idx(&["dlc_credits"], &[]);
+    let idx_storage_credits = col_idx(&["storage_credits"], &[]);
+    let idx_network_credits = col_idx(&["network_credits"], &[]);
+    let idx_size_mult = col_idx(&["size_multiplier", "parallelism"], &["size_multiplier"]);
+    let mut idx_cpu = col_idx(
+        &[
+            "median_cpu_utilization_pct",
+            "cpu_utilization_pct",
+            "cpu_pct",
+            "avg_cpu_pct",
+        ],
+        &["median_cpu", "cpu_util"],
+    );
+    let mut idx_ram = col_idx(
+        &[
+            "max_ram_utilization_pct",
+            "median_ram_utilization_pct",
+            "ram_utilization_pct",
+            "ram_pct",
+            "mem_pct",
+        ],
+        &["ram_util", "median_ram"],
+    );
+    let idx_product = col_idx(
+        &["product", "servicename", "service_name", "service"],
+        &["servicename"],
+    );
+    let mut idx_sku = col_idx(
+        &[
+            "sku",
+            "skuid",
+            "sku_id",
+            "resource_class",
+            "runner_type",
+            "runner_label",
+            "exec_machine",
+            "machine_type",
+            "resourcetype",
+        ],
+        &["skuid", "resource_class", "runner_type"],
+    );
+
+    // Tier-3 optional `/v1/systemone` fallback for any still-unmapped ambiguous columns
+    if idx_net.is_none() && idx_gross.is_none() && idx_qty.is_none() && idx_sec.is_none() && idx_credits.is_none() {
+        for (i, raw_h) in raw_headers.iter().enumerate() {
+            let sval = sample_cols.get(i).map(|s| s.as_str()).unwrap_or("");
+            if let Some(mapped) = tier3_jev_systemone_column_choice(raw_h, sval) {
+                match mapped {
+                    "repository" if idx_repo.is_none() => idx_repo = Some(i),
+                    "sku" if idx_sku.is_none() => idx_sku = Some(i),
+                    "quantity" if idx_qty.is_none() => idx_qty = Some(i),
+                    "unit_price" if idx_rate.is_none() => idx_rate = Some(i),
+                    "gross_amount" if idx_gross.is_none() => idx_gross = Some(i),
+                    "net_amount" if idx_net.is_none() => idx_net = Some(i),
+                    "duration_seconds" if idx_sec.is_none() => idx_sec = Some(i),
+                    "total_credits" if idx_credits.is_none() => idx_credits = Some(i),
+                    "cpu_utilization" if idx_cpu.is_none() => idx_cpu = Some(i),
+                    "ram_utilization" if idx_ram.is_none() => idx_ram = Some(i),
+                    _ => {}
+                }
+            }
+        }
+    }
 
     let mut gross_sum = 0.0_f64;
     let mut disc_sum = 0.0_f64;
     let mut net_sum = 0.0_f64;
     let mut storage_gb_hours = 0.0_f64;
+    let mut storage_direct_gb = 0.0_f64;
     let mut ghcr_gb = 0.0_f64;
     let mut cpu_samples = Vec::new();
     let mut ram_samples = Vec::new();
+    let mut wf_row_counts: HashMap<String, usize> = HashMap::new();
+    let mut seen_repos: HashSet<String> = HashSet::new();
 
     let filter_norm = repo_filter
         .map(|s| s.trim().to_ascii_lowercase())
         .filter(|s| !s.is_empty() && s != "local/workspace" && s != ".");
 
-    for line in lines {
-        let cols = split_csv_row(line);
-        if let (Some(ir), Some(ref flt)) = (idx_repo, &filter_norm) {
+    for line in data_lines {
+        let cols = split_delimited_row(line, delim);
+        if let Some(ir) = idx_repo {
             if let Some(rval) = cols.get(ir) {
-                let rlow = rval.to_ascii_lowercase();
-                if !rlow.is_empty() && !rlow.contains(flt) && !flt.contains(&rlow) {
-                    continue;
+                let rlow = rval.trim().to_ascii_lowercase();
+                if !rlow.is_empty() {
+                    seen_repos.insert(rlow.clone());
+                    if let Some(ref flt) = filter_norm {
+                        let flt_short = flt.rsplit('/').next().unwrap_or(flt.as_str());
+                        if !rlow.contains(flt) && !flt.contains(&rlow) && rlow != flt_short {
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(iw) = idx_wf {
+            if let Some(wval) = cols.get(iw) {
+                let wbase = wval.rsplit('/').next().unwrap_or(wval.as_str()).trim();
+                if !wbase.is_empty() {
+                    *wf_row_counts.entry(wbase.to_string()).or_insert(0) += 1;
                 }
             }
         }
@@ -766,15 +1425,24 @@ pub fn parse_universal_billing_csv(
             .and_then(|i| cols.get(i))
             .map(|s| s.to_ascii_lowercase())
             .unwrap_or_default();
-        let sku_low = idx_sku
+        let sku_raw = idx_sku
+            .and_then(|i| cols.get(i))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        let sku_low = sku_raw.to_ascii_lowercase();
+        let unit_low = idx_unit
             .and_then(|i| cols.get(i))
             .map(|s| s.to_ascii_lowercase())
             .unwrap_or_default();
 
         let parse_col = |idx: Option<usize>| -> Option<f64> {
-            idx.and_then(|i| cols.get(i))
-                .and_then(|v| v.trim_start_matches('$').parse::<f64>().ok())
+            idx.and_then(|i| cols.get(i)).and_then(|v| {
+                let cleaned = v.trim().trim_start_matches('$').replace(',', "");
+                cleaned.parse::<f64>().ok()
+            })
         };
+
+        let size_mult = parse_col(idx_size_mult).unwrap_or(1.0).max(1.0);
 
         if let Some(g) = parse_col(idx_gross) {
             gross_sum += g;
@@ -783,23 +1451,67 @@ pub fn parse_universal_billing_csv(
             disc_sum += d;
             net_sum += n;
         } else if let Some(n) = parse_col(idx_net) {
+            let d = parse_col(idx_disc).unwrap_or(0.0);
             net_sum += n;
-            gross_sum += n;
+            disc_sum += d;
+            gross_sum += n + d;
         } else if let Some(cr) = parse_col(idx_credits) {
-            // CircleCI credits -> $0.0006/credit
+            // CircleCI `TOTAL_CREDITS` already includes `COMPUTE + DLC + STORAGE + NETWORK` when present
             let usd = cr * 0.0006;
             gross_sum += usd;
             net_sum += usd;
         } else if let (Some(q), Some(rt)) = (parse_col(idx_qty), parse_col(idx_rate)) {
-            let usd = q * rt;
+            let mins_or_units = if unit_low.starts_with("sec") { q / 60.0 } else { q };
+            let usd = mins_or_units * rt;
+            gross_sum += usd;
+            net_sum += usd;
+        } else if let Some(sec) = parse_col(idx_sec) {
+            let spec = resolve_runner_sku(if sku_raw.is_empty() { "ubuntu-latest" } else { &sku_raw });
+            let mins = if spec.ceil_to_whole_minute {
+                (sec / 60.0).ceil().max(1.0) * size_mult
+            } else {
+                (sec / 60.0) * size_mult
+            };
+            let extra_dlc_usd = parse_col(idx_dlc_credits).unwrap_or(0.0) * 0.0006
+                + parse_col(idx_storage_credits).unwrap_or(0.0) * 0.0006
+                + parse_col(idx_network_credits).unwrap_or(0.0) * 0.0006;
+            let usd = mins * spec.rate_per_min_usd + extra_dlc_usd;
+            gross_sum += usd;
+            net_sum += usd;
+        } else if let Some(q) = parse_col(idx_qty) {
+            let spec = resolve_runner_sku(if sku_raw.is_empty() { "ubuntu-latest" } else { &sku_raw });
+            let mins = if unit_low.starts_with("sec") {
+                q / 60.0
+            } else if unit_low.contains("credit") {
+                0.0
+            } else {
+                q
+            };
+            let usd = if unit_low.contains("credit") {
+                q * 0.0006
+            } else {
+                mins * spec.rate_per_min_usd
+            };
             gross_sum += usd;
             net_sum += usd;
         }
 
         if let Some(q) = parse_col(idx_qty) {
-            if sku_low.contains("storage") && prod_low.contains("actions") {
-                storage_gb_hours += q;
-            } else if prod_low.contains("packages") || sku_low.contains("ghcr") || sku_low.contains("container") {
+            if (sku_low.contains("storage") && (prod_low.contains("actions") || sku_low.contains("actions")))
+                || unit_low.contains("gb-hour")
+                || unit_low.contains("gb_hour")
+            {
+                if sku_low.contains("package") || prod_low.contains("package") || sku_low.contains("ghcr") {
+                    ghcr_gb += q / 744.0;
+                } else if unit_low.contains("gb-hour") || unit_low.contains("gb_hour") || sku_low.contains("gb_hour") {
+                    storage_gb_hours += q;
+                } else {
+                    storage_direct_gb += q;
+                }
+            } else if prod_low.contains("packages")
+                || sku_low.contains("ghcr")
+                || sku_low.contains("container")
+            {
                 ghcr_gb += q;
             }
         }
@@ -810,6 +1522,12 @@ pub fn parse_universal_billing_csv(
         if let Some(r) = parse_col(idx_ram) {
             ram_samples.push(r);
         }
+    }
+
+    // If repo_filter didn't match any row solely because the CSV didn't include the org prefix or used a different repo name,
+    // re-parse without filter when the CSV contains only 1 repository!
+    if gross_sum == 0.0 && net_sum == 0.0 && repo_filter.is_some() && seen_repos.len() == 1 {
+        return parse_universal_billing_csv(csv_path, None);
     }
 
     let now_epoch = SystemTime::now()
@@ -826,6 +1544,13 @@ pub fn parse_universal_billing_csv(
         }
     };
 
+    let total_art_gb = (storage_gb_hours / 744.0) + storage_direct_gb;
+    let mut wf_runs: Vec<(String, f64)> = wf_row_counts
+        .into_iter()
+        .map(|(k, v)| (k, v as f64))
+        .collect();
+    wf_runs.sort_by(|a, b| a.0.cmp(&b.0));
+
     Ok(CanonicalTelemetrySnapshot {
         provenance_mode: "invoice_reconciled".to_string(),
         repo_slug: repo_filter.unwrap_or("billing-csv").to_string(),
@@ -837,8 +1562,8 @@ pub fn parse_universal_billing_csv(
         invoice_gross_usd: Some((gross_sum * 100.0).round() / 100.0),
         invoice_discount_usd: Some((disc_sum * 100.0).round() / 100.0),
         invoice_net_billed_usd: Some((net_sum * 100.0).round() / 100.0),
-        observed_artifact_storage_gb: if storage_gb_hours > 0.0 {
-            Some(((storage_gb_hours / 720.0) * 100.0).round() / 100.0)
+        observed_artifact_storage_gb: if total_art_gb > 0.0 {
+            Some((total_art_gb * 100.0).round() / 100.0)
         } else {
             None
         },
@@ -849,6 +1574,7 @@ pub fn parse_universal_billing_csv(
         },
         median_cpu_util_pct: med(cpu_samples),
         median_ram_util_pct: med(ram_samples),
+        workflow_monthly_runs: wf_runs,
         ..Default::default()
     })
 }
@@ -858,14 +1584,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_iso8601_and_lockfile_roundtrip_and_focus_csv() {
+    fn test_iso8601_and_lockfile_roundtrip_and_all_5_vendor_csv_schemas() {
         let (ep1, hr1, wd1) = parse_iso8601_utc_epoch("2026-11-19T14:30:00Z").unwrap();
         let (ep2, _, _) = parse_iso8601_utc_epoch("2026-11-19T14:35:30Z").unwrap();
         assert_eq!(ep2 - ep1, 330);
         assert_eq!(hr1, 14);
         assert!(wd1 <= 6);
 
-        let tmp = env::temp_dir().join("minici_telemetry_lock_test");
+        let tmp = env::temp_dir().join("minici_telemetry_lock_test_v2");
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
 
@@ -878,8 +1604,11 @@ mod tests {
             etag_304_hits: 2,
             rate_limit_remaining: 56,
             observed_monthly_runs: Some(312.0),
+            observed_human_pr_monthly_runs: Some(280.0),
             observed_flake_rate_pct: Some(6.5),
-            job_durations_mins: vec![("build".to_string(), 3.45)],
+            workflow_monthly_runs: vec![("ci.yml".to_string(), 290.0), ("release.yml".to_string(), 4.0)],
+            job_durations_mins: vec![("ci.yml#build".to_string(), 3.45)],
+            real_phase_shares: Some([8.0, 18.0, 32.0, 28.0, 10.0, 4.0]),
             ..Default::default()
         };
         snap.save_lockfile(&tmp).unwrap();
@@ -887,24 +1616,65 @@ mod tests {
         assert_eq!(loaded.repo_slug, "owner/repo");
         assert_eq!(loaded.etag_304_hits, 2);
         assert_eq!(loaded.observed_monthly_runs, Some(312.0));
+        assert_eq!(loaded.observed_human_pr_monthly_runs, Some(280.0));
+        assert_eq!(loaded.workflow_monthly_runs.len(), 2);
         assert_eq!(loaded.job_durations_mins.len(), 1);
+        assert_eq!(loaded.real_phase_shares, Some([8.0, 18.0, 32.0, 28.0, 10.0, 4.0]));
 
-        // Test GitHub Enhanced Billing CSV normalization
-        let csv_file = tmp.join("gh_billing.csv");
+        // 1. GitHub Enhanced Billing CSV (`14` cols)
+        let gh_enh = tmp.join("gh_enhanced.csv");
         fs::write(
-            &csv_file,
+            &gh_enh,
             "date,product,sku,quantity,unit_type,applied_cost_per_quantity,gross_amount,discount_amount,net_amount,repository\n\
              2026-11-01,actions,Actions Linux,1500,minutes,0.006,9.00,9.00,0.00,owner/repo\n\
              2026-11-02,actions,Actions Linux,1000,minutes,0.006,6.00,3.00,3.00,owner/repo\n\
              2026-11-03,packages,Packages Storage,25.0,gb,0.25,6.25,0.00,6.25,owner/repo\n",
         )
         .unwrap();
-        let inv = parse_universal_billing_csv(&csv_file, Some("owner/repo")).unwrap();
-        assert_eq!(inv.provenance_mode, "invoice_reconciled");
-        assert_eq!(inv.invoice_gross_usd, Some(21.25));
-        assert_eq!(inv.invoice_discount_usd, Some(12.00));
-        assert_eq!(inv.invoice_net_billed_usd, Some(9.25));
-        assert_eq!(inv.observed_ghcr_storage_gb, Some(25.0));
+        let inv1 = parse_universal_billing_csv(&gh_enh, Some("owner/repo")).unwrap();
+        assert_eq!(inv1.invoice_gross_usd, Some(21.25));
+        assert_eq!(inv1.invoice_discount_usd, Some(12.00));
+        assert_eq!(inv1.invoice_net_billed_usd, Some(9.25));
+        assert_eq!(inv1.observed_ghcr_storage_gb, Some(25.0));
+
+        // 2. GitHub Legacy Billing CSV (`Price Per Unit ($)` with punctuation!)
+        let gh_leg = tmp.join("gh_legacy.csv");
+        fs::write(
+            &gh_leg,
+            "Date,Product,SKU,Quantity,Unit Type,Price Per Unit ($),Multiplier,Owner,Repository Slug,Actions Workflow,Notes\n\
+             2026-11-01,Actions,Actions Linux,500,minute,0.006,1.0,owner,owner/repo,.github/workflows/ci.yml,\n\
+             2026-11-01,Actions,Actions macOS,50,minute,0.062,10.0,owner,owner/repo,.github/workflows/mac.yml,\n",
+        )
+        .unwrap();
+        let inv2 = parse_universal_billing_csv(&gh_leg, Some("owner/repo")).unwrap();
+        // 500 * $0.006 ($3.00) + 50 * $0.062 ($3.10) = $6.10!
+        assert_eq!(inv2.invoice_gross_usd, Some(6.10));
+
+        // 3. CircleCI 44-col Usage Export CSV (`TOTAL_CREDITS` must beat `COMPUTE_CREDITS`!)
+        let cci_csv = tmp.join("circleci_44col.csv");
+        fs::write(
+            &cci_csv,
+            "PROJECT_NAME,WORKFLOW_NAME,RESOURCE_CLASS,JOB_RUN_SECONDS,MEDIAN_CPU_UTILIZATION_PCT,MAX_RAM_UTILIZATION_PCT,COMPUTE_CREDITS,DLC_CREDITS,TOTAL_CREDITS\n\
+             web-app,build-and-test,large,150,22.4,48.5,100,200,300\n",
+        )
+        .unwrap();
+        let inv3 = parse_universal_billing_csv(&cci_csv, Some("web-app")).unwrap();
+        // 300 total credits * $0.0006 = $0.18 (NOT 100 * $0.0006 = $0.06!)
+        assert_eq!(inv3.invoice_net_billed_usd, Some(0.18));
+        assert_eq!(inv3.median_cpu_util_pct, Some(22.4));
+        assert_eq!(inv3.median_ram_util_pct, Some(48.5));
+
+        // 4. Bitbucket / GitLab Seconds TSV without dollar columns
+        let bb_tsv = tmp.join("bitbucket.tsv");
+        fs::write(
+            &bb_tsv,
+            "repo_slug\tsku\tsize_multiplier\tbuild_seconds_used\n\
+             ws/app\tbitbucket-1x\t2\t125\n",
+        )
+        .unwrap();
+        let inv4 = parse_universal_billing_csv(&bb_tsv, Some("ws/app")).unwrap();
+        // ceil(125/60) = 3m * 2x = 6m * $0.010 = $0.06
+        assert_eq!(inv4.invoice_gross_usd, Some(0.06));
 
         let _ = fs::remove_dir_all(&tmp);
     }

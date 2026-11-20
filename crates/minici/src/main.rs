@@ -42,6 +42,8 @@ COMMANDS:\n  \
   shrink       Generate or apply surgical workflow cost optimizations with verified shadow DiffReport\n  \
   migrate      Evaluate or apply safe runner & platform migrations with 5-Layer Switching TCO verdict\n  \
   catalog      Inspect, sync, or override the Multi-Vendor & Cloud Compute Pricing SKU Catalog\n  \
+  cloud-price  Resolve AWS EC2, GCP GCE, or Azure VM On-Demand & Spot pricing (--region, --live)\n  \
+  telemetry    Pull live GitLab CI or Bitbucket Pipelines run telemetry into normalized CSV\n  \
   mcp          Start 7-tool JSON-RPC 2.0 stdio MCP server for Claude, Antigravity, Cursor & VS Code\n  \
   self-update  Sync live pricing catalog, verify 0 drift, and self-upgrade binary (--install-dir <DIR>)\n  \
   init-hooks   Install Shift-Left PreToolUse/PostToolUse hooks, Agent MCP (.mcp.json) & GitHub Action\n  \
@@ -55,7 +57,7 @@ OPTIONS (breakdown):\n  \
   --format <FMT>             Output format: table, markdown, json, html, or csv [default: table]\n  \
   --report <FILE>            Generate report file (.html, .json, .md, .csv) — auto-detects format from extension\n  \
   --out-file <FILE>          Write output to file path\n  \
-  --tier <TIER>              Pricing tier mode: auto, free, or paid [default: auto]\n  \
+  --tier <TIER>              Pricing tier mode: auto, free, pro, team, enterprise, or paid [default: auto]\n  \
   --prs-per-week <NUM>       Pull requests per week [default: 25]\n  \
   --pushes-per-pr <NUM>      Pushes per pull request [default: 4]\n  \
   --dev-hourly-rate <USD>    Assumed developer hourly rate in USD (pass 0 to disable) [default: 65]\n  \
@@ -79,6 +81,31 @@ fn extract_json_id(raw: &str) -> String {
     "null".to_string()
 }
 
+static MCP_RESPONSE_CACHE: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+fn mcp_invalidate_cache() {
+    if let Ok(mut guard) = MCP_RESPONSE_CACHE.lock() {
+        guard.clear();
+    }
+}
+
+fn mcp_cache_key(tool: &str, target: &Path, extra: &str) -> String {
+    let mtime = fs::metadata(target.join(".github").join("workflows"))
+        .or_else(|_| fs::metadata(target))
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let lock_mtime = fs::metadata(target.join(".minici").join("telemetry.lock.json"))
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{}|{}|{}|{}|{}", tool, target.display(), extra, mtime, lock_mtime)
+}
+
 pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
@@ -99,10 +126,10 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
 {{\"name\":\"minici_breakdown\",\"description\":\"Calculate 24-model CI/CD workflow cost, unit economics ($/PR), free-tier quota burn %, and developer wait-time breakdown\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\",\"description\":\"Repository path or GitHub owner/repo\"}}}}}}}},\
 {{\"name\":\"minici_diff\",\"description\":\"Compare Pull Request CI workflow cost delta against a base branch\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"compare_to\":{{\"type\":\"string\"}}}}}}}},\
 {{\"name\":\"minici_sync_live\",\"description\":\"Sync live GitHub Actions telemetry (ETag 304 conditional cache) or FOCUS v1.1 billing CSV into .minici/telemetry.lock.json\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"repo\":{{\"type\":\"string\"}},\"billing_csv\":{{\"type\":\"string\"}}}}}}}},\
-{{\"name\":\"minici_permissions\",\"description\":\"Audit GitHub token least-privilege scopes, verify zero source-code read access (Contents: None), and report 108-attribute telemetry coverage\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"repo\":{{\"type\":\"string\"}}}}}}}},\
-{{\"name\":\"minici_anomalies\",\"description\":\"Inspect 7d/30d CI spend burn velocity, projected EOM bill, quota exhaustion day, and missing timeout-minutes exposure\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}}}}}}}},\
-{{\"name\":\"minici_shrink\",\"description\":\"Generate surgical comment-preserving YAML optimizations (concurrency, timeout-minutes, shallow clone, retention-days) verified by shadow DiffReport\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"apply\":{{\"type\":\"boolean\"}}}}}}}},\
-{{\"name\":\"minici_migrate\",\"description\":\"Evaluate safe runner migration (arm64 / high-speed) and 5-Layer Platform Switching TCO payback verdict\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"target\":{{\"type\":\"string\"}},\"apply\":{{\"type\":\"boolean\"}}}}}}}}\
+{{\"name\":\"minici_permissions\",\"description\":\"Audit CI token least-privilege scopes (Actions: Read, Metadata: Read, Contents: Read for private YAML only) and report 108-attribute telemetry coverage\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"repo\":{{\"type\":\"string\"}},\"vendor\":{{\"type\":\"string\"}},\"billing_csv\":{{\"type\":\"string\"}},\"live\":{{\"type\":\"boolean\"}}}}}}}},\
+{{\"name\":\"minici_anomalies\",\"description\":\"Inspect 7d/23d CI spend burn velocity, projected EOM bill, quota exhaustion day, and missing timeout-minutes exposure\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}}}}}}}},\
+{{\"name\":\"minici_shrink\",\"description\":\"Generate surgical comment-preserving YAML optimizations (concurrency, timeout-minutes, shallow clone, cache, retention-days) verified by shadow DiffReport\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"apply\":{{\"type\":\"boolean\"}},\"confirm_write\":{{\"type\":\"boolean\"}}}}}}}},\
+{{\"name\":\"minici_migrate\",\"description\":\"Evaluate safe runner migration (arm64 / high-speed) and 5-Layer Platform Switching TCO payback verdict\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"target\":{{\"type\":\"string\"}},\"apply\":{{\"type\":\"boolean\"}},\"confirm_write\":{{\"type\":\"boolean\"}}}}}}}}\
 ]}}}}",
             id
         )),
@@ -111,35 +138,78 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
             let target_arg = extract_json_str(trimmed, "path")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| default_path.to_path_buf());
+            let mut is_error = false;
             let payload_json = match tool_name.as_str() {
                 "minici_diff" => {
-                    let cmp_arg = extract_json_str(trimmed, "compare_to")
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|| PathBuf::from("main"));
+                    let cmp_str = extract_json_str(trimmed, "compare_to").unwrap_or_else(|| "main".to_string());
+                    let ck = mcp_cache_key("diff", &target_arg, &cmp_str);
+                    if let Ok(guard) = MCP_RESPONSE_CACHE.lock() {
+                        if let Some((_, cached)) = guard.iter().find(|(k, _)| k == &ck) {
+                            let text = engine::json_escape(cached);
+                            return Some(format!(
+                                "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":false}}}}",
+                                id, text
+                            ));
+                        }
+                    }
+                    let cmp_arg = PathBuf::from(&cmp_str);
                     let base = load_or_analyze_in_repo(&cmp_arg, Some(&target_arg), None, false, true);
                     let head = load_or_analyze_in_repo(&target_arg, None, Some(base.usage.clone()), false, true);
-                    compute_diff(&base, &head).to_json()
+                    let res = compute_diff(&base, &head).to_json();
+                    if let Ok(mut guard) = MCP_RESPONSE_CACHE.lock() {
+                        if guard.len() >= 32 {
+                            guard.remove(0);
+                        }
+                        guard.push((ck, res.clone()));
+                    }
+                    res
                 }
                 "minici_permissions" => {
                     let repo_slug = extract_json_str(trimmed, "repo")
                         .unwrap_or_else(|| target_arg.display().to_string());
-                    permissions::run_permissions_audit(&repo_slug, None, false, None).to_json()
+                    let vendor_opt = extract_json_str(trimmed, "vendor");
+                    let csv_opt = extract_json_str(trimmed, "billing_csv").map(PathBuf::from);
+                    let live_flag = trimmed.contains("\"live\":true") || trimmed.contains("\"live\": true");
+                    permissions::run_permissions_audit(
+                        &repo_slug,
+                        csv_opt.as_deref(),
+                        live_flag,
+                        vendor_opt.as_deref(),
+                    )
+                    .to_json()
                 }
                 "minici_sync_live" => {
+                    mcp_invalidate_cache();
                     let repo_opt = extract_json_str(trimmed, "repo");
+                    let save_dir = if target_arg.exists() {
+                        target_arg.clone()
+                    } else {
+                        env::var("HOME")
+                            .map(|h| {
+                                Path::new(&h)
+                                    .join(".minici")
+                                    .join("cache")
+                                    .join("telemetry")
+                                    .join(target_arg.to_string_lossy().replace(['/', ':', '.'], "_"))
+                            })
+                            .unwrap_or_else(|_| env::temp_dir().join("minici_mcp_telemetry"))
+                    };
                     if let Some(csv_file) = extract_json_str(trimmed, "billing_csv") {
                         match telemetry::parse_universal_billing_csv(Path::new(&csv_file), repo_opt.as_deref()) {
                             Ok(snap) => {
-                                let _ = snap.save_lockfile(&target_arg);
+                                let _ = snap.save_lockfile(&save_dir);
                                 snap.to_json()
                             }
-                            Err(e) => format!("{{\"error\":\"{}\"}}", engine::json_escape(&e)),
+                            Err(e) => {
+                                is_error = true;
+                                format!("{{\"error\":\"{}\"}}", engine::json_escape(&e))
+                            }
                         }
                     } else {
                         let slug = repo_opt
                             .or_else(|| infer_github_slug_from_dir(&target_arg))
                             .unwrap_or_else(|| target_arg.display().to_string());
-                        match telemetry::sync_github_live_telemetry(&slug, Some(&target_arg)) {
+                        match telemetry::sync_github_live_telemetry(&slug, Some(&save_dir)) {
                             Ok(snap) => snap.to_json(),
                             Err(e) => format!(
                                 "{{\"status\":\"offline_fallback\",\"repo\":\"{}\",\"note\":\"{}\"}}",
@@ -166,22 +236,53 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
                     )
                 }
                 "minici_shrink" => {
-                    let apply = trimmed.contains("\"apply\":true") || trimmed.contains("\"apply\": true");
+                    let want_apply = trimmed.contains("\"apply\":true") || trimmed.contains("\"apply\": true");
+                    let confirmed = trimmed.contains("\"confirm_write\":true")
+                        || trimmed.contains("\"confirm_write\": true")
+                        || env::var("MINICI_MCP_ALLOW_APPLY").unwrap_or_default() == "1";
+                    let apply = want_apply && confirmed;
+                    if apply {
+                        mcp_invalidate_cache();
+                    }
                     optimizer::run_surgical_optimizer(&target_arg, "shrink", "arm64", apply).to_json()
                 }
                 "minici_migrate" => {
-                    let apply = trimmed.contains("\"apply\":true") || trimmed.contains("\"apply\": true");
+                    let want_apply = trimmed.contains("\"apply\":true") || trimmed.contains("\"apply\": true");
+                    let confirmed = trimmed.contains("\"confirm_write\":true")
+                        || trimmed.contains("\"confirm_write\": true")
+                        || env::var("MINICI_MCP_ALLOW_APPLY").unwrap_or_default() == "1";
+                    let apply = want_apply && confirmed;
+                    if apply {
+                        mcp_invalidate_cache();
+                    }
                     let target_mode = extract_json_str(trimmed, "target").unwrap_or_else(|| "arm64".to_string());
                     optimizer::run_surgical_optimizer(&target_arg, "migrate", &target_mode, apply).to_json()
                 }
                 _ => {
-                    load_or_analyze_in_repo(&target_arg, None, None, false, true).to_json()
+                    let ck = mcp_cache_key("breakdown", &target_arg, "");
+                    if let Ok(guard) = MCP_RESPONSE_CACHE.lock() {
+                        if let Some((_, cached)) = guard.iter().find(|(k, _)| k == &ck) {
+                            let text = engine::json_escape(cached);
+                            return Some(format!(
+                                "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":false}}}}",
+                                id, text
+                            ));
+                        }
+                    }
+                    let res = load_or_analyze_in_repo(&target_arg, None, None, false, true).to_json();
+                    if let Ok(mut guard) = MCP_RESPONSE_CACHE.lock() {
+                        if guard.len() >= 32 {
+                            guard.remove(0);
+                        }
+                        guard.push((ck, res.clone()));
+                    }
+                    res
                 }
             };
             let text = engine::json_escape(&payload_json);
             Some(format!(
-                "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":false}}}}",
-                id, text
+                "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":{}}}}}",
+                id, text, is_error
             ))
         }
         _ => {
@@ -204,9 +305,26 @@ fn extract_json_str(raw: &str, key: &str) -> Option<String> {
     if !rest.starts_with('"') {
         return None;
     }
-    let after_q = &rest[1..];
-    let end_q = after_q.find('"')?;
-    Some(after_q[..end_q].to_string())
+    let mut out = String::new();
+    let mut chars = rest[1..].chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('"') => out.push('"'),
+                Some('\\') => out.push('\\'),
+                Some('n') => out.push('\n'),
+                Some('r') => out.push('\r'),
+                Some('t') => out.push('\t'),
+                Some(other) => out.push(other),
+                None => break,
+            }
+        } else if c == '"' {
+            return Some(out);
+        } else {
+            out.push(c);
+        }
+    }
+    None
 }
 
 /// Resolves a local path, a remote Git URL (`https://github.com/owner/repo` or `owner/repo`),
@@ -246,6 +364,10 @@ fn resolve_target_to_dir_ext(raw_spec: &str, force_refresh: bool, quiet: bool) -
             if let Ok(entries) = fs::read_dir(&wf_dir) {
                 let count = entries.flatten().count();
                 if count > 0 {
+                    let usage_yml = cache_dir.join("minici-usage.yml");
+                    if !usage_yml.exists() {
+                        let _ = fs::write(&usage_yml, "visibility: public\n");
+                    }
                     if !quiet {
                         eprintln!(
                             "⚡ [1/1] Cache Hit: {} ({} cached workflows in {} • pass --refresh to re-fetch)",
@@ -278,7 +400,7 @@ fn resolve_target_to_dir_ext(raw_spec: &str, force_refresh: bool, quiet: bool) -
         let api_url = format!("https://api.github.com/repos/{}/contents/.github/workflows", slug);
         if let Ok(out) = Command::new("curl")
             .args([
-                "-sSL",
+                "-fsSL",
                 "--connect-timeout",
                 "2",
                 "-m",
@@ -303,7 +425,7 @@ fn resolve_target_to_dir_ext(raw_spec: &str, force_refresh: bool, quiet: bool) -
                                 let fname = dl_url.rsplit('/').next().unwrap_or("ci.yml");
                                 let dest = wf_dir.join(fname);
                                 if let Ok(st) = Command::new("curl")
-                                    .args(["-sSL", "--connect-timeout", "2", "-m", "4", "-o"])
+                                    .args(["-fsSL", "--connect-timeout", "2", "-m", "4", "-o"])
                                     .arg(&dest)
                                     .arg(dl_url)
                                     .status()
@@ -317,6 +439,8 @@ fn resolve_target_to_dir_ext(raw_spec: &str, force_refresh: bool, quiet: bool) -
                     }
                 }
                 if downloaded > 0 {
+                    // Unauthenticated 200 OK proves the repository is Public -> persist `visibility: public` (Fixes Bug #3!)
+                    let _ = fs::write(cache_dir.join("minici-usage.yml"), "visibility: public\n");
                     if !quiet {
                         eprintln!(
                             "✅ [2/2] Fetched & cached {} workflow files into {} (next run will be <1 ms!)",
@@ -383,6 +507,7 @@ fn resolve_target_to_dir_ext(raw_spec: &str, force_refresh: bool, quiet: bool) -
             .arg(&cache_dir)
             .status();
         if status.map(|s| s.success()).unwrap_or(false) {
+            let _ = fs::write(cache_dir.join("minici-usage.yml"), "visibility: public\n");
             return (
                 cache_dir,
                 None,
@@ -547,22 +672,65 @@ pub fn route_at_minici_comment_command(comment_body: &str, repo_dir: &Path) -> O
             audit.render_markdown()
         }
         "why" | "anomalies" | "anomaly" => {
+            let question = after[cmd.len()..].trim().to_ascii_lowercase();
             let rep = analyze_path(repo_dir, None);
             let cc = &rep.cost_components;
+            let focus_note = if question.contains("wait") || question.contains("slow") {
+                format!(
+                    "- **Wait-Time Focus:** Critical path is `{:.1}m` (`{}`), costing **`${:.2}/mo`** at 40% DORA context-switch loss.\n",
+                    rep.critical_path_wait_mins_per_run,
+                    cc.lead_time_feedback_tier,
+                    rep.monthly_dev_wait_cost_usd
+                )
+            } else if question.contains("cache") {
+                format!(
+                    "- **Cache Focus:** `{}/{}` jobs cached; caching remaining `{}` job(s) reclaims **`~${:.2}/mo`** (`{}`).\n",
+                    cc.jobs_with_cache,
+                    rep.total_expanded_matrix_jobs,
+                    cc.jobs_missing_cache,
+                    cc.monthly_unrealized_cache_savings_usd,
+                    cc.next_recommended_caching_layer
+                )
+            } else if question.contains("storage") || question.contains("artifact") {
+                format!(
+                    "- **Artifact Focus:** `{}` upload job(s) at `{}d` retention (`${:.2}/mo` gross, `${:.2}/mo` net after plan allowance).\n",
+                    cc.jobs_uploading_artifacts,
+                    cc.configured_retention_days,
+                    cc.monthly_vendor_storage_configured_usd,
+                    cc.net_billed_vendor_storage_configured_usd
+                )
+            } else if question.contains("flake") || question.contains("rerun") {
+                format!(
+                    "- **Flake Focus:** Estimated `{:.1}%` flake rate costs **`${:.2}/mo`** immediate (`${:.2}/mo` combined velocity drag).\n",
+                    cc.estimated_flake_rate_pct,
+                    cc.monthly_total_immediate_flake_cost_usd,
+                    cc.monthly_combined_flake_tax_usd
+                )
+            } else if question.contains("runner") || question.contains("arm") {
+                format!(
+                    "- **Runner Focus:** Migrating eligible x86 Linux jobs to ARM64 saves **`${:.2}/mo`** (Best ROI tier: `{}`).\n",
+                    cc.arm64_migration_monthly_savings_usd,
+                    cc.best_net_roi_runner_tier
+                )
+            } else {
+                String::new()
+            };
             format!(
                 "<!-- minici-cost-comment -->\n\
                  ### 🔎 MiniCI Root-Cause & Spend Velocity Receipt (`@minici why`)\n\n\
-                 - **Provenance Mode:** `{}` (`{:.2} ms`)\n\
-                 - **Unit Economics:** **`${:.2}` / merged PR** • **`${:.2}` / active developer / mo** (`{:.1}%` top-workflow share)\n\
-                 - **7d vs 30d Burn Velocity:** `{:.2}x` (Alert active: `{}` • Projected EOM: **`${:.2}/mo`**)\n\
+                 {}- **Provenance Mode:** `{}` (`{:.2} ms`)\n\
+                 - **Unit Economics:** **`${:.2}` / merged PR** • **`${:.2}` / active developer / mo** (`{:.1}%` top-workflow share • Owner: `{}`)\n\
+                 - **7d vs Prior Baseline Velocity:** `{:.2}x` (Alert active: `{}` • Projected EOM: **`${:.2}/mo`**)\n\
                  - **Primary Cost Driver Phase:** `{}` (`~{:.0}h` engineering effort reclaims **`~${:.2}/mo`**, `{:.1} mo` payback)\n\
                  - **Hung-Job Timeout Guardrail:** `{}` job(s) missing `timeout-minutes` (`${:.2}` worst-case 6-hour exposure)\n\
                  - **Recommendation:** {}\n",
+                focus_note,
                 rep.provenance_mode,
                 rep.execution_time_ms,
                 cc.cost_per_merged_pr_usd,
                 cc.cost_per_active_dev_monthly_usd,
                 cc.top_workflow_cost_share_pct,
+                cc.top_codeowners_team,
                 cc.burn_velocity_7d_vs_30d_ratio,
                 cc.spend_anomaly_alert_active,
                 cc.projected_eom_compute_usd,
@@ -572,7 +740,7 @@ pub fn route_at_minici_comment_command(comment_body: &str, repo_dir: &Path) -> O
                 cc.best_first_optimization_payback_months,
                 cc.jobs_missing_timeout_minutes_count,
                 cc.hung_job_360m_worst_case_exposure_usd,
-                if cc.jobs_missing_cache > 0 {
+                if cc.jobs_missing_cache > 0 || cc.jobs_missing_timeout_minutes_count > 0 {
                     "Run `@minici shrink` for committable PR suggestions."
                 } else {
                     "Workflow cache & runner profile look healthy."
@@ -590,6 +758,63 @@ pub fn route_at_minici_comment_command(comment_body: &str, repo_dir: &Path) -> O
         }
     };
     Some(reply)
+}
+
+/// Extracts the top-level comment `id` (and NEVER nested `user.id` or `reactions`) for the sticky MiniCI PR comment.
+pub fn find_sticky_comment_id_in_github_json(raw: &str) -> Option<u64> {
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut esc = false;
+    let mut obj_start: Option<usize> = None;
+    for (idx, ch) in raw.char_indices() {
+        if in_str {
+            if esc {
+                esc = false;
+            } else if ch == '\\' {
+                esc = true;
+            } else if ch == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_str = true,
+            '{' => {
+                depth += 1;
+                if depth == 1 {
+                    obj_start = Some(idx);
+                }
+            }
+            '}' => {
+                if depth == 1 {
+                    if let Some(start) = obj_start.take() {
+                        let comment_obj = &raw[start..=idx];
+                        if comment_obj.contains("minici-cost-comment")
+                            || comment_obj.contains("minici-behavior:")
+                        {
+                            let head_slice = comment_obj
+                                .split("\"user\":")
+                                .next()
+                                .unwrap_or(comment_obj);
+                            if let Some(id_pos) = head_slice.find("\"id\":") {
+                                let digits: String = head_slice[id_pos + 5..]
+                                    .trim_start()
+                                    .chars()
+                                    .take_while(|c| c.is_ascii_digit())
+                                    .collect();
+                                if let Ok(cid) = digits.parse::<u64>() {
+                                    return Some(cid);
+                                }
+                            }
+                        }
+                    }
+                }
+                depth = (depth - 1).max(0);
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn upsert_github_pr_comment(
@@ -610,7 +835,7 @@ fn upsert_github_pr_comment(
     if behavior != "new" {
         if let Ok(out) = Command::new("curl")
             .args([
-                "-sSL",
+                "-fsSL",
                 "--connect-timeout",
                 "4",
                 "-m",
@@ -627,19 +852,7 @@ fn upsert_github_pr_comment(
         {
             if out.status.success() {
                 let raw = String::from_utf8_lossy(&out.stdout);
-                for chunk in raw.split("\"id\":") {
-                    if chunk.contains("minici-cost-comment") || chunk.contains("minici-behavior:") {
-                        let digits: String = chunk
-                            .trim_start()
-                            .chars()
-                            .take_while(|c| c.is_ascii_digit())
-                            .collect();
-                        if let Ok(cid) = digits.parse::<u64>() {
-                            existing_comment_id = Some(cid);
-                            break;
-                        }
-                    }
-                }
+                existing_comment_id = find_sticky_comment_id_in_github_json(&raw);
             }
         }
     }
@@ -669,7 +882,7 @@ fn upsert_github_pr_comment(
 
     let res = Command::new("curl")
         .args([
-            "-sSL",
+            "-fsSL",
             "--connect-timeout",
             "4",
             "-m",
@@ -1280,6 +1493,8 @@ fn main() {
 
         "permissions" => {
             let mut repo_slug: Option<String> = None;
+            let mut vendor_opt: Option<String> = None;
+            let mut billing_csv: Option<PathBuf> = None;
             let mut format = "table".to_string();
             let mut probe_live = true;
             let mut i = 0;
@@ -1289,6 +1504,18 @@ fn main() {
                     "--repo" | "--path" => {
                         if i + 1 < rest.len() {
                             repo_slug = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
+                    "--vendor" | "--provider" => {
+                        if i + 1 < rest.len() {
+                            vendor_opt = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
+                    "--billing-csv" => {
+                        if i + 1 < rest.len() {
+                            billing_csv = Some(PathBuf::from(&rest[i + 1]));
                             i += 1;
                         }
                     }
@@ -1306,7 +1533,12 @@ fn main() {
             let target_spec = repo_slug
                 .or_else(|| infer_github_slug_from_dir(Path::new(".")))
                 .unwrap_or_else(|| ".".to_string());
-            let report = permissions::run_permissions_audit(&target_spec, None, probe_live, None);
+            let report = permissions::run_permissions_audit(
+                &target_spec,
+                billing_csv.as_deref(),
+                probe_live,
+                vendor_opt.as_deref(),
+            );
             let out = match format.as_str() {
                 "json" => report.to_json(),
                 "markdown" | "md" => report.render_markdown(),
@@ -1318,7 +1550,10 @@ fn main() {
         "sync" => {
             let mut path = PathBuf::from(".");
             let mut repo_slug: Option<String> = None;
+            let mut gitlab_proj: Option<String> = None;
+            let mut bitbucket_slug: Option<String> = None;
             let mut billing_csv: Option<PathBuf> = None;
+            let mut max_runs: usize = 100;
             let mut format = "table".to_string();
             let mut i = 0;
             while i < rest.len() {
@@ -1335,6 +1570,18 @@ fn main() {
                             i += 1;
                         }
                     }
+                    "--gitlab" => {
+                        if i + 1 < rest.len() {
+                            gitlab_proj = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
+                    "--bitbucket" => {
+                        if i + 1 < rest.len() {
+                            bitbucket_slug = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
                     "--billing-csv" => {
                         if i + 1 < rest.len() {
                             billing_csv = Some(PathBuf::from(&rest[i + 1]));
@@ -1343,6 +1590,7 @@ fn main() {
                     }
                     "--max-runs" => {
                         if i + 1 < rest.len() {
+                            max_runs = rest[i + 1].parse().unwrap_or(100);
                             i += 1;
                         }
                     }
@@ -1356,7 +1604,29 @@ fn main() {
                 }
                 i += 1;
             }
-            if let Some(ref csv_file) = billing_csv {
+            if let Some(ref gl) = gitlab_proj {
+                let csv_dest = path.join(".minici").join("gitlab_telemetry.csv");
+                match telemetry::pull_gitlab_telemetry_csv(gl, &csv_dest) {
+                    Ok(n) => {
+                        if let Ok(snap) = telemetry::parse_universal_billing_csv(&csv_dest, Some(gl)) {
+                            let _ = snap.save_lockfile(&path);
+                        }
+                        println!("✅ Pulled {} GitLab CI jobs -> {}", n, csv_dest.display());
+                    }
+                    Err(e) => println!("✓ minici sync --gitlab offline fallback: {}", e),
+                }
+            } else if let Some(ref bb) = bitbucket_slug {
+                let csv_dest = path.join(".minici").join("bitbucket_telemetry.csv");
+                match telemetry::pull_bitbucket_telemetry_csv(bb, &csv_dest) {
+                    Ok(n) => {
+                        if let Ok(snap) = telemetry::parse_universal_billing_csv(&csv_dest, Some(bb)) {
+                            let _ = snap.save_lockfile(&path);
+                        }
+                        println!("✅ Pulled {} Bitbucket Pipelines steps -> {}", n, csv_dest.display());
+                    }
+                    Err(e) => println!("✓ minici sync --bitbucket offline fallback: {}", e),
+                }
+            } else if let Some(ref csv_file) = billing_csv {
                 match telemetry::parse_universal_billing_csv(csv_file, repo_slug.as_deref()) {
                     Ok(snap) => {
                         let lock_res = snap.save_lockfile(&path);
@@ -1377,7 +1647,7 @@ fn main() {
                 let slug = repo_slug
                     .or_else(|| infer_github_slug_from_dir(&path))
                     .unwrap_or_else(|| path.display().to_string());
-                match telemetry::sync_github_live_telemetry(&slug, Some(&path)) {
+                match telemetry::sync_github_live_telemetry_with_limit(&slug, Some(&path), max_runs) {
                     Ok(snap) => {
                         if format == "json" {
                             println!("{}", snap.to_json());
@@ -1428,6 +1698,7 @@ fn main() {
                         }
                     }
                     "--apply" | "--write" => apply = true,
+                    "--suggest-pr" | "--pr-suggestions" => format = "markdown".to_string(),
                     "--format" => {
                         if i + 1 < rest.len() {
                             format = rest[i + 1].clone();
@@ -1450,22 +1721,218 @@ fn main() {
             println!("{}", out);
         }
 
+        "cloud-price" => {
+            let mut instance = "c7g.xlarge".to_string();
+            let mut region = env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+            let mut live = false;
+            let mut format = "table".to_string();
+            let mut i = 0;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "--region" => {
+                        if i + 1 < rest.len() {
+                            region = rest[i + 1].clone();
+                            i += 1;
+                        }
+                    }
+                    "--live" => live = true,
+                    "--format" => {
+                        if i + 1 < rest.len() {
+                            format = rest[i + 1].clone();
+                            i += 1;
+                        }
+                    }
+                    arg if !arg.starts_with('-') => instance = arg.to_string(),
+                    _ => {}
+                }
+                i += 1;
+            }
+            let quote = providers::resolve_cloud_instance_price(&instance, &region, live);
+            if format == "json" {
+                println!(
+                    "{{\"cloud\":\"{}\",\"instance_type\":\"{}\",\"region\":\"{}\",\"on_demand_hourly_usd\":{:.4},\"spot_hourly_usd\":{:.4},\"rate_per_min_usd\":{:.5},\"source\":\"{}\"}}",
+                    quote.vendor,
+                    engine::json_escape(&quote.instance_type),
+                    engine::json_escape(&quote.region),
+                    quote.on_demand_hourly_usd,
+                    quote.spot_hourly_usd,
+                    quote.on_demand_hourly_usd / 60.0,
+                    quote.source
+                );
+            } else {
+                println!(
+                    "Cloud VM Quote: `{}` ({} • {}) | On-Demand: ${:.4}/hr (${:.5}/min) | Spot: ${:.4}/hr | Source: {}",
+                    quote.instance_type,
+                    quote.vendor,
+                    quote.region,
+                    quote.on_demand_hourly_usd,
+                    quote.on_demand_hourly_usd / 60.0,
+                    quote.spot_hourly_usd,
+                    quote.source
+                );
+            }
+        }
+
+        "telemetry" => {
+            let mut gh_repo: Option<String> = None;
+            let mut path = PathBuf::from(".");
+            let mut gitlab_proj: Option<String> = None;
+            let mut bitbucket_slug: Option<String> = None;
+            let mut out_csv = PathBuf::from(".minici/vendor_telemetry.csv");
+            let mut max_runs: usize = 100;
+            let mut i = 0;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "pull" => {}
+                    "--repo" => {
+                        if i + 1 < rest.len() {
+                            gh_repo = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
+                    "--path" => {
+                        if i + 1 < rest.len() {
+                            path = PathBuf::from(&rest[i + 1]);
+                            i += 1;
+                        }
+                    }
+                    "--gitlab" => {
+                        if i + 1 < rest.len() {
+                            gitlab_proj = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
+                    "--bitbucket" => {
+                        if i + 1 < rest.len() {
+                            bitbucket_slug = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
+                    "--out" | "--out-file" => {
+                        if i + 1 < rest.len() {
+                            out_csv = PathBuf::from(&rest[i + 1]);
+                            i += 1;
+                        }
+                    }
+                    "--max-runs" => {
+                        if i + 1 < rest.len() {
+                            max_runs = rest[i + 1].parse().unwrap_or(100);
+                            i += 1;
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            if let Some(slug) = gh_repo {
+                match telemetry::sync_github_live_telemetry_with_limit(&slug, Some(&path), max_runs) {
+                    Ok(snap) => println!(
+                        "✅ Synced GitHub live telemetry for {} ({} API calls, {} ETag 304 hits) -> .minici/telemetry.lock.json",
+                        snap.repo_slug, snap.api_calls_used, snap.etag_304_hits
+                    ),
+                    Err(e) => println!("✓ minici telemetry pull --repo offline fallback: {}", e),
+                }
+            } else if let Some(gl) = gitlab_proj {
+                match telemetry::pull_gitlab_telemetry_csv(&gl, &out_csv) {
+                    Ok(n) => println!("✅ Pulled {} GitLab CI job records -> {}", n, out_csv.display()),
+                    Err(e) => println!("✓ minici telemetry pull --gitlab offline fallback: {}", e),
+                }
+            } else if let Some(bb) = bitbucket_slug {
+                match telemetry::pull_bitbucket_telemetry_csv(&bb, &out_csv) {
+                    Ok(n) => println!("✅ Pulled {} Bitbucket Pipelines step records -> {}", n, out_csv.display()),
+                    Err(e) => println!("✓ minici telemetry pull --bitbucket offline fallback: {}", e),
+                }
+            } else {
+                println!("Usage: minici telemetry pull --repo <owner/repo> | --gitlab <group/project> | --bitbucket <workspace/repo> [--out <file.csv>]");
+            }
+        }
+
         "catalog" => {
             let action = rest.first().map(|s| s.as_str()).unwrap_or("list");
             if action == "sync" {
-                if rest.iter().any(|a| a == "--live") {
+                let cloud_only = rest.iter().any(|a| a == "--cloud");
+                let live_flag = rest.iter().any(|a| a == "--live") || cloud_only;
+                let mut rates_url_opt: Option<String> = env::var("MINICI_RATES_URL").ok();
+                let mut idx = 1;
+                while idx < rest.len() {
+                    if rest[idx] == "--rates-url" && idx + 1 < rest.len() {
+                        rates_url_opt = Some(rest[idx + 1].clone());
+                        idx += 1;
+                    }
+                    idx += 1;
+                }
+                if live_flag {
                     let mut synced_live = 0usize;
-                    for cloud in catalog::INFRACOST_CLOUD_CATALOG.iter().take(8) {
+                    for cloud in catalog::INFRACOST_CLOUD_CATALOG {
                         let r = providers::resolve_cloud_instance_price(cloud.instance_type, "us-east-1", true);
-                        if r.source == "infracost_graphql_live" || r.source == "local_cloud_cache" {
+                        if r.source != "embedded_cloud_catalog" {
                             synced_live += 1;
                         }
                     }
                     println!(
-                        "✅ Checked {} upstream Cloud Pricing API SKUs (cached in ~/.minici/cloud_prices.json)",
-                        synced_live.max(catalog::INFRACOST_CLOUD_CATALOG.len())
+                        "✅ Synced {} Cloud VM & Spot SKUs -> ~/.minici/cloud_prices.json ({} live/cached hits)",
+                        catalog::INFRACOST_CLOUD_CATALOG.len(),
+                        synced_live
                     );
+                    if cloud_only && rates_url_opt.is_none() {
+                        return;
+                    }
                 }
+                let mut upstream_rates: Vec<(String, f64)> = Vec::new();
+                if let Some(ref feed_url) = rates_url_opt {
+                    let etag_path = catalog::overrides_file_path().with_extension("etag");
+                    let prev_etag = fs::read_to_string(&etag_path).unwrap_or_default();
+                    let hdr_tmp = env::temp_dir().join(format!("minici_rates_hdr_{}.txt", std::process::id()));
+                    let mut curl_cmd = Command::new("curl");
+                    curl_cmd.args(["-sSL", "--connect-timeout", "3", "-m", "6", "-D"]).arg(&hdr_tmp);
+                    if !prev_etag.trim().is_empty() {
+                        curl_cmd.arg("-H").arg(format!("If-None-Match: {}", prev_etag.trim()));
+                    }
+                    if let Ok(out) = curl_cmd.arg(feed_url).output() {
+                        let hdrs = fs::read_to_string(&hdr_tmp).unwrap_or_default();
+                        let _ = fs::remove_file(&hdr_tmp);
+                        if hdrs.contains(" 304 ") {
+                            println!("⚡ Pricing feed 304 Not Modified ({})", feed_url);
+                            return;
+                        }
+                        for line in hdrs.lines() {
+                            if line.to_ascii_lowercase().starts_with("etag:") {
+                                let et = line[5..].trim();
+                                let _ = fs::write(&etag_path, et);
+                            }
+                        }
+                        if out.status.success() && !out.stdout.is_empty() {
+                            let body = String::from_utf8_lossy(&out.stdout);
+                            for line in body.lines() {
+                                let t = line.trim().trim_end_matches(',');
+                                if let Some((k, v)) = t.split_once(':') {
+                                    let clean_k = k.trim().trim_matches('"');
+                                    let clean_v = v.trim();
+                                    if !clean_k.is_empty() && !clean_k.starts_with('_') {
+                                        if let Ok(rate) = clean_v.parse::<f64>() {
+                                            if rate > 0.0 && rate < 100.0 {
+                                                upstream_rates.push((clean_k.to_string(), rate));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if !upstream_rates.is_empty() {
+                                println!(
+                                    "✅ Verified & parsed {} upstream SKU rates ({})",
+                                    upstream_rates.len(),
+                                    feed_url
+                                );
+                            }
+                        }
+                    }
+                }
+                let lookup_upstream = |sku: &str| -> Option<f64> {
+                    upstream_rates
+                        .iter()
+                        .find(|(k, _)| k.eq_ignore_ascii_case(sku))
+                        .map(|(_, r)| *r)
+                };
                 let ov_path = catalog::overrides_file_path();
                 if let Some(parent) = ov_path.parent() {
                     let _ = fs::create_dir_all(parent);
@@ -1474,21 +1941,27 @@ fn main() {
                 for spec in catalog::EMBEDDED_SKU_CATALOG {
                     let mut c = spec.clone();
                     catalog::apply_live_override(&mut c, spec.sku_label);
+                    if let Some(up_r) = lookup_upstream(spec.sku_label) {
+                        c.rate_per_min_usd = up_r;
+                    }
                     entries.push(format!("  \"{}\": {:.4}", c.sku_label, c.rate_per_min_usd));
                 }
                 for cloud in catalog::INFRACOST_CLOUD_CATALOG {
                     let mut c = catalog::resolve_runner_sku(cloud.instance_type);
                     catalog::apply_live_override(&mut c, cloud.instance_type);
+                    if let Some(up_r) = lookup_upstream(cloud.instance_type) {
+                        c.rate_per_min_usd = up_r;
+                    }
                     entries.push(format!("  \"{}\": {:.5}", cloud.instance_type, c.rate_per_min_usd));
                 }
                 let payload = format!(
-                    "{{\n  \"_synced_source\": \"Official GitHub/GitLab/CircleCI + Infracost v2.19.0 Cloud Catalog\",\n{}\n}}\n",
+                    "{{\n  \"_synced_source\": \"Official Multi-Vendor SaaS & Cloud Compute SKU Catalog\",\n{}\n}}\n",
                     entries.join(",\n")
                 );
                 let _ = fs::write(&ov_path, payload);
                 catalog::reload_overrides_cache();
                 println!(
-                    "✅ Synced {} Official SaaS + {} Infracost Cloud Instance SKUs ({} Total SKUs) -> {}",
+                    "✅ Synced {} Official SaaS + {} Cloud Instance SKUs ({} Total SKUs) -> {}",
                     catalog::EMBEDDED_SKU_CATALOG.len(),
                     catalog::INFRACOST_CLOUD_CATALOG.len(),
                     catalog::EMBEDDED_SKU_CATALOG.len() + catalog::INFRACOST_CLOUD_CATALOG.len(),
@@ -1632,6 +2105,7 @@ fn main() {
                     .map(|(a, b)| a == b)
                     .unwrap_or(false);
                 if !same_file && curr_exe != dest {
+                    let _ = fs::remove_file(&dest);
                     let _ = fs::copy(&curr_exe, &dest);
                 }
             }
@@ -2092,6 +2566,8 @@ jobs:
                 "shrink",
                 "migrate",
                 "catalog",
+                "cloud-price",
+                "telemetry",
                 "mcp",
                 "self-update",
                 "init-hooks",
@@ -2173,7 +2649,14 @@ jobs:
         assert!(js.contains("\"build_cache_savings\":"));
         assert!(js.contains("\"flaky_test_ci_cd_tax\":"));
         assert!(js.contains("\"branch_protection_cost\":"));
-        assert!(js.contains("\"infracost_delegated\":true"));
+        assert!(js.contains("\"cloud_catalog_delegated\":true"));
+        for forbidden in ["infracost", "datadog", "splunk", "codemagic", "cicdcost.com"] {
+            assert!(
+                !js.to_ascii_lowercase().contains(forbidden),
+                "JSON leaked external vendor branding: {}",
+                forbidden
+            );
+        }
         assert_eq!(rep.cost_components.productivity_loss_factor, 0.40);
         assert!(rep.cost_components.monthly_productive_payroll_loss_usd > 0.0);
         assert!(rep.cost_components.monthly_flake_investigation_payroll_usd > rep.cost_components.monthly_rerun_compute_cost_usd);
@@ -2579,5 +3062,561 @@ jobs:
 
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_dir_all(&head_dir);
+    }
+
+    #[test]
+    fn test_receipt_bug1_to_bug6_public_oss_free_tiers_and_larger_runner_pool_math() {
+        let dir = std::env::temp_dir().join("minici_receipt_bug1_6");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: Pool Math\non: pull_request\njobs:\n  std-mac:\n    runs-on: macos-latest\n    est-minutes: 10.0\n    steps:\n      - uses: actions/checkout@v4\n  large-linux:\n    runs-on: ubuntu-4-core\n    est-minutes: 5.0\n    steps:\n      - uses: actions/checkout@v4\n",
+        )
+        .unwrap();
+
+        // Bug #4: Explicit `--tier team` gives 3,000 included pool mins, `--tier enterprise` gives 50,000 mins
+        let team_rep = analyze_path(
+            &dir,
+            Some(UsageConfig {
+                tier: "team".to_string(),
+                prs_per_week: 5.0,
+                pushes_per_pr: 2.0,
+                ..Default::default()
+            }),
+        );
+        assert_eq!(team_rep.free_tier_included_mins, 3000.0);
+        // Bug #6: Larger runner `ubuntu-4-core` (5m) MUST NOT inflate `os_weighted_free_tier_mins_per_run`!
+        // Standard `macos-latest` 10m * 10x = 100.0 pool mins/run (NOT 105.0!).
+        assert_eq!(team_rep.cost_components.os_weighted_free_tier_mins_per_run, 100.0);
+        // Bug #5: Larger runner `ubuntu-4-core` is metered from second 1 even though 4,300 pool mins > 3,000
+        let ent_rep = analyze_path(
+            &dir,
+            Some(UsageConfig {
+                tier: "enterprise".to_string(),
+                prs_per_week: 5.0,
+                pushes_per_pr: 2.0,
+                ..Default::default()
+            }),
+        );
+        assert_eq!(ent_rep.free_tier_included_mins, 50000.0);
+        // Standard macos-latest (4,300 pool mins <= 50,000) is $0, while `ubuntu-4-core` (5m * $0.012 * 43 = $2.58) is billed!
+        assert_eq!(ent_rep.net_billed_monthly_compute_cost_usd, 2.58);
+
+        // Bug #3 & #5: Public GitHub OSS repo gets $0.00 on standard `macos-latest`, while Larger Runner `ubuntu-4-core`
+        // (5m * $0.012 * 433 = $25.98/mo) remains metered; a pure standard-runner public repo is $0.00 net billed!
+        fs::write(dir.join("minici-usage.yml"), "visibility: public\n").unwrap();
+        let pub_rep = analyze_path(&dir, None);
+        assert_eq!(pub_rep.net_billed_monthly_compute_cost_usd, 25.98);
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: Public Std\non: pull_request\njobs:\n  std-mac:\n    runs-on: macos-latest\n    est-minutes: 10.0\n    steps:\n      - uses: actions/checkout@v4\n",
+        )
+        .unwrap();
+        let pure_pub_rep = analyze_path(&dir, None);
+        assert_eq!(pure_pub_rep.net_billed_monthly_compute_cost_usd, 0.0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_bug9_bug10_bug23_dag_stage_width_and_40pct_dora_wait_consistency() {
+        let dir = std::env::temp_dir().join("minici_receipt_dag_wait");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        // PR workflow: Stage 1 (lint, 2m) -> Stage 2 (4-cell matrix test, 5m) -> Stage 3 (package, 1m)
+        // Sequential CP = 8.0m; Peak concurrent stage width = 4 (NOT 6!).
+        fs::write(
+            dir.join(".github/workflows/pr.yml"),
+            "name: PR\non: pull_request\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    est-minutes: 2.0\n    steps:\n      - run: echo lint\n  test:\n    needs: lint\n    runs-on: ubuntu-latest\n    est-minutes: 5.0\n    strategy:\n      matrix:\n        shard: [1, 2, 3, 4]\n    steps:\n      - run: pytest\n  pkg:\n    needs: test\n    runs-on: ubuntu-latest\n    est-minutes: 1.0\n    steps:\n      - run: echo pkg\n",
+        )
+        .unwrap();
+        // Nightly schedule-only workflow: 45m soak test -> MUST NOT inflate human PR wait cost!
+        fs::write(
+            dir.join(".github/workflows/nightly.yml"),
+            "name: Nightly\non:\n  schedule:\n    - cron: '0 2 * * *'\njobs:\n  soak:\n    runs-on: ubuntu-latest\n    est-minutes: 45.0\n    steps:\n      - run: echo soak\n",
+        )
+        .unwrap();
+
+        let rep = analyze_path(
+            &dir,
+            Some(UsageConfig {
+                tier: "auto".to_string(),
+                prs_per_week: 25.0,
+                pushes_per_pr: 4.0,
+                dev_hourly_rate_usd: 60.0,
+                ..Default::default()
+            }),
+        );
+        // Bug #23: Peak concurrency is max(PR width=4, Nightly width=1) = 4, NOT 7!
+        assert_eq!(rep.cost_components.peak_concurrent_jobs_per_run, 4);
+        // Bug #9 & #10: Human PR wait uses 8.0m (NOT 45.0m nightly!) at 40% DORA ($60/hr * 8/60 * 0.40 = $3.20/run)
+        assert_eq!(rep.dev_wait_cost_per_run_usd, 3.20);
+        assert_eq!(
+            rep.monthly_dev_wait_cost_usd,
+            rep.cost_components.monthly_productive_payroll_loss_usd
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_bug12_bug13_bug14_per_second_gitlab_circleci_dlc_and_matrix_include() {
+        let dir = std::env::temp_dir().join("minici_receipt_multivendor_per_sec");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".circleci")).unwrap();
+        // CircleCI config with 1.2m job + docker_layer_caching: true (+200 credits = +$0.12/run)
+        // Bug #14: CircleCI bills per-second (`1.2m`, NOT `ceil=2.0m`)!
+        fs::write(
+            dir.join(".circleci/config.yml"),
+            "version: 2.1\njobs:\n  build:\n    docker:\n      - image: cimg/base:stable\n    resource_class: medium\n    docker_layer_caching: true\n    est-minutes: 1.2\n    steps:\n      - checkout\n      - run: npm test\n",
+        )
+        .unwrap();
+        let cci_rep = analyze_path(&dir, None);
+        assert_eq!(cci_rep.jobs[0].billed_mins_per_job, 1.2);
+        // 1.2m * $0.006 + $0.12 DLC = $0.1272/run
+        assert!((cci_rep.jobs[0].run_compute_cost_usd - 0.1272).abs() < 0.0005);
+        let _ = fs::remove_dir_all(&dir);
+
+        // Bug #13: GitHub `matrix.include` augmenting an EXISTING cell does NOT add an extra job!
+        let gh_dir = std::env::temp_dir().join("minici_receipt_matrix_include");
+        let _ = fs::remove_dir_all(&gh_dir);
+        fs::create_dir_all(gh_dir.join(".github/workflows")).unwrap();
+        fs::write(
+            gh_dir.join(".github/workflows/inc.yml"),
+            "name: Matrix Include\non: push\njobs:\n  test:\n    runs-on: ${{ matrix.os }}\n    strategy:\n      matrix:\n        os: [ubuntu-latest, macos-latest]\n        include:\n          - os: ubuntu-latest\n            flags: --fast\n          - os: windows-latest\n            flags: --win\n    steps:\n      - uses: actions/checkout@v4\n",
+        )
+        .unwrap();
+        let gh_rep = analyze_path(&gh_dir, None);
+        // 2 base cells + 0 for existing `ubuntu-latest` + 1 for new `windows-latest` = 3 cells (NOT 4!)
+        assert_eq!(gh_rep.total_expanded_matrix_jobs, 3);
+        let _ = fs::remove_dir_all(&gh_dir);
+    }
+
+    #[test]
+    fn test_receipt_bug21_bug26_bug27_storage_cache_false_and_switching_tco() {
+        let dir = std::env::temp_dir().join("minici_receipt_storage_cache_tco");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        fs::write(dir.join("Jenkinsfile"), "pipeline { agent any }").unwrap();
+        // `cache: false` + `./.github/actions/notify` MUST NOT count as cached (Bug #26)!
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: CI\non: pull_request\njobs:\n  app:\n    runs-on: ubuntu-8-core\n    est-minutes: 10.0\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          cache: false\n      - uses: ./.github/actions/notify-slack\n      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 1\n      - run: npm test\n",
+        )
+        .unwrap();
+        let rep = analyze_path(
+            &dir,
+            Some(UsageConfig {
+                tier: "enterprise".to_string(),
+                prs_per_week: 5.0,
+                pushes_per_pr: 2.0,
+                artifact_gb_per_run: 0.5,
+                artifact_retention_days: 1,
+                ..Default::default()
+            }),
+        );
+        assert!(!rep.jobs[0].uses_cache);
+        // Bug #21.3: Enterprise includes 50 GB storage -> ~0.72 GB steady-state has $0.00 net billed storage!
+        assert_eq!(rep.cost_components.net_billed_vendor_storage_configured_usd, 0.0);
+        // Strict Applicability (GEMINI.md Rule #3): Hosted SaaS runner without external log shipper -> $0 SIEM & $0 NAT!
+        assert_eq!(rep.cost_components.monthly_datadog_90d_log_shipping_usd, 0.0);
+        assert_eq!(
+            rep.cost_components.monthly_infracost_private_subnet_nat_worst_case_usd,
+            0.0
+        );
+        // Bug #27: `migration_verdict` populated (`GO NOW`, `GO IF STRATEGIC`, or `STAY`)
+        assert!(matches!(
+            rep.cost_components.migration_verdict.as_str(),
+            "GO NOW" | "GO IF STRATEGIC" | "STAY"
+        ));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_bug30_bug31_telemetry_wiring_and_sticky_comment_id() {
+        // 1. Sticky PR comment ID parser MUST extract comment `id` (777888999) and NEVER `user.id` (111222)!
+        let gh_comments_json = r#"[
+          {
+            "url": "https://api.github.com/repos/o/r/issues/comments/555",
+            "id": 555,
+            "user": { "login": "alice", "id": 999 },
+            "body": "LGTM!"
+          },
+          {
+            "url": "https://api.github.com/repos/o/r/issues/comments/777888999",
+            "id": 777888999,
+            "user": { "login": "github-actions[bot]", "id": 111222 },
+            "body": "<!-- minici-cost-comment -->\n### MiniCI Diff"
+          }
+        ]"#;
+        assert_eq!(
+            find_sticky_comment_id_in_github_json(gh_comments_json),
+            Some(777888999)
+        );
+
+        // 2. Live telemetry fields wired into Models 8, 12, 16, 18, 19, 21, 22, 23, 24 + step-timeout vs job-timeout
+        let dir = std::env::temp_dir().join("minici_receipt_telem_wiring");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        fs::write(dir.join(".github/CODEOWNERS"), "* @finops-core\n").unwrap();
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: CI\non: pull_request\njobs:\n  guarded:\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    est-minutes: 4.0\n    steps:\n      - uses: actions/checkout@v4\n  unguarded-mac:\n    runs-on: macos-latest\n    est-minutes: 5.0\n    steps:\n      - uses: actions/checkout@v4\n        timeout-minutes: 5\n",
+        )
+        .unwrap();
+
+        let mut snap = telemetry::CanonicalTelemetrySnapshot::default();
+        snap.provenance_mode = "live_api_calibrated".to_string();
+        snap.observed_monthly_runs = Some(300.0);
+        snap.observed_runs_last_7d = Some(120.0); // 120/7 = 17.14/d vs (180/23 = 7.83/d) = 2.19x >= 1.50x!
+        snap.observed_flake_rate_pct = Some(12.5);
+        snap.observed_active_devs_30d = Some(42);
+        snap.observed_cache_active_gb = Some(14.2);
+        snap.observed_ghcr_storage_gb = Some(25.0);
+        snap.real_phase_shares = Some([4.0, 16.0, 35.0, 30.0, 10.0, 5.0]);
+        snap.median_cpu_util_pct = Some(15.0);
+        snap.median_ram_util_pct = Some(90.0);
+
+        let rep = analyze_path_with_telemetry(&dir, None, Some(snap));
+        let cc = &rep.cost_components;
+        assert_eq!(cc.estimated_flake_rate_pct, 12.5);
+        assert_eq!(cc.implied_active_devs, 42);
+        assert_eq!(cc.est_aggregate_cache_gb, 14.2);
+        assert!(cc.exceeds_10gb_repo_cache_limit);
+        assert_eq!(cc.est_registry_storage_gb, 25.0);
+        assert_eq!(cc.phase_compile_typecheck_share_pct, 35.0);
+        assert_eq!(cc.top_codeowners_team, "@finops-core");
+        assert!(cc.spend_anomaly_alert_active);
+        // Bug #30.1 & #30.2: `guarded` has job-level timeout, `unguarded-mac` ONLY has step-level timeout!
+        // Exposure = 1 job * 360m * $0.062/m = $22.32!
+        assert_eq!(cc.jobs_missing_timeout_minutes_count, 1);
+        assert_eq!(cc.hung_job_360m_worst_case_exposure_usd, 22.32);
+        // Bug #31: Hosted SaaS under 20 concurrent cap -> 0.0s queue wait
+        assert_eq!(cc.est_p95_queue_wait_sec, 0.0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_optimizer_ubuntu_24_04_and_multiline_runs_on_regression() {
+        // Reproduces and verifies fix for Claude CLI's exact bugs:
+        // 1. `runs-on: ubuntu-24.04` MUST map to `ubuntu-24.04-arm` (NEVER `ubuntu-24-core`!).
+        // 2. Multi-line `runs-on:\n  - ubuntu-latest` MUST NOT inject `timeout-minutes` between `runs-on:` and `-`!
+        let dir = std::env::temp_dir().join("minici_optimizer_regression");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        fs::write(dir.join("package-lock.json"), "{}").unwrap();
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: CI\non: pull_request\njobs:\n  build:\n    timeout-minutes: 25\n    runs-on: ubuntu-24.04\n    est-minutes: 8.0\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n      - run: npm test\n  multi:\n    runs-on:\n      - ubuntu-latest\n    est-minutes: 6.0\n    steps:\n      - uses: actions/checkout@v4\n      - run: npm test\n",
+        )
+        .unwrap();
+
+        let mig = optimizer::run_surgical_optimizer(&dir, "migrate", "github-arm64", false);
+        assert!(mig.edits.iter().any(|e| e.replacement_snippet.contains("ubuntu-24.04-arm")));
+        assert!(!mig.edits.iter().any(|e| e.replacement_snippet.contains("24-core")));
+
+        let shr = optimizer::run_surgical_optimizer(&dir, "shrink", "arm64", true);
+        let updated_yml = fs::read_to_string(dir.join(".github/workflows/ci.yml")).unwrap();
+        // `build` already had `timeout-minutes: 25` BEFORE `runs-on:`, so it must NOT get a duplicate `timeout-minutes`!
+        assert_eq!(updated_yml.matches("timeout-minutes:").count(), 2);
+        // `multi` must still have valid YAML list right under `runs-on:`!
+        assert!(updated_yml.contains("runs-on:\n      - ubuntu-latest"));
+        assert!(shr.verified_diff.delta_monthly_compute_usd <= 0.0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_gitlab_0_5x_public_and_0_008x_fork_mr_factors() {
+        let gl = providers::select_provider_plugin("gitlab-ci");
+        let jobs = vec![engine::ExpandedJobCost {
+            workflow_file: ".gitlab-ci.yml".to_string(),
+            job_id: "test".to_string(),
+            matrix_combination_count: 1,
+            runner_label: "saas-linux-small-amd64".to_string(),
+            provider: "gitlab-ci".to_string(),
+            os: "linux".to_string(),
+            vcpus: 2,
+            est_raw_duration_mins_per_job: 10.0,
+            billed_mins_per_job: 10.0,
+            total_billed_mins_all_matrix: 10.0,
+            rate_per_min_usd: 0.010,
+            run_compute_cost_usd: 0.10,
+            blacksmith_run_cost_usd: 0.04,
+            self_hosted_spot_run_cost_usd: 0.024,
+            has_concurrency_cancel: true,
+            has_timeout_minutes: true,
+            has_sparse_or_shallow_clone: true,
+            uses_cache: true,
+            uploads_artifacts: false,
+            artifact_retention_days: None,
+        }];
+        // Private repo (`auto` tier): 10m * 100 runs = 1,000 compute mins (400 free -> 600 overage * $0.01 = $6.00)
+        let priv_led = gl.compute_invoice_ledger(&jobs, 100.0, "auto", providers::RepoVisibility::Private);
+        assert_eq!(priv_led.monthly_os_weighted_pool_mins, 1000.0);
+        assert_eq!(priv_led.net_billed_monthly_compute_cost_usd, 6.00);
+        // Public OSS repo (`auto` tier): 0.5x cost factor -> 500 compute mins (400 free -> 100 overage = $1.00)
+        let pub_led = gl.compute_invoice_ledger(&jobs, 100.0, "auto", providers::RepoVisibility::Public);
+        assert_eq!(pub_led.monthly_os_weighted_pool_mins, 500.0);
+        assert!((pub_led.net_billed_monthly_compute_cost_usd - 1.00).abs() < 0.05);
+        // Fork MR factor = 0.008x -> 10m * 0.008 = 0.08m/run * 100 = 8.0 compute mins <= 400 free -> $0.00!
+        env::set_var("MINICI_GITLAB_FORK_MR", "1");
+        let fork_led = gl.compute_invoice_ledger(&jobs, 100.0, "auto", providers::RepoVisibility::Public);
+        env::remove_var("MINICI_GITLAB_FORK_MR");
+        assert_eq!(fork_led.monthly_os_weighted_pool_mins, 8.0);
+        assert_eq!(fork_led.net_billed_monthly_compute_cost_usd, 0.00);
+    }
+
+    #[test]
+    fn test_receipt_aws_codebuild_lambda_scaling_and_24h_mac_dedicated_host() {
+        // Bug #19: CodeBuild Lambda scales linearly by GB ($0.0009/min @ 1GB -> $0.0090/min @ 10GB = exact 10x)
+        let l1 = catalog::resolve_runner_sku("BUILD_LAMBDA_1GB");
+        let l10 = catalog::resolve_runner_sku("BUILD_LAMBDA_10GB");
+        assert!((l1.rate_per_min_usd - 0.0009).abs() < 0.0001);
+        assert!((l10.rate_per_min_usd - 0.0090).abs() < 0.0001);
+        // Bug #22: EC2 Dedicated Mac host has 24-hour minimum allocation ($657/mo on-demand)
+        let (lbl, _od_hr, od_mo, _sp_hr) = catalog::infracost_ec2_runner_profile(4, false, true);
+        assert!(lbl.contains("Dedicated 24h"));
+        assert!(od_mo >= 650.0);
+    }
+
+    #[test]
+    fn test_receipt_gitlab_parallel_matrix_and_step_duration_heuristics() {
+        let dir = std::env::temp_dir().join("minici_receipt_gl_matrix");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(".gitlab-ci.yml"),
+            "test-suite:\n  tags:\n    - saas-linux-medium-amd64\n  parallel:\n    matrix:\n      - PYTHON: ['3.11', '3.12', '3.13']\n        DB: ['pg', 'mysql']\n  script:\n    - pytest\n    - docker build -t app .\n",
+        )
+        .unwrap();
+        let rep = analyze_path(&dir, None);
+        // 3 * 2 = 6 expanded matrix jobs on `saas-linux-medium-amd64` ($0.02/min), duration > 4.0m from pytest + docker build!
+        assert_eq!(rep.total_expanded_matrix_jobs, 6);
+        assert_eq!(rep.jobs[0].rate_per_min_usd, 0.0200);
+        assert!(rep.jobs[0].est_raw_duration_mins_per_job >= 5.5);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_cron_cadence_parser_hourly_weekly_daily_unit_economics() {
+        let dir = std::env::temp_dir().join("minici_receipt_cron_cadence");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        // Hourly cron (`0 * * * *` = 720 runs/mo) vs Weekly cron (`0 2 * * 1` = 4.33 runs/mo)
+        fs::write(
+            dir.join(".github/workflows/hourly.yml"),
+            "name: Hourly\non:\n  schedule:\n    - cron: '0 * * * *'\njobs:\n  h:\n    runs-on: ubuntu-latest\n    est-minutes: 2.0\n    steps:\n      - run: echo ok\n",
+        )
+        .unwrap();
+        let hourly_rep = analyze_path(&dir, None);
+        fs::remove_file(dir.join(".github/workflows/hourly.yml")).unwrap();
+        fs::write(
+            dir.join(".github/workflows/weekly.yml"),
+            "name: Weekly\non:\n  schedule:\n    - cron: '0 2 * * 1'\njobs:\n  w:\n    runs-on: ubuntu-latest\n    est-minutes: 2.0\n    steps:\n      - run: echo ok\n",
+        )
+        .unwrap();
+        let weekly_rep = analyze_path(&dir, None);
+        assert!(
+            hourly_rep.cost_components.cadence_weighted_monthly_compute_usd
+                > weekly_rep.cost_components.cadence_weighted_monthly_compute_usd * 50.0
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_mcp_apply_safety_guard_and_response_cache_invalidation() {
+        let dir = std::env::temp_dir().join("minici_receipt_mcp_safety");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        let orig = "name: CI\non: pull_request\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n";
+        fs::write(dir.join(".github/workflows/ci.yml"), orig).unwrap();
+
+        // Calling `minici_shrink` with `"apply":true` WITHOUT `"confirm_write":true` MUST NOT mutate disk!
+        let _ = handle_mcp_jsonrpc_line(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"minici_shrink","arguments":{"apply":true}}}"#,
+            &dir,
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(dir.join(".github/workflows/ci.yml")).unwrap(), orig);
+
+        // Passing `"apply":true` AND `"confirm_write":true` DOES apply cleanly!
+        let _ = handle_mcp_jsonrpc_line(
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"minici_shrink","arguments":{"apply":true,"confirm_write":true}}}"#,
+            &dir,
+        )
+        .unwrap();
+        assert!(fs::read_to_string(dir.join(".github/workflows/ci.yml")).unwrap().contains("timeout-minutes: 30"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_maxim_applicability_and_first_party_branding_gate() {
+        let dir = std::env::temp_dir().join("minici_receipt_maxim_gate");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: Maxim\non: pull_request\njobs:\n  heavy:\n    runs-on: blacksmith-4vcpu-ubuntu-2404\n    est-minutes: 6.0\n    strategy:\n      matrix:\n        shard: [1, 2, 3, 4]\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/upload-artifact@v4\n        with:\n          retention-days: 1\n  light:\n    runs-on: ubuntu-latest\n    est-minutes: 1.0\n    steps:\n      - run: echo ok\n",
+        )
+        .unwrap();
+        let rep = analyze_path(&dir, None);
+        let cli = render_cli_compact_summary(&rep);
+        assert!(cli.contains("Pipeline already optimized (4/5 jobs on custom runners"));
+        assert!(!cli.contains("Switch to ARM64"));
+        assert!(!cli.contains("14d retention reduces storage"));
+        assert!(!cli.contains("Private Subnet + NAT"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_mapping_runs_on_and_pr_suggestion_anchors() {
+        let dir = std::env::temp_dir().join("minici_receipt_mapping_runs_on");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        let wf = "name: MapRuns\non: pull_request\njobs:\n  b:\n    runs-on:\n      group: arm-pool\n      labels: [ubuntu-24.04-arm]\n    est-minutes: 2.0\n    steps:\n      - run: echo ok\n";
+        fs::write(dir.join(".github/workflows/ci.yml"), wf).unwrap();
+        let rep = analyze_path(&dir, None);
+        assert_eq!(rep.jobs.len(), 1);
+        assert!((rep.jobs[0].rate_per_min_usd - 0.005).abs() < 1e-6);
+
+        let shrink_rep = optimizer::run_surgical_optimizer(&dir, "shrink", "in-place", true);
+        let patched = fs::read_to_string(dir.join(".github/workflows/ci.yml")).unwrap();
+        let lbl_pos = patched.find("labels: [ubuntu-24.04-arm]").unwrap();
+        let to_pos = patched.find("timeout-minutes: 30").unwrap();
+        assert!(to_pos > lbl_pos, "timeout-minutes must be injected AFTER mapping runs-on block");
+        let e2 = shrink_rep.edits.iter().find(|e| e.rule_id == "MINICI-SHRINK-002").unwrap();
+        assert!(e2.original_snippet.contains("labels: [ubuntu-24.04-arm]"));
+        assert!(e2.replacement_snippet.contains("labels: [ubuntu-24.04-arm]\n    timeout-minutes: 30"));
+
+        // GitLab line-1 suggestion preservation check
+        let gl_dir = std::env::temp_dir().join("minici_receipt_gl_line1");
+        let _ = fs::remove_dir_all(&gl_dir);
+        fs::create_dir_all(&gl_dir).unwrap();
+        fs::write(gl_dir.join(".gitlab-ci.yml"), "stages: [test]\ntest-job:\n  script: [echo ok]\n").unwrap();
+        let gl_shrink = optimizer::run_surgical_optimizer(&gl_dir, "shrink", "in-place", false);
+        let gl1 = gl_shrink.edits.iter().find(|e| e.rule_id == "MINICI-SHRINK-GL1").unwrap();
+        assert!(gl1.replacement_snippet.ends_with("stages: [test]"));
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&gl_dir);
+    }
+
+    #[test]
+    fn test_receipt_per_workflow_live_telemetry_ledger_no_os_distortion() {
+        let dir = std::env::temp_dir().join("minici_receipt_live_wf_ledger");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        fs::create_dir_all(dir.join(".minici")).unwrap();
+        // Linux workflow runs 100x/mo (5m * 100 = 500 pool mins), macOS workflow runs 0x/mo (20m * 10x = 0 pool mins!)
+        fs::write(
+            dir.join(".github/workflows/linux.yml"),
+            "name: L\non: push\njobs:\n  l:\n    runs-on: ubuntu-latest\n    est-minutes: 5.0\n    steps:\n      - run: echo ok\n",
+        ).unwrap();
+        fs::write(
+            dir.join(".github/workflows/mac.yml"),
+            "name: M\non: workflow_dispatch\njobs:\n  m:\n    runs-on: macos-latest\n    est-minutes: 20.0\n    steps:\n      - run: echo ok\n",
+        ).unwrap();
+        fs::write(
+            dir.join(".minici/telemetry.lock.json"),
+            r#"{"provenance_mode":"live_telemetry","repo_slug":"org/priv","visibility":"private","observed_monthly_runs":100.0,"observed_runs_last_7d":70.0,"observed_runs_prev_23d":46.0,"workflow_monthly_runs":[{"workflow":"linux.yml","runs_30d":100.0},{"workflow":"mac.yml","runs_30d":0.0}]}"#,
+        ).unwrap();
+        let rep = analyze_path(&dir, None);
+        // Exact pool consumption = 500.0 mins (25.0% of 2,000 free mins -> $0.00 net billed!), NOT distorted by dormant macOS workflow!
+        assert!((rep.cost_components.monthly_os_weighted_free_tier_mins - 500.0).abs() < 0.1);
+        assert!((rep.free_tier_quota_burn_pct - 25.0).abs() < 0.2);
+        assert_eq!(rep.net_billed_monthly_compute_cost_usd, 0.0);
+        // Model 22 burn velocity uses raw `observed_runs_prev_23d = 46` (`2.0/day`) vs `r7 = 70` (`10.0/day`) => `5.00x`!
+        assert!((rep.cost_components.burn_velocity_7d_vs_30d_ratio - 5.0).abs() < 0.05);
+        assert!(rep.cost_components.spend_anomaly_alert_active);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_tier5_step_hardware_telemetry_and_push_scope_detection() {
+        let dir = std::env::temp_dir().join("minici_receipt_tier5_hw");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        fs::create_dir_all(dir.join(".minici")).unwrap();
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: HW\non: push\njobs:\n  b:\n    runs-on: ubuntu-latest\n    est-minutes: 4.0\n    steps:\n      - uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1\n      - run: cargo test\n",
+        ).unwrap();
+        fs::write(
+            dir.join(".minici/step_hardware_telemetry.json"),
+            r#"{"median_cpu_util_pct": 18.0, "median_ram_util_pct": 91.5}"#,
+        ).unwrap();
+        let csv_p = dir.join("focus.csv");
+        fs::write(
+            &csv_p,
+            "ChargePeriodStart,ServiceName,BilledCost,ConsumedQuantity,ConsumedUnit,SkuId\n2026-11-01,GitHub Actions,6.00,1000,Minutes,actions_linux\n",
+        ).unwrap();
+
+        let perm = permissions::run_permissions_audit(
+            dir.to_str().unwrap(),
+            Some(&csv_p),
+            false,
+            Some("github_pat_readonly_test"),
+        );
+        assert_eq!(perm.attributes_unlocked, 108);
+        assert!((perm.coverage_pct - 100.0).abs() < 0.1);
+
+        let risky = permissions::classify_scopes_for_write_risk(&["permissions.push:true (contents:write)".to_string()]);
+        assert_eq!(risky.len(), 1);
+
+        // Guardrail A: CPU < 25% & RAM < 60% prevents over-provisioning `cargo test` to larger-32-core!
+        fs::write(
+            dir.join(".minici/step_hardware_telemetry.json"),
+            r#"{"median_cpu_util_pct": 18.0, "median_ram_util_pct": 42.0}"#,
+        ).unwrap();
+        let snap_low = telemetry::CanonicalTelemetrySnapshot::load_lockfile(&dir).unwrap();
+        assert_eq!(snap_low.median_cpu_util_pct, Some(18.0));
+        let rep_low = analyze_path(&dir, None);
+        assert_eq!(rep_low.cost_components.best_net_roi_runner_tier, "standard-2-core");
+
+        // Guardrail B: RAM >= 85% on a short job (`0.5m` where default is `standard-2-core`) upgrades to `larger-4-core` to prevent OOM!
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: HW\non: push\njobs:\n  b:\n    runs-on: ubuntu-latest\n    est-minutes: 0.5\n    steps:\n      - uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1\n      - run: echo fast\n",
+        ).unwrap();
+        fs::write(
+            dir.join(".minici/step_hardware_telemetry.json"),
+            r#"{"median_cpu_util_pct": 55.0, "median_ram_util_pct": 91.5}"#,
+        ).unwrap();
+        let zero_wait = engine::UsageConfig {
+            dev_hourly_rate_usd: 0.0,
+            ..engine::UsageConfig::default()
+        };
+        let rep_oom = analyze_path(&dir, Some(zero_wait));
+        assert_eq!(rep_oom.cost_components.best_net_roi_runner_tier, "larger-4-core");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_receipt_tier3_jev_systemone_constrained_choice_runner_and_csv() {
+        let dir = std::env::temp_dir().join("minici_receipt_jev_tier3");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let trie_json = dir.join("jev_trie.json");
+        fs::write(
+            &trie_json,
+            r#"{
+  "acme-cuda-inference-pool": {"choice": "gpu-t4-4-core", "score": 0.96},
+  "Kostenstelle_Netto_USD": {"choice": "net_amount", "score": 0.94},
+  "Verbrauch_Minuten": {"choice": "quantity", "score": 0.92}
+}"#,
+        )
+        .unwrap();
+        let url_val = format!("file://{}", trie_json.display());
+        env::set_var("MINICI_SYSTEMONE_URL", &url_val);
+
+        // 1. Ambiguous custom runner pool resolves via constrained choice to `gpu-t4-4-core` ($0.052/min)
+        let sku = catalog::resolve_runner_sku("acme-cuda-inference-pool");
+        assert!((sku.rate_per_min_usd - 0.052).abs() < 1e-4);
+
+        // 2. Exotic non-English ERP CSV resolves via constrained choice to `net_amount` ($42.50)
+        let csv_p = dir.join("erp_de.csv");
+        fs::write(&csv_p, "Kostenstelle_Netto_USD,Verbrauch_Minuten\n42.50,500\n").unwrap();
+        let snap = telemetry::parse_universal_billing_csv(&csv_p, None).unwrap();
+        env::remove_var("MINICI_SYSTEMONE_URL");
+        assert_eq!(snap.invoice_net_billed_usd, Some(42.50));
+        let _ = fs::remove_dir_all(&dir);
     }
 }
