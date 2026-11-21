@@ -59,6 +59,7 @@ PERM_OUT=$("$BIN" permissions check --path "$REPO_ROOT" --offline --format json)
 echo "$PERM_OUT" | grep -q '"source_code_access_required": false' || { echo "❌ FAIL: Permissions check failed"; exit 1; }
 "$BIN" shrink --path "$REPO_ROOT" --format json >/dev/null
 "$BIN" migrate --path "$REPO_ROOT" --to github-arm64 --format json >/dev/null
+"$BIN" ask "How much do we save moving to ARM64?" --path "$REPO_ROOT" --format json >/dev/null
 "$BIN" cloud-price c7g.xlarge --region us-east-1 --format json >/dev/null
 echo "✅ PASS (24 FinOps models + permissions + shrink/migrate + cloud-price + zero vendor leak)"
 PASS_COUNT=$((PASS_COUNT + 1))
@@ -109,15 +110,16 @@ fi
 echo "✅ PASS (All 7 CI providers active • 24/24 canonical JSON SKUs 0.00% drift)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
-# Gate 8: Live MCP Server JSON-RPC 2.0 Stdio Protocol Verification (7 Tools)
-echo -n "⏳ [Gate 8/9] Verifying Live MCP Server JSON-RPC 2.0 Stdio Handshake (7 Tools)... "
-MCP_OUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"minici_breakdown"}}\n{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"minici_permissions"}}\n' | "$BIN" mcp --path "$REPO_ROOT")
+# Gate 8: Live MCP Server JSON-RPC 2.0 Stdio Protocol Verification (8 Tools)
+echo -n "⏳ [Gate 8/9] Verifying Live MCP Server JSON-RPC 2.0 Stdio Handshake (8 Tools)... "
+MCP_OUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"minici_breakdown"}}\n{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"minici_permissions"}}\n{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"minici_ask","arguments":{"question":"What is our monthly CI cost?"}}}\n' | "$BIN" mcp --path "$REPO_ROOT")
 echo "$MCP_OUT" | grep -q '"protocolVersion":"2024-11-05"' || { echo "❌ FAIL: MCP initialize failed"; exit 1; }
 echo "$MCP_OUT" | grep -q '"name":"minici_breakdown"' || { echo "❌ FAIL: MCP tools/list missing minici_breakdown"; exit 1; }
 echo "$MCP_OUT" | grep -q '"name":"minici_shrink"' || { echo "❌ FAIL: MCP tools/list missing minici_shrink"; exit 1; }
 echo "$MCP_OUT" | grep -q '"name":"minici_migrate"' || { echo "❌ FAIL: MCP tools/list missing minici_migrate"; exit 1; }
+echo "$MCP_OUT" | grep -q '"name":"minici_ask"' || { echo "❌ FAIL: MCP tools/list missing minici_ask"; exit 1; }
 echo "$MCP_OUT" | grep -q '"isError":false' || { echo "❌ FAIL: MCP tools/call failed"; exit 1; }
-echo "✅ PASS (7 MCP tools • JSON-RPC 2.0 stdio verified)"
+echo "✅ PASS (8 MCP tools • JSON-RPC 2.0 stdio verified)"
 PASS_COUNT=$((PASS_COUNT + 1))
 
 # Gate 9: Dynamic CLI Help Discovery & Auto-Smoke Execution (Zero Static Blind Spots)

@@ -1,4 +1,8 @@
 {
+  // MiniCI Cloudflare Worker + 3-Layer Edge Caching Stack:
+  //   Layer 1: Edge Cache API (`caches.default`, <0.5 ms PoP hit, s-maxage=300, stale-while-revalidate=3600)
+  //   Layer 2: Workers KV (`MINICI_KV`, ~3-8 ms global read for `report:<repo>:<window>` & `jev:step:<sha256>`)
+  //   Layer 3: Cloudflare D1 SQLite (`MINICI_D1`, `migrations/0001_minici_d1.sql` persistent FinOps ledger)
   "name": "minici-cost-action",
   "main": "worker.js",
   "compatibility_date": "2025-01-01",
@@ -6,4 +10,17 @@
     "directory": "./web",
     "binding": "ASSETS"
   }
+  // Uncomment or bind in Cloudflare Dashboard / `wrangler d1 create minici-telemetry` & `wrangler kv namespace create MINICI_KV`:
+  // "kv_namespaces": [
+  //   { "binding": "MINICI_KV", "id": "00000000000000000000000000000000" }
+  // ],
+  // "d1_databases": [
+  //   {
+  //     "binding": "MINICI_D1",
+  //     "database_name": "minici-telemetry",
+  //     "database_id": "00000000-0000-0000-0000-000000000000",
+  //     "migrations_dir": "migrations"
+  //   }
+  // ],
+  // "ai": { "binding": "AI" }
 }

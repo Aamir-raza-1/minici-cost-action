@@ -332,7 +332,7 @@ def validate_single_repo_all_modes(
     assert rc_mcp == 0, f"MCP server failed on {repo_name}: {err_mcp}"
     mcp_lines = [json.loads(line) for line in out_mcp.strip().splitlines() if line.strip()]
     assert len(mcp_lines) == 4, f"Expected 4 JSON-RPC responses on {repo_name}, got {len(mcp_lines)}"
-    assert len(mcp_lines[1]["result"]["tools"]) == 7, f"Expected 7 MCP tools on {repo_name}"
+    assert len(mcp_lines[1]["result"]["tools"]) == 8, f"Expected 8 MCP tools on {repo_name}"
     mcp_bd_payload = json.loads(mcp_lines[2]["result"]["content"][0]["text"])
     assert abs(float(mcp_bd_payload["gross_monthly_compute_cost_usd"]) - float(bd_data["gross_monthly_compute_cost_usd"])) < 0.01
     assert "cost_components" in mcp_bd_payload and len(mcp_bd_payload["cost_components"]) == 24

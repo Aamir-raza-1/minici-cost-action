@@ -1,4 +1,4 @@
-name: "MiniCI Runner Hardware Telemetry Sampler (Optional Tier 5)"
+name: "MiniCI Runner Hardware Telemetry Sampler (Optional Tier 4 — 108/108)"
 description: "Lightweight, zero-dependency, 100% local kernel CPU & RAM utilization sampler (.minici/step_hardware_telemetry.json) for 108/108 FinOps right-sizing."
 author: "Aamir Raza <raza.aamir01@gmail.com>"
 
@@ -62,12 +62,12 @@ runs:
           fi
         elif [ "$(uname -s)" = "Darwin" ]; then
           CORES="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
-          CPU_SUM="$(ps -A -o %cpu 2>/dev/null | awk 'NR>1 {s+=$1} END {printf "%.1f", s+0}')"
+          CPU_SUM="$({ ps -A -o %cpu 2>/dev/null || true; } | awk 'NR>1 {s+=$1} END {printf "%.1f", s+0}')"
           CPU_PCT="$(awk -v s="$CPU_SUM" -v c="$CORES" 'BEGIN { v = (c > 0) ? (s / c) : 0; if (v > 100) v = 100; printf "%.1f", v }')"
           MEM_BYTES="$(sysctl -n hw.memsize 2>/dev/null || echo 8589934592)"
-          PAGE_SIZE="$(vm_stat | awk '/page size of/ {gsub(/[^0-9]/,"",$8); print ($8 ? $8 : 16384)}')"
-          ACTIVE_P="$(vm_stat | awk '/Pages active:/ {gsub(/\./,"",$3); print $3+0}')"
-          WIRED_P="$(vm_stat | awk '/Pages wired down:/ {gsub(/\./,"",$4); print $4+0}')"
+          PAGE_SIZE="$({ vm_stat 2>/dev/null || true; } | awk '/page size of/ {gsub(/[^0-9]/,"",$8); print ($8 ? $8 : 16384)}')"
+          ACTIVE_P="$({ vm_stat 2>/dev/null || true; } | awk '/Pages active:/ {gsub(/\./,"",$3); print $3+0}')"
+          WIRED_P="$({ vm_stat 2>/dev/null || true; } | awk '/Pages wired down:/ {gsub(/\./,"",$4); print $4+0}')"
           RAM_PCT="$(awk -v a="${ACTIVE_P:-0}" -v w="${WIRED_P:-0}" -v ps="${PAGE_SIZE:-16384}" -v tot="$MEM_BYTES" 'BEGIN { u = (a + w) * ps; printf "%.1f", (tot > 0) ? ((u * 100.0) / tot) : 45.0 }')"
         fi
 
@@ -80,6 +80,8 @@ runs:
         }
         EOF
 
-        echo "median_cpu_util_pct=${CPU_PCT}" >> "$GITHUB_OUTPUT"
-        echo "median_ram_util_pct=${RAM_PCT}" >> "$GITHUB_OUTPUT"
+        if [ -n "${GITHUB_OUTPUT:-}" ]; then
+          echo "median_cpu_util_pct=${CPU_PCT}" >> "$GITHUB_OUTPUT"
+          echo "median_ram_util_pct=${RAM_PCT}" >> "$GITHUB_OUTPUT"
+        fi
         echo "✅ Sampled runner hardware utilization -> ${OUT_FILE} (CPU: ${CPU_PCT}%, RAM: ${RAM_PCT}%)"

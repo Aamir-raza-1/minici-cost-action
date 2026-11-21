@@ -17,12 +17,16 @@ pub struct CanonicalTelemetrySnapshot {
     pub provenance_mode: String, // "static_baseline" | "live_telemetry" | "invoice_reconciled"
     pub repo_slug: String,
     pub visibility: String, // "public" | "private" | "unknown"
+    pub window_days: u32,
     pub synced_at_epoch_s: u64,
     pub api_calls_used: usize,
     pub etag_304_hits: usize,
     pub rate_limit_remaining: u32,
+    pub observed_runs_in_window: Option<usize>,
+    pub observed_skipped_noop_runs: Option<usize>,
     pub observed_monthly_runs: Option<f64>,
     pub observed_human_pr_monthly_runs: Option<f64>,
+    pub observed_bot_run_share_pct: Option<f64>,
     pub observed_runs_last_7d: Option<f64>,
     pub observed_runs_prev_23d: Option<f64>,
     pub observed_merged_prs_30d: Option<usize>,
@@ -31,6 +35,11 @@ pub struct CanonicalTelemetrySnapshot {
     pub observed_flake_rate_pct: Option<f64>,
     pub observed_p95_queue_wait_sec: Option<f64>,
     pub observed_off_hours_run_share_pct: Option<f64>,
+    pub observed_peak_concurrent_jobs: Option<usize>,
+    pub observed_cancelled_wasted_mins: Option<f64>,
+    pub observed_timed_out_jobs: Option<usize>,
+    pub observed_active_caches_count: Option<usize>,
+    pub observed_merge_queue_runs: Option<usize>,
     pub observed_cache_active_gb: Option<f64>,
     pub observed_artifact_storage_gb: Option<f64>,
     pub observed_ghcr_storage_gb: Option<f64>,
@@ -41,6 +50,8 @@ pub struct CanonicalTelemetrySnapshot {
     pub median_ram_util_pct: Option<f64>,
     pub workflow_monthly_runs: Vec<(String, f64)>,
     pub job_durations_mins: Vec<(String, f64)>,
+    pub job_p90_durations_mins: Vec<(String, f64)>,
+    pub job_runtime_labels: Vec<(String, String)>,
     pub real_phase_shares: Option<[f64; 6]>,
 }
 
@@ -75,6 +86,18 @@ impl CanonicalTelemetrySnapshot {
             .map(|(k, v)| format!("{{\"job\":\"{}\",\"p50_mins\":{:.3}}}", json_escape(k), v))
             .collect::<Vec<_>>()
             .join(",");
+        let jobs_p90_json = self
+            .job_p90_durations_mins
+            .iter()
+            .map(|(k, v)| format!("{{\"job\":\"{}\",\"p90_mins\":{:.3}}}", json_escape(k), v))
+            .collect::<Vec<_>>()
+            .join(",");
+        let labels_json = self
+            .job_runtime_labels
+            .iter()
+            .map(|(k, v)| format!("{{\"job\":\"{}\",\"label\":\"{}\"}}", json_escape(k), json_escape(v)))
+            .collect::<Vec<_>>()
+            .join(",");
         let phases_json = self
             .real_phase_shares
             .map(|p| {
@@ -85,17 +108,22 @@ impl CanonicalTelemetrySnapshot {
             })
             .unwrap_or_else(|| "null".to_string());
 
+        let eff_win = if self.window_days == 0 { 30 } else { self.window_days };
         format!(
-            "{{\n  \"provenance_mode\": \"{}\",\n  \"repo_slug\": \"{}\",\n  \"visibility\": \"{}\",\n  \"synced_at_epoch_s\": {},\n  \"api_calls_used\": {},\n  \"etag_304_hits\": {},\n  \"rate_limit_remaining\": {},\n  \"observed_monthly_runs\": {},\n  \"observed_human_pr_monthly_runs\": {},\n  \"observed_runs_last_7d\": {},\n  \"observed_runs_prev_23d\": {},\n  \"observed_merged_prs_30d\": {},\n  \"observed_deploys_30d\": {},\n  \"observed_active_devs_30d\": {},\n  \"observed_flake_rate_pct\": {},\n  \"observed_p95_queue_wait_sec\": {},\n  \"observed_off_hours_run_share_pct\": {},\n  \"observed_cache_active_gb\": {},\n  \"observed_artifact_storage_gb\": {},\n  \"observed_ghcr_storage_gb\": {},\n  \"invoice_gross_usd\": {},\n  \"invoice_discount_usd\": {},\n  \"invoice_net_billed_usd\": {},\n  \"median_cpu_util_pct\": {},\n  \"median_ram_util_pct\": {},\n  \"real_phase_shares\": {},\n  \"workflow_monthly_runs\": [{}],\n  \"job_durations_mins\": [{}]\n}}\n",
+            "{{\n  \"provenance_mode\": \"{}\",\n  \"repo_slug\": \"{}\",\n  \"visibility\": \"{}\",\n  \"window_days\": {},\n  \"synced_at_epoch_s\": {},\n  \"api_calls_used\": {},\n  \"etag_304_hits\": {},\n  \"rate_limit_remaining\": {},\n  \"observed_runs_in_window\": {},\n  \"observed_skipped_noop_runs\": {},\n  \"observed_monthly_runs\": {},\n  \"observed_human_pr_monthly_runs\": {},\n  \"observed_bot_run_share_pct\": {},\n  \"observed_runs_last_7d\": {},\n  \"observed_runs_prev_23d\": {},\n  \"observed_merged_prs_30d\": {},\n  \"observed_deploys_30d\": {},\n  \"observed_active_devs_30d\": {},\n  \"observed_flake_rate_pct\": {},\n  \"observed_p95_queue_wait_sec\": {},\n  \"observed_off_hours_run_share_pct\": {},\n  \"observed_peak_concurrent_jobs\": {},\n  \"observed_cancelled_wasted_mins\": {},\n  \"observed_timed_out_jobs\": {},\n  \"observed_active_caches_count\": {},\n  \"observed_merge_queue_runs\": {},\n  \"observed_cache_active_gb\": {},\n  \"observed_artifact_storage_gb\": {},\n  \"observed_ghcr_storage_gb\": {},\n  \"invoice_gross_usd\": {},\n  \"invoice_discount_usd\": {},\n  \"invoice_net_billed_usd\": {},\n  \"median_cpu_util_pct\": {},\n  \"median_ram_util_pct\": {},\n  \"real_phase_shares\": {},\n  \"workflow_monthly_runs\": [{}],\n  \"job_durations_mins\": [{}],\n  \"job_p90_durations_mins\": [{}],\n  \"job_runtime_labels\": [{}]\n}}\n",
             json_escape(&self.provenance_mode),
             json_escape(&self.repo_slug),
             json_escape(&self.visibility),
+            eff_win,
             self.synced_at_epoch_s,
             self.api_calls_used,
             self.etag_304_hits,
             self.rate_limit_remaining,
+            fmt_opt_usize(self.observed_runs_in_window),
+            fmt_opt_usize(self.observed_skipped_noop_runs),
             fmt_opt_f64(self.observed_monthly_runs),
             fmt_opt_f64(self.observed_human_pr_monthly_runs),
+            fmt_opt_f64(self.observed_bot_run_share_pct),
             fmt_opt_f64(self.observed_runs_last_7d),
             fmt_opt_f64(self.observed_runs_prev_23d),
             fmt_opt_usize(self.observed_merged_prs_30d),
@@ -104,6 +132,11 @@ impl CanonicalTelemetrySnapshot {
             fmt_opt_f64(self.observed_flake_rate_pct),
             fmt_opt_f64(self.observed_p95_queue_wait_sec),
             fmt_opt_f64(self.observed_off_hours_run_share_pct),
+            fmt_opt_usize(self.observed_peak_concurrent_jobs),
+            fmt_opt_f64(self.observed_cancelled_wasted_mins),
+            fmt_opt_usize(self.observed_timed_out_jobs),
+            fmt_opt_usize(self.observed_active_caches_count),
+            fmt_opt_usize(self.observed_merge_queue_runs),
             fmt_opt_f64(self.observed_cache_active_gb),
             fmt_opt_f64(self.observed_artifact_storage_gb),
             fmt_opt_f64(self.observed_ghcr_storage_gb),
@@ -114,7 +147,9 @@ impl CanonicalTelemetrySnapshot {
             fmt_opt_f64(self.median_ram_util_pct),
             phases_json,
             wf_runs_json,
-            jobs_json
+            jobs_json,
+            jobs_p90_json,
+            labels_json
         )
     }
 
@@ -176,13 +211,17 @@ impl CanonicalTelemetrySnapshot {
             repo_slug: parse_str_field(raw, "repo_slug").unwrap_or_default(),
             visibility: parse_str_field(raw, "visibility")
                 .unwrap_or_else(|| "unknown".to_string()),
+            window_days: parse_num_field(raw, "window_days").unwrap_or(30.0).max(1.0) as u32,
             synced_at_epoch_s: parse_num_field(raw, "synced_at_epoch_s").unwrap_or(0.0) as u64,
             api_calls_used: parse_num_field(raw, "api_calls_used").unwrap_or(0.0) as usize,
             etag_304_hits: parse_num_field(raw, "etag_304_hits").unwrap_or(0.0) as usize,
             rate_limit_remaining: parse_num_field(raw, "rate_limit_remaining").unwrap_or(60.0)
                 as u32,
+            observed_runs_in_window: parse_num_field(raw, "observed_runs_in_window").map(|x| x as usize),
+            observed_skipped_noop_runs: parse_num_field(raw, "observed_skipped_noop_runs").map(|x| x as usize),
             observed_monthly_runs: parse_num_field(raw, "observed_monthly_runs"),
             observed_human_pr_monthly_runs: parse_num_field(raw, "observed_human_pr_monthly_runs"),
+            observed_bot_run_share_pct: parse_num_field(raw, "observed_bot_run_share_pct"),
             observed_runs_last_7d: parse_num_field(raw, "observed_runs_last_7d"),
             observed_runs_prev_23d: parse_num_field(raw, "observed_runs_prev_23d"),
             observed_merged_prs_30d: parse_num_field(raw, "observed_merged_prs_30d")
@@ -196,6 +235,11 @@ impl CanonicalTelemetrySnapshot {
                 raw,
                 "observed_off_hours_run_share_pct",
             ),
+            observed_peak_concurrent_jobs: parse_num_field(raw, "observed_peak_concurrent_jobs").map(|x| x as usize),
+            observed_cancelled_wasted_mins: parse_num_field(raw, "observed_cancelled_wasted_mins"),
+            observed_timed_out_jobs: parse_num_field(raw, "observed_timed_out_jobs").map(|x| x as usize),
+            observed_active_caches_count: parse_num_field(raw, "observed_active_caches_count").map(|x| x as usize),
+            observed_merge_queue_runs: parse_num_field(raw, "observed_merge_queue_runs").map(|x| x as usize),
             observed_cache_active_gb: parse_num_field(raw, "observed_cache_active_gb"),
             observed_artifact_storage_gb: parse_num_field(raw, "observed_artifact_storage_gb"),
             observed_ghcr_storage_gb: parse_num_field(raw, "observed_ghcr_storage_gb"),
@@ -206,6 +250,8 @@ impl CanonicalTelemetrySnapshot {
             median_ram_util_pct: parse_num_field(raw, "median_ram_util_pct"),
             workflow_monthly_runs: Vec::new(),
             job_durations_mins: Vec::new(),
+            job_p90_durations_mins: Vec::new(),
+            job_runtime_labels: Vec::new(),
             real_phase_shares: None,
         };
 
@@ -246,6 +292,30 @@ impl CanonicalTelemetrySnapshot {
                     let jname = &item[..end_q];
                     if let Some(m) = parse_num_field(item, "p50_mins") {
                         s.job_durations_mins.push((jname.to_string(), m));
+                    }
+                }
+            }
+        }
+        if let Some(p90_idx) = raw.find("\"job_p90_durations_mins\":") {
+            let after = &raw[p90_idx..];
+            let section = after.find(']').map(|e| &after[..e]).unwrap_or(after);
+            for item in section.split("{\"job\":\"") {
+                if let Some(end_q) = item.find('"') {
+                    let jname = &item[..end_q];
+                    if let Some(m) = parse_num_field(item, "p90_mins") {
+                        s.job_p90_durations_mins.push((jname.to_string(), m));
+                    }
+                }
+            }
+        }
+        if let Some(lbl_idx) = raw.find("\"job_runtime_labels\":") {
+            let after = &raw[lbl_idx..];
+            let section = after.find(']').map(|e| &after[..e]).unwrap_or(after);
+            for item in section.split("{\"job\":\"") {
+                if let Some(end_q) = item.find('"') {
+                    let jname = &item[..end_q];
+                    if let Some(lbl) = parse_str_field(item, "label") {
+                        s.job_runtime_labels.push((jname.to_string(), lbl));
                     }
                 }
             }
@@ -501,16 +571,26 @@ pub fn sync_github_live_telemetry(
     repo_or_path: &str,
     save_dir: Option<&Path>,
 ) -> Result<CanonicalTelemetrySnapshot, String> {
-    sync_github_live_telemetry_with_limit(repo_or_path, save_dir, 100)
+    sync_github_live_telemetry_window(repo_or_path, save_dir, 300, 30)
 }
 
-/// Syncs live GitHub Actions telemetry (`<= 16` API calls in Zero-Token Public mode; full cache/artifacts in Read-PAT mode)
-/// with `std::thread::scope` parallel requests, per-workflow run cadence, SHA-verified flake detection,
-/// `steps[]` 6-phase timing, and HTTP `ETag 304` zero-quota caching.
 pub fn sync_github_live_telemetry_with_limit(
     repo_or_path: &str,
     save_dir: Option<&Path>,
     max_runs: usize,
+) -> Result<CanonicalTelemetrySnapshot, String> {
+    sync_github_live_telemetry_window(repo_or_path, save_dir, max_runs, 30)
+}
+
+/// Syncs live GitHub Actions telemetry over ANY user-chosen `window_days` (`1..=365`, e.g. `7`, `30`, `60`, `90`, `365`)
+/// with automatic multi-page pagination (`page=1..10`, up to `1,000` runs with `GITHUB_TOKEN`; `1` page in anonymous Zero-Token mode),
+/// excluding `0`-job `skipped` gatekeepers, computing sweep-line peak overlapping concurrent jobs, extracting runtime `labels[]`,
+/// per-job `p50` + `p90` durations, `steps[]` 6-phase timing, SHA-verified flake rate, and HTTP `ETag 304` zero-quota caching.
+pub fn sync_github_live_telemetry_window(
+    repo_or_path: &str,
+    save_dir: Option<&Path>,
+    max_runs: usize,
+    window_days: u32,
 ) -> Result<CanonicalTelemetrySnapshot, String> {
     let slug = infer_repo_slug(repo_or_path);
     if slug == "local/workspace" {
@@ -518,28 +598,40 @@ pub fn sync_github_live_telemetry_with_limit(
     }
     let token = discover_github_token();
     let tok_ref = token.as_deref();
-    let per_page = max_runs.clamp(1, 100);
+    let eff_window_days = window_days.clamp(1, 365);
+    let effective_max_runs = if token.is_some() {
+        max_runs.clamp(1, 1000)
+    } else {
+        max_runs.clamp(1, 100)
+    };
+    let per_page = effective_max_runs.min(100);
+    let max_pages = if token.is_some() {
+        ((effective_max_runs + 99) / 100).clamp(1, 10)
+    } else {
+        1
+    };
 
     let now_epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let cutoff_window = now_epoch.saturating_sub((eff_window_days as u64) * 86400);
 
     let repo_url = format!("https://api.github.com/repos/{}", slug);
-    let runs_url = format!(
-        "https://api.github.com/repos/{}/actions/runs?per_page={}",
+    let runs_url_p1 = format!(
+        "https://api.github.com/repos/{}/actions/runs?per_page={}&page=1",
         slug, per_page
     );
     let pulls_url = format!(
-        "https://api.github.com/repos/{}/pulls?state=closed&per_page=50",
+        "https://api.github.com/repos/{}/pulls?state=closed&per_page=100",
         slug
     );
     let cache_url = format!("https://api.github.com/repos/{}/actions/cache/usage", slug);
 
-    // Parallel fetch of core metadata + runs + PRs + cache/usage (works zero-token on public repos!)
-    let (repo_resp, runs_resp, pulls_resp, cache_resp) = std::thread::scope(|s| {
+    // Parallel fetch of core metadata + page-1 runs + PRs + cache/usage (works zero-token on public repos!)
+    let (repo_resp, runs_p1_resp, pulls_resp, cache_resp) = std::thread::scope(|s| {
         let h1 = s.spawn(|| github_get_with_etag(&repo_url, tok_ref));
-        let h2 = s.spawn(|| github_get_with_etag(&runs_url, tok_ref));
+        let h2 = s.spawn(|| github_get_with_etag(&runs_url_p1, tok_ref));
         let h3 = s.spawn(|| github_get_with_etag(&pulls_url, tok_ref));
         let h4 = s.spawn(|| github_get_with_etag(&cache_url, tok_ref));
         (
@@ -567,9 +659,56 @@ pub fn sync_github_live_telemetry_with_limit(
         }
     };
     record_resp(&repo_resp);
-    record_resp(&runs_resp);
+    record_resp(&runs_p1_resp);
     record_resp(&pulls_resp);
     record_resp(&cache_resp);
+
+    // Multi-page pagination (`page=2..=max_pages`) until we either cover `cutoff_window` or hit `effective_max_runs`!
+    let mut all_run_bodies: Vec<String> = Vec::new();
+    if let Some(r1) = runs_p1_resp {
+        let mut oldest_seen = u64::MAX;
+        let mut p1_count = 0usize;
+        for c in r1.body.split("{\"id\":") {
+            if c.contains("\"run_number\":") {
+                p1_count += 1;
+                if let Some(cat) = parse_str_field(c, "created_at") {
+                    if let Some((ep, _, _)) = parse_iso8601_utc_epoch(&cat) {
+                        oldest_seen = oldest_seen.min(ep);
+                    }
+                }
+            }
+        }
+        all_run_bodies.push(r1.body);
+        let mut page = 2usize;
+        while page <= max_pages && p1_count >= 95 && oldest_seen > cutoff_window {
+            let p_url = format!(
+                "https://api.github.com/repos/{}/actions/runs?per_page=100&page={}",
+                slug, page
+            );
+            let p_resp = github_get_with_etag(&p_url, tok_ref);
+            record_resp(&p_resp);
+            if let Some(pr) = p_resp {
+                let mut cnt = 0usize;
+                for c in pr.body.split("{\"id\":") {
+                    if c.contains("\"run_number\":") {
+                        cnt += 1;
+                        if let Some(cat) = parse_str_field(c, "created_at") {
+                            if let Some((ep, _, _)) = parse_iso8601_utc_epoch(&cat) {
+                                oldest_seen = oldest_seen.min(ep);
+                            }
+                        }
+                    }
+                }
+                all_run_bodies.push(pr.body);
+                if cnt < 95 {
+                    break;
+                }
+            } else {
+                break;
+            }
+            page += 1;
+        }
+    }
 
     let visibility = repo_resp
         .as_ref()
@@ -584,109 +723,128 @@ pub fn sync_github_live_telemetry_with_limit(
         })
         .unwrap_or_else(|| "unknown".to_string());
 
+    let mut runs_in_window_opt = None;
+    let mut skipped_noop_opt = None;
     let mut monthly_runs = None;
     let mut human_pr_monthly_runs = None;
+    let mut bot_share_opt = None;
     let mut runs_7d = None;
     let mut runs_prev_23d = None;
     let mut flake_pct = None;
     let mut deploys_30d = None;
     let mut active_devs_30d = None;
     let mut off_hours_pct = None;
+    let mut merge_queue_opt = None;
     let mut workflow_monthly_runs: Vec<(String, f64)> = Vec::new();
-    // Keep `(run_id, workflow_basename)` for stratified `/jobs` sampling (up to 12 calls -> <=16 total zero-token!)
     let mut stratified_run_ids: Vec<(String, String)> = Vec::new();
     let mut seen_wf_samples: HashMap<String, usize> = HashMap::new();
 
-    if let Some(ref rr) = runs_resp {
+    if !all_run_bodies.is_empty() {
         let mut timestamps: Vec<u64> = Vec::new();
         let mut wf_counts: HashMap<String, usize> = HashMap::new();
         let mut human_pr_runs = 0usize;
+        let mut bot_runs = 0usize;
+        let mut skipped_noop_runs = 0usize;
+        let mut merge_queue_runs = 0usize;
         let mut off_hours_count = 0usize;
         let mut total_runs_parsed = 0usize;
         let mut deploy_count = 0usize;
         let mut actors: Vec<String> = Vec::new();
-        // Track `(wf_base, head_sha) -> (saw_fail_attempt1, saw_pass_retry_or_later)` for true SHA-verified flake rate!
         let mut sha_outcomes: HashMap<(String, String), (bool, bool)> = HashMap::new();
         let mut retry_success_count = 0usize;
 
-        for chunk in rr.body.split("{\"id\":") {
-            if !chunk.contains("\"run_number\":") {
-                continue;
-            }
-            if total_runs_parsed >= max_runs {
-                break;
-            }
-            total_runs_parsed += 1;
-
-            let rid: String = chunk.chars().take_while(|c| c.is_ascii_digit()).collect();
-            let wf_path = parse_str_field(chunk, "path").unwrap_or_default();
-            let wf_base = wf_path
-                .rsplit('/')
-                .next()
-                .filter(|s| !s.is_empty())
-                .unwrap_or("workflow.yml")
-                .to_string();
-            *wf_counts.entry(wf_base.clone()).or_insert(0) += 1;
-
-            let max_job_samples = if token.is_some() { 12 } else { 10 };
-            let wf_sample_cnt = seen_wf_samples.entry(wf_base.clone()).or_insert(0);
-            if !rid.is_empty() && stratified_run_ids.len() < max_job_samples && *wf_sample_cnt < 3 {
-                *wf_sample_cnt += 1;
-                stratified_run_ids.push((rid, wf_base.clone()));
-            }
-
-            let att = parse_num_field(chunk, "run_attempt").unwrap_or(1.0);
-            let conclusion = parse_str_field(chunk, "conclusion").unwrap_or_default();
-            let head_sha = parse_str_field(chunk, "head_sha").unwrap_or_default();
-            if !head_sha.is_empty() {
-                let entry = sha_outcomes.entry((wf_base.clone(), head_sha)).or_insert((false, false));
-                if conclusion == "failure" || conclusion == "timed_out" {
-                    entry.0 = true;
+        for body in &all_run_bodies {
+            for chunk in body.split("{\"id\":") {
+                if !chunk.contains("\"run_number\":") {
+                    continue;
                 }
-                if conclusion == "success" && att > 1.0 {
-                    entry.1 = true;
-                    retry_success_count += 1;
-                } else if conclusion == "success" {
-                    entry.1 = true;
+                if total_runs_parsed + skipped_noop_runs >= effective_max_runs {
+                    break;
                 }
-            } else if att > 1.0 && conclusion == "success" {
-                retry_success_count += 1;
-            }
-
-            let ev = parse_str_field(chunk, "event").unwrap_or_default();
-            let nm = parse_str_field(chunk, "name")
-                .unwrap_or_default()
-                .to_ascii_lowercase();
-            // Single non-double-counted deploy check per run
-            if ev == "release"
-                || ev == "deployment"
-                || nm.contains("deploy")
-                || nm.contains("release")
-            {
-                deploy_count += 1;
-            }
-
-            let mut is_bot_actor = false;
-            if let Some(act_idx) = chunk.find("\"actor\":") {
-                if let Some(login) = parse_str_field(&chunk[act_idx..], "login") {
-                    if login.ends_with("[bot]") || login.contains("dependabot") || login.contains("renovate") {
-                        is_bot_actor = true;
-                    } else if !actors.contains(&login) {
-                        actors.push(login);
+                let created_ep_info = parse_str_field(chunk, "created_at")
+                    .and_then(|cat| parse_iso8601_utc_epoch(&cat));
+                if let Some((ep, _, _)) = created_ep_info {
+                    if ep < cutoff_window && total_runs_parsed >= 20 {
+                        continue;
                     }
                 }
-            }
-            if !is_bot_actor
-                && (ev == "pull_request"
-                    || ev == "pull_request_target"
-                    || ev == "push"
-                    || ev == "merge_group")
-            {
-                human_pr_runs += 1;
-            }
+                let conclusion = parse_str_field(chunk, "conclusion").unwrap_or_default();
+                if conclusion == "skipped" {
+                    skipped_noop_runs += 1;
+                    continue;
+                }
+                total_runs_parsed += 1;
 
-            if let Some(cat) = parse_str_field(chunk, "created_at") {
-                if let Some((ep, hr, wd)) = parse_iso8601_utc_epoch(&cat) {
+                let rid: String = chunk.chars().take_while(|c| c.is_ascii_digit()).collect();
+                let wf_path = parse_str_field(chunk, "path").unwrap_or_default();
+                let wf_base = wf_path
+                    .rsplit('/')
+                    .next()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("workflow.yml")
+                    .to_string();
+                *wf_counts.entry(wf_base.clone()).or_insert(0) += 1;
+
+                let max_job_samples = if token.is_some() { 24 } else { 10 };
+                let wf_sample_cnt = seen_wf_samples.entry(wf_base.clone()).or_insert(0);
+                if !rid.is_empty() && stratified_run_ids.len() < max_job_samples && *wf_sample_cnt < 4 {
+                    *wf_sample_cnt += 1;
+                    stratified_run_ids.push((rid, wf_base.clone()));
+                }
+
+                let att = parse_num_field(chunk, "run_attempt").unwrap_or(1.0);
+                let head_sha = parse_str_field(chunk, "head_sha").unwrap_or_default();
+                if !head_sha.is_empty() {
+                    let entry = sha_outcomes.entry((wf_base.clone(), head_sha)).or_insert((false, false));
+                    if conclusion == "failure" || conclusion == "timed_out" {
+                        entry.0 = true;
+                    }
+                    if conclusion == "success" && att > 1.0 {
+                        entry.1 = true;
+                        retry_success_count += 1;
+                    } else if conclusion == "success" {
+                        entry.1 = true;
+                    }
+                } else if att > 1.0 && conclusion == "success" {
+                    retry_success_count += 1;
+                }
+
+                let ev = parse_str_field(chunk, "event").unwrap_or_default();
+                if ev == "merge_group" {
+                    merge_queue_runs += 1;
+                }
+                let nm = parse_str_field(chunk, "name")
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                if ev == "release"
+                    || ev == "deployment"
+                    || nm.contains("deploy")
+                    || nm.contains("release")
+                {
+                    deploy_count += 1;
+                }
+
+                let mut is_bot_actor = false;
+                if let Some(act_idx) = chunk.find("\"actor\":") {
+                    if let Some(login) = parse_str_field(&chunk[act_idx..], "login") {
+                        if login.ends_with("[bot]") || login.contains("dependabot") || login.contains("renovate") {
+                            is_bot_actor = true;
+                            bot_runs += 1;
+                        } else if !actors.contains(&login) {
+                            actors.push(login);
+                        }
+                    }
+                }
+                if !is_bot_actor
+                    && (ev == "pull_request"
+                        || ev == "pull_request_target"
+                        || ev == "push"
+                        || ev == "merge_group")
+                {
+                    human_pr_runs += 1;
+                }
+
+                if let Some((ep, hr, wd)) = created_ep_info {
                     timestamps.push(ep);
                     if wd == 0 || wd == 6 || !(7..=20).contains(&hr) {
                         off_hours_count += 1;
@@ -695,18 +853,26 @@ pub fn sync_github_live_telemetry_with_limit(
             }
         }
 
+        runs_in_window_opt = Some(total_runs_parsed);
+        skipped_noop_opt = Some(skipped_noop_runs);
+        merge_queue_opt = Some(merge_queue_runs);
+
         if total_runs_parsed > 0 {
             timestamps.sort_unstable();
             let span_days = if let (Some(&oldest), Some(&newest)) = (timestamps.first(), timestamps.last()) {
                 (((newest.saturating_sub(oldest)) as f64) / 86400.0).max(0.5)
             } else {
-                30.0
+                eff_window_days as f64
             };
+            // Normalize observed active runs across `span_days` (up to `eff_window_days`) to monthly (`30.0d`) run-rate
             let scale_30d = 30.0 / span_days;
             let extrapolated_30d = ((total_runs_parsed as f64) * scale_30d).round();
             monthly_runs = Some(extrapolated_30d.clamp(1.0, 250_000.0));
             human_pr_monthly_runs =
                 Some((((human_pr_runs as f64) * scale_30d).round()).clamp(0.0, 250_000.0));
+            bot_share_opt = Some(
+                (((bot_runs as f64 / total_runs_parsed as f64) * 100.0) * 10.0).round() / 10.0,
+            );
 
             for (wf_name, cnt) in wf_counts {
                 let wf_30d = (((cnt as f64) * scale_30d) * 10.0).round() / 10.0;
@@ -761,8 +927,12 @@ pub fn sync_github_live_telemetry_with_limit(
         merged_prs_30d = Some(merged);
     }
 
-    // Fetch job durations, queue wait times & step phase timings across stratified runs concurrently
+    // Fetch job durations (`p50` + `p90`), runtime `labels[]`, overlapping peak concurrency, cancelled/timed-out waste & `steps[]` 6-phase timings concurrently
     let mut job_samples: HashMap<String, Vec<f64>> = HashMap::new();
+    let mut job_label_map: HashMap<String, String> = HashMap::new();
+    let mut active_intervals: Vec<(u64, i32)> = Vec::new();
+    let mut cancelled_wasted_sec = 0.0_f64;
+    let mut timed_out_jobs = 0usize;
     let mut queue_waits_sec: Vec<f64> = Vec::new();
     let mut phase_seconds = [0.0_f64; 6];
 
@@ -796,7 +966,31 @@ pub fn sync_github_live_telemetry_with_limit(
                     if conclusion == "skipped" {
                         continue;
                     }
+                    if conclusion == "timed_out" {
+                        timed_out_jobs += 1;
+                    }
                     let jname = parse_str_field(jchunk, "name").unwrap_or_default();
+                    // Extract runtime `labels[]` (`T039`) to resolve `${{ matrix.os }}` / custom runner tags dynamically!
+                    if !jname.is_empty() {
+                        if let Some(l_idx) = jchunk.find("\"labels\":[") {
+                            let l_sub = &jchunk[l_idx + 10..];
+                            if let Some(end_b) = l_sub.find(']') {
+                                let joined_lbl = l_sub[..end_b]
+                                    .split(',')
+                                    .map(|t| t.trim().trim_matches('"'))
+                                    .filter(|t| !t.is_empty() && *t != "self-hosted")
+                                    .collect::<Vec<_>>()
+                                    .join("-");
+                                if !joined_lbl.is_empty() {
+                                    job_label_map
+                                        .entry(format!("{}#{}", wf_base, jname))
+                                        .or_insert_with(|| joined_lbl.clone());
+                                    job_label_map.entry(jname.clone()).or_insert(joined_lbl);
+                                }
+                            }
+                        }
+                    }
+
                     let created = parse_str_field(jchunk, "created_at")
                         .and_then(|s| parse_iso8601_utc_epoch(&s))
                         .map(|x| x.0);
@@ -813,17 +1007,23 @@ pub fn sync_github_live_telemetry_with_limit(
                     }
                     if let (Some(st), Some(co)) = (started, completed) {
                         if co >= st && !jname.is_empty() {
-                            let mins = ((co - st) as f64 / 60.0).max(0.05);
-                            // Store both `wf_base#jname` and `jname` for exact + matrix prefix matching
-                            job_samples
-                                .entry(format!("{}#{}", wf_base, jname))
-                                .or_default()
-                                .push(mins);
-                            job_samples.entry(jname).or_default().push(mins);
+                            if co > st {
+                                active_intervals.push((st, 1));
+                                active_intervals.push((co, -1));
+                            }
+                            if conclusion == "cancelled" {
+                                cancelled_wasted_sec += (co - st) as f64;
+                            } else {
+                                let mins = ((co - st) as f64 / 60.0).max(0.05);
+                                job_samples
+                                    .entry(format!("{}#{}", wf_base, jname))
+                                    .or_default()
+                                    .push(mins);
+                                job_samples.entry(jname).or_default().push(mins);
+                            }
                         }
                     }
 
-                    // Parse `steps[]` timestamps to populate real 6-phase shares (`Model 18`)
                     if let Some(steps_idx) = jchunk.find("\"steps\":") {
                         let steps_sub = &jchunk[steps_idx..];
                         for schunk in steps_sub.split("{\"name\":") {
@@ -851,6 +1051,22 @@ pub fn sync_github_live_telemetry_with_limit(
         }
     }
 
+    // Sweep-line exact peak concurrent running jobs (`T023`)
+    let observed_peak_concurrent_jobs = if !active_intervals.is_empty() {
+        active_intervals.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        let mut cur = 0i32;
+        let mut peak = 0i32;
+        for (_, delta) in active_intervals {
+            cur += delta;
+            if cur > peak {
+                peak = cur;
+            }
+        }
+        Some(peak.max(1) as usize)
+    } else {
+        None
+    };
+
     let total_phase_sec: f64 = phase_seconds.iter().sum();
     let real_phase_shares = if total_phase_sec >= 5.0 {
         let mut shares = [0.0_f64; 6];
@@ -871,25 +1087,31 @@ pub fn sync_github_live_telemetry_with_limit(
         None
     };
 
-    let mut job_durations_mins: Vec<(String, f64)> = job_samples
-        .into_iter()
-        .map(|(k, mut v)| {
-            v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            let med = v[v.len() / 2];
-            (k, (med * 100.0).round() / 100.0)
-        })
-        .collect();
+    let mut job_durations_mins: Vec<(String, f64)> = Vec::new();
+    let mut job_p90_durations_mins: Vec<(String, f64)> = Vec::new();
+    for (k, mut v) in job_samples {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let med = v[v.len() / 2];
+        let p90_idx = (((v.len() as f64) * 0.90).floor() as usize).min(v.len() - 1);
+        job_durations_mins.push((k.clone(), (med * 100.0).round() / 100.0));
+        job_p90_durations_mins.push((k, (v[p90_idx] * 100.0).round() / 100.0));
+    }
     job_durations_mins.sort_by(|a, b| a.0.cmp(&b.0));
+    job_p90_durations_mins.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut job_runtime_labels: Vec<(String, String)> = job_label_map.into_iter().collect();
+    job_runtime_labels.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut cache_gb = None;
+    let mut active_caches_cnt = None;
     if let Some(cr) = cache_resp {
         if let Some(bytes) = parse_num_field(&cr.body, "active_caches_size_in_bytes") {
             cache_gb = Some(((bytes / 1_073_741_824.0) * 100.0).round() / 100.0);
         }
+        if let Some(cnt) = parse_num_field(&cr.body, "active_caches_count") {
+            active_caches_cnt = Some(cnt as usize);
+        }
     }
 
-    // Fetch `/actions/artifacts` (works zero-token on public repos and with Read-PAT on private repos),
-    // filtering strictly to `"expired":false` (`T080`)!
     let mut artifact_gb = None;
     if visibility == "public" || token.is_some() {
         let art_url = format!(
@@ -919,12 +1141,16 @@ pub fn sync_github_live_telemetry_with_limit(
         provenance_mode: "live_telemetry".to_string(),
         repo_slug: slug,
         visibility,
+        window_days: eff_window_days,
         synced_at_epoch_s: now_epoch,
         api_calls_used: api_calls,
         etag_304_hits: hits_304,
         rate_limit_remaining: rate_rem,
+        observed_runs_in_window: runs_in_window_opt,
+        observed_skipped_noop_runs: skipped_noop_opt,
         observed_monthly_runs: monthly_runs,
         observed_human_pr_monthly_runs: human_pr_monthly_runs,
+        observed_bot_run_share_pct: bot_share_opt,
         observed_runs_last_7d: runs_7d,
         observed_runs_prev_23d: runs_prev_23d,
         observed_merged_prs_30d: merged_prs_30d,
@@ -933,6 +1159,15 @@ pub fn sync_github_live_telemetry_with_limit(
         observed_flake_rate_pct: flake_pct,
         observed_p95_queue_wait_sec: p95_queue_wait_sec,
         observed_off_hours_run_share_pct: off_hours_pct,
+        observed_peak_concurrent_jobs,
+        observed_cancelled_wasted_mins: if cancelled_wasted_sec > 0.0 {
+            Some(((cancelled_wasted_sec / 60.0) * 100.0).round() / 100.0)
+        } else {
+            None
+        },
+        observed_timed_out_jobs: if timed_out_jobs > 0 { Some(timed_out_jobs) } else { None },
+        observed_active_caches_count: active_caches_cnt,
+        observed_merge_queue_runs: merge_queue_opt,
         observed_cache_active_gb: cache_gb,
         observed_artifact_storage_gb: artifact_gb,
         observed_ghcr_storage_gb: None,
@@ -943,6 +1178,8 @@ pub fn sync_github_live_telemetry_with_limit(
         median_ram_util_pct: None,
         workflow_monthly_runs,
         job_durations_mins,
+        job_p90_durations_mins,
+        job_runtime_labels,
         real_phase_shares,
     };
 
@@ -1007,6 +1244,63 @@ pub fn pull_gitlab_telemetry_csv(project_id_or_slug: &str, out_csv: &Path) -> Re
             date_part, project_id_or_slug, sku.sku_label, mins, usd, usd
         ));
         count += 1;
+    }
+    if let Some(p) = out_csv.parent() {
+        let _ = fs::create_dir_all(p);
+    }
+    fs::write(out_csv, rows.join("\n") + "\n").map_err(|e| e.to_string())?;
+    Ok(count)
+}
+
+pub fn pull_circleci_telemetry_csv(
+    project_slug: &str,
+    reporting_window: &str,
+    out_csv: &Path,
+) -> Result<usize, String> {
+    let clean_slug = if project_slug.matches('/').count() == 1 {
+        format!("gh/{}", project_slug.trim_matches('/'))
+    } else {
+        project_slug.trim_matches('/').to_string()
+    };
+    let win = match reporting_window {
+        "7" | "last-7-days" => "last-7-days",
+        "60" | "last-60-days" => "last-60-days",
+        "90" | "last-90-days" => "last-90-days",
+        _ => "last-30-days",
+    };
+    let url = format!(
+        "https://circleci.com/api/v2/insights/{}/workflows?reporting-window={}",
+        clean_slug, win
+    );
+    let tok = env::var("CIRCLE_TOKEN")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let auth = tok.map(|t| format!("Circle-Token: {}", t));
+    let resp = http_get_with_etag(&url, auth.as_deref(), "application/json")
+        .ok_or_else(|| format!("Failed to reach CircleCI v2 Insights API for {}", clean_slug))?;
+
+    let mut rows = vec![
+        "PROJECT_NAME,WORKFLOW_NAME,TOTAL_CREDITS,JOB_RUN_SECONDS,JOB_BUILD_STATUS".to_string(),
+    ];
+    let mut count = 0usize;
+    for chunk in resp.body.split("{\"name\":") {
+        if !chunk.contains("\"total_credits_used\":") {
+            continue;
+        }
+        let wf_name = chunk
+            .trim_start()
+            .strip_prefix('"')
+            .and_then(|s| s.find('"').map(|e| &s[..e]))
+            .unwrap_or("ci");
+        let credits = parse_num_field(chunk, "total_credits_used").unwrap_or(0.0);
+        let mean_sec = parse_num_field(chunk, "mean").unwrap_or(120.0);
+        if credits > 0.0 {
+            rows.push(format!(
+                "{},{},{:.0},{:.0},success",
+                clean_slug, wf_name, credits, mean_sec
+            ));
+            count += 1;
+        }
     }
     if let Some(p) = out_csv.parent() {
         let _ = fs::create_dir_all(p);
@@ -1094,6 +1388,37 @@ fn normalize_header_token(h: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
+static JEV_COLUMN_CACHE: std::sync::OnceLock<std::sync::Mutex<Vec<(String, Option<&'static str>)>>> =
+    std::sync::OnceLock::new();
+
+fn looks_like_date_or_identifier_col(raw_header: &str, sample_val: &str) -> bool {
+    let h = raw_header.trim().to_ascii_lowercase();
+    if h.contains("date")
+        || h.contains("datum")
+        || h.contains("fecha")
+        || h.contains("compta")
+        || h.ends_with("_id")
+        || h == "id"
+        || h == "doc_id"
+        || h == "ref_no"
+        || h.contains("bucket")
+        || h.contains("dept")
+        || h.contains("centro")
+        || h.contains("code_")
+    {
+        return true;
+    }
+    let s = sample_val.trim().trim_matches('"');
+    // ISO date pattern YYYY-MM-DD or YYYY/MM/DD
+    if s.len() >= 10
+        && s.as_bytes()[..4].iter().all(|b| b.is_ascii_digit())
+        && (s.as_bytes()[4] == b'-' || s.as_bytes()[4] == b'/')
+    {
+        return true;
+    }
+    false
+}
+
 /// Optional Tier-3 Founder In-Built OSS `Jev` (`POST /v1/systemone`) constrained token-trie `choice`
 /// for completely non-standard customer spreadsheet headers when `MINICI_INTERNAL_REASONER=llm_plus_jev`
 /// or `MINICI_SYSTEMONE_URL` / `JEV_SYSTEMONE_URL` is explicitly configured.
@@ -1101,6 +1426,7 @@ fn tier3_jev_systemone_column_choice(raw_header: &str, sample_val: &str) -> Opti
     let mode = env::var("MINICI_INTERNAL_REASONER").unwrap_or_default();
     let explicit_url = env::var("MINICI_SYSTEMONE_URL")
         .ok()
+        .or_else(|| env::var("MINICI_JEV_URL").ok())
         .or_else(|| env::var("JEV_SYSTEMONE_URL").ok())
         .filter(|u| !u.trim().is_empty());
     if mode != "llm_plus_jev" && explicit_url.is_none() {
@@ -1123,61 +1449,85 @@ fn tier3_jev_systemone_column_choice(raw_header: &str, sample_val: &str) -> Opti
         "ram_utilization",
         "ignore",
     ];
-    if let Some(fpath) = endpoint.strip_prefix("file://") {
-        let raw_dict = fs::read_to_string(fpath).ok()?;
-        let key_needle = format!("\"{}\":", json_escape(raw_header));
-        let idx = raw_dict.find(&key_needle)?;
-        let sub = &raw_dict[idx + key_needle.len()..];
-        let end = sub.find('}').map(|e| e + 1).unwrap_or(sub.len());
-        let entry = &sub[..end];
-        let score = parse_num_field(entry, "score").unwrap_or(1.0);
+    let cache_key = format!("{}|{}|{}", endpoint, raw_header.trim(), sample_val.trim());
+    let cache_lock = JEV_COLUMN_CACHE.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(guard) = cache_lock.lock() {
+        if let Some((_, cached)) = guard.iter().find(|(k, _)| k == &cache_key) {
+            return *cached;
+        }
+    }
+
+    let resolved: Option<&'static str> = (|| {
+        if let Some(fpath) = endpoint.strip_prefix("file://") {
+            let raw_dict = fs::read_to_string(fpath).ok()?;
+            let key_needle = format!("\"{}\":", json_escape(raw_header));
+            let idx = raw_dict.find(&key_needle)?;
+            let sub = &raw_dict[idx + key_needle.len()..];
+            let end = sub.find('}').map(|e| e + 1).unwrap_or(sub.len());
+            let entry = &sub[..end];
+            let score = parse_num_field(entry, "score").unwrap_or(1.0);
+            if score < 0.80 {
+                return None;
+            }
+            let picked = parse_str_field(entry, "choice")?;
+            return choices.into_iter().find(|&c| c == picked);
+        }
+        let choices_json = choices
+            .iter()
+            .map(|c| format!("\"{}\"", c))
+            .collect::<Vec<_>>()
+            .join(",");
+        let timeout_secs = env::var("MINICI_SYSTEMONE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|&v| (1..=120).contains(&v))
+            .unwrap_or(8)
+            .to_string();
+        let prompt = format!(
+            "Map CI FinOps CSV column header '{}' (sample '{}') to canonical FOCUS column (use 'ignore' for dates, IDs, or cost-center tags).",
+            json_escape(raw_header),
+            json_escape(sample_val)
+        );
+        let payload = format!(
+            "{{\"prompt\":\"{}\",\"choice\":[{}],\"noul\":true,\"score\":true}}",
+            prompt, choices_json
+        );
+        let out = Command::new("curl")
+            .args([
+                "-fsSL",
+                "--connect-timeout",
+                "2",
+                "-m",
+                &timeout_secs,
+                "-X",
+                "POST",
+                "-H",
+                "Content-Type: application/json",
+                "-d",
+                &payload,
+                &endpoint,
+            ])
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let body = String::from_utf8_lossy(&out.stdout);
+        let score = parse_num_field(&body, "score").unwrap_or(1.0);
         if score < 0.80 {
             return None;
         }
-        let picked = parse_str_field(entry, "choice")?;
-        return choices.into_iter().find(|&c| c == picked);
+        let picked = parse_str_field(&body, "choice").or_else(|| parse_str_field(&body, "result"))?;
+        choices.into_iter().find(|&c| c == picked)
+    })();
+
+    if let Ok(mut guard) = cache_lock.lock() {
+        if guard.len() >= 512 {
+            guard.remove(0);
+        }
+        guard.push((cache_key, resolved));
     }
-    let choices_json = choices
-        .iter()
-        .map(|c| format!("\"{}\"", c))
-        .collect::<Vec<_>>()
-        .join(",");
-    let prompt = format!(
-        "Map CI FinOps CSV column header '{}' (sample '{}') to canonical FOCUS column.",
-        json_escape(raw_header),
-        json_escape(sample_val)
-    );
-    let payload = format!(
-        "{{\"prompt\":\"{}\",\"choice\":[{}],\"noul\":true,\"score\":true}}",
-        prompt, choices_json
-    );
-    let out = Command::new("curl")
-        .args([
-            "-fsSL",
-            "--connect-timeout",
-            "1",
-            "-m",
-            "2",
-            "-X",
-            "POST",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            &payload,
-            &endpoint,
-        ])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let body = String::from_utf8_lossy(&out.stdout);
-    let score = parse_num_field(&body, "score").unwrap_or(1.0);
-    if score < 0.80 {
-        return None;
-    }
-    let picked = parse_str_field(&body, "choice").or_else(|| parse_str_field(&body, "result"))?;
-    choices.into_iter().find(|&c| c == picked)
+    resolved
 }
 
 pub fn parse_universal_billing_csv(
@@ -1362,6 +1712,9 @@ pub fn parse_universal_billing_csv(
     if idx_net.is_none() && idx_gross.is_none() && idx_qty.is_none() && idx_sec.is_none() && idx_credits.is_none() {
         for (i, raw_h) in raw_headers.iter().enumerate() {
             let sval = sample_cols.get(i).map(|s| s.as_str()).unwrap_or("");
+            if looks_like_date_or_identifier_col(raw_h, sval) {
+                continue;
+            }
             if let Some(mapped) = tier3_jev_systemone_column_choice(raw_h, sval) {
                 match mapped {
                     "repository" if idx_repo.is_none() => idx_repo = Some(i),
@@ -1378,6 +1731,19 @@ pub fn parse_universal_billing_csv(
                 }
             }
         }
+    }
+
+    if !data_lines.is_empty()
+        && idx_net.is_none()
+        && idx_gross.is_none()
+        && idx_qty.is_none()
+        && idx_sec.is_none()
+        && idx_credits.is_none()
+    {
+        eprintln!(
+            "⚠️ minici: billing CSV '{}' had no recognized spend/quantity columns; invoice reconciled to $0.00 (set MINICI_SYSTEMONE_URL for custom ERP headers).",
+            csv_path.display()
+        );
     }
 
     let mut gross_sum = 0.0_f64;
@@ -1675,6 +2041,71 @@ mod tests {
         let inv4 = parse_universal_billing_csv(&bb_tsv, Some("ws/app")).unwrap();
         // ceil(125/60) = 3m * 2x = 6m * $0.010 = $0.06
         assert_eq!(inv4.invoice_gross_usd, Some(0.06));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_window_days_90_runtime_labels_and_skipped_noop_roundtrip() {
+        let tmp = std::env::temp_dir().join("minici_telem_window90_test");
+        let wf_dir = tmp.join(".github").join("workflows");
+        let _ = fs::create_dir_all(&wf_dir);
+        fs::write(
+            wf_dir.join("ci.yml"),
+            "name: Dynamic Matrix\non: [push]\njobs:\n  build:\n    runs-on: ${{ matrix.os }}\n    steps:\n      - run: cargo test\n",
+        )
+        .unwrap();
+
+        let snap = CanonicalTelemetrySnapshot {
+            provenance_mode: "LIVE_CALIBRATED".to_string(),
+            repo_slug: "acme/monorepo".to_string(),
+            synced_at_epoch_s: 1795000000,
+            window_days: 90,
+            observed_runs_in_window: Some(900),
+            observed_skipped_noop_runs: Some(150),
+            observed_monthly_runs: Some(250.0),
+            observed_bot_run_share_pct: Some(22.5),
+            observed_peak_concurrent_jobs: Some(24),
+            observed_cancelled_wasted_mins: Some(41.5),
+            observed_timed_out_jobs: Some(3),
+            observed_active_caches_count: Some(18),
+            observed_merge_queue_runs: Some(12),
+            job_durations_mins: vec![("ci.yml#build".to_string(), 6.0)],
+            job_p90_durations_mins: vec![("ci.yml#build".to_string(), 11.2)],
+            job_runtime_labels: vec![("ci.yml#build".to_string(), "macos-15-xlarge".to_string())],
+            ..Default::default()
+        };
+        snap.save_lockfile(&tmp).unwrap();
+        let loaded = CanonicalTelemetrySnapshot::load_lockfile(&tmp).unwrap();
+        assert_eq!(loaded.window_days, 90);
+        assert_eq!(loaded.observed_runs_in_window, Some(900));
+        assert_eq!(loaded.observed_skipped_noop_runs, Some(150));
+        assert_eq!(loaded.observed_bot_run_share_pct, Some(22.5));
+        assert_eq!(loaded.observed_peak_concurrent_jobs, Some(24));
+        assert_eq!(loaded.observed_cancelled_wasted_mins, Some(41.5));
+        assert_eq!(loaded.observed_timed_out_jobs, Some(3));
+        assert_eq!(loaded.observed_active_caches_count, Some(18));
+        assert_eq!(loaded.observed_merge_queue_runs, Some(12));
+        assert_eq!(loaded.job_p90_durations_mins, vec![("ci.yml#build".to_string(), 11.2)]);
+        assert_eq!(
+            loaded.job_runtime_labels,
+            vec![("ci.yml#build".to_string(), "macos-15-xlarge".to_string())]
+        );
+
+        // Verify engine.rs overrides unresolved `${{ matrix.os }}` with runtime label `macos-15-xlarge` ($0.120/m)!
+        let rep = crate::engine::analyze_path(&tmp, None);
+        assert_eq!(rep.jobs.len(), 1);
+        let j = &rep.jobs[0];
+        assert!(
+            j.runner_label.contains("macos-15-xlarge"),
+            "Expected runtime label macos-15-xlarge to override ${{ matrix.os }}, got {}",
+            j.runner_label
+        );
+        assert!(
+            (j.rate_per_min_usd - 0.102).abs() < 1e-6,
+            "Expected macos-15-xlarge 2026 rate $0.102/min, got {}",
+            j.rate_per_min_usd
+        );
 
         let _ = fs::remove_dir_all(&tmp);
     }

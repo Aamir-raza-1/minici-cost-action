@@ -7,6 +7,7 @@
 
 pub mod catalog;
 pub mod engine;
+pub mod jev;
 pub mod optimizer;
 pub mod permissions;
 pub mod providers;
@@ -40,11 +41,12 @@ COMMANDS:\n  \
   permissions  Verify least-privilege zero-source-code token security & 108-attribute telemetry coverage\n  \
   sync         Sync live GitHub Actions telemetry (ETag 304) or billing CSV into .minici/telemetry.lock.json\n  \
   shrink       Generate or apply surgical workflow cost optimizations with verified shadow DiffReport\n  \
-  migrate      Evaluate or apply safe runner & platform migrations with 5-Layer Switching TCO verdict\n  \
+  migrate      Evaluate or apply safe runner & 7x7 cross-platform migrations with 5-Layer Switching TCO\n  \
+  ask          Ask any natural-language CI/CD FinOps question (Jev /v1/systemone intent router + live math)\n  \
   catalog      Inspect, sync, or override the Multi-Vendor & Cloud Compute Pricing SKU Catalog\n  \
   cloud-price  Resolve AWS EC2, GCP GCE, or Azure VM On-Demand & Spot pricing (--region, --live)\n  \
-  telemetry    Pull live GitLab CI or Bitbucket Pipelines run telemetry into normalized CSV\n  \
-  mcp          Start 7-tool JSON-RPC 2.0 stdio MCP server for Claude, Antigravity, Cursor & VS Code\n  \
+  telemetry    Pull live GitLab CI, CircleCI v2, or Bitbucket Pipelines run telemetry into normalized CSV\n  \
+  mcp          Start 8-tool JSON-RPC 2.0 stdio MCP server for Claude, Antigravity, Cursor & VS Code\n  \
   self-update  Sync live pricing catalog, verify 0 drift, and self-upgrade binary (--install-dir <DIR>)\n  \
   init-hooks   Install Shift-Left PreToolUse/PostToolUse hooks, Agent MCP (.mcp.json) & GitHub Action\n  \
   launch-pack  Generate automatic PostToolUse 6-Channel Launch & Partner Profile Pack\n\n\
@@ -67,16 +69,62 @@ OPTIONS (breakdown):\n  \
 }
 
 fn extract_json_id(raw: &str) -> String {
-    let needle = "\"id\":";
-    if let Some(idx) = raw.find(needle) {
-        let rest = raw[idx + needle.len()..].trim_start();
-        let end = rest
-            .find(|c: char| c == ',' || c == '}' || c.is_whitespace())
-            .unwrap_or(rest.len());
-        let token = rest[..end].trim();
-        if !token.is_empty() {
-            return token.to_string();
+    let bytes = raw.as_bytes();
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut esc = false;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_str {
+            if esc {
+                esc = false;
+            } else if b == b'\\' {
+                esc = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
+            i += 1;
+            continue;
         }
+        match b {
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' => depth -= 1,
+            b'"' => {
+                if depth == 1 && raw[i..].starts_with("\"id\"") {
+                    let after_key = raw[i + 4..].trim_start();
+                    if let Some(after_colon) = after_key.strip_prefix(':') {
+                        let rest = after_colon.trim_start();
+                        if rest.starts_with('"') {
+                            let mut j = 1usize;
+                            let rbytes = rest.as_bytes();
+                            let mut resc = false;
+                            while j < rbytes.len() {
+                                if resc {
+                                    resc = false;
+                                } else if rbytes[j] == b'\\' {
+                                    resc = true;
+                                } else if rbytes[j] == b'"' {
+                                    return rest[..=j].to_string();
+                                }
+                                j += 1;
+                            }
+                        } else {
+                            let end = rest
+                                .find(|c: char| c == ',' || c == '}' || c.is_whitespace())
+                                .unwrap_or(rest.len());
+                            let token = rest[..end].trim();
+                            if !token.is_empty() {
+                                return token.to_string();
+                            }
+                        }
+                    }
+                }
+                in_str = true;
+            }
+            _ => {}
+        }
+        i += 1;
     }
     "null".to_string()
 }
@@ -128,8 +176,9 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
 {{\"name\":\"minici_sync_live\",\"description\":\"Sync live GitHub Actions telemetry (ETag 304 conditional cache) or FOCUS v1.1 billing CSV into .minici/telemetry.lock.json\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"repo\":{{\"type\":\"string\"}},\"billing_csv\":{{\"type\":\"string\"}}}}}}}},\
 {{\"name\":\"minici_permissions\",\"description\":\"Audit CI token least-privilege scopes (Actions: Read, Metadata: Read, Contents: Read for private YAML only) and report 108-attribute telemetry coverage\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"repo\":{{\"type\":\"string\"}},\"vendor\":{{\"type\":\"string\"}},\"billing_csv\":{{\"type\":\"string\"}},\"live\":{{\"type\":\"boolean\"}}}}}}}},\
 {{\"name\":\"minici_anomalies\",\"description\":\"Inspect 7d/23d CI spend burn velocity, projected EOM bill, quota exhaustion day, and missing timeout-minutes exposure\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}}}}}}}},\
-{{\"name\":\"minici_shrink\",\"description\":\"Generate surgical comment-preserving YAML optimizations (concurrency, timeout-minutes, shallow clone, cache, retention-days) verified by shadow DiffReport\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"apply\":{{\"type\":\"boolean\"}},\"confirm_write\":{{\"type\":\"boolean\"}}}}}}}},\
-{{\"name\":\"minici_migrate\",\"description\":\"Evaluate safe runner migration (arm64 / high-speed) and 5-Layer Platform Switching TCO payback verdict\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"target\":{{\"type\":\"string\"}},\"apply\":{{\"type\":\"boolean\"}},\"confirm_write\":{{\"type\":\"boolean\"}}}}}}}}\
+{{\"name\":\"minici_shrink\",\"description\":\"Generate surgical comment-preserving YAML optimizations (concurrency, timeout-minutes, shallow clone, cache, retention-days) verified by shadow DiffReport\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"security\":{{\"type\":\"boolean\"}},\"apply\":{{\"type\":\"boolean\"}},\"confirm_write\":{{\"type\":\"boolean\"}}}}}}}},\
+{{\"name\":\"minici_migrate\",\"description\":\"Evaluate safe runner migration (arm64 / high-speed / spot) or 7x7 cross-platform CI translation with 5-Layer Switching TCO payback verdict\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"path\":{{\"type\":\"string\"}},\"from\":{{\"type\":\"string\"}},\"target\":{{\"type\":\"string\"}},\"apply\":{{\"type\":\"boolean\"}},\"confirm_write\":{{\"type\":\"boolean\"}}}}}}}},\
+{{\"name\":\"minici_ask\",\"description\":\"Answer any free-form natural-language CI/CD FinOps question by routing intent via Jev /v1/systemone and grounding 100% of dollar figures in the 24-model engine\",\"inputSchema\":{{\"type\":\"object\",\"properties\":{{\"question\":{{\"type\":\"string\"}},\"path\":{{\"type\":\"string\"}},\"compare_to\":{{\"type\":\"string\"}}}},\"required\":[\"question\"]}}}}\
 ]}}}}",
             id
         )),
@@ -170,10 +219,11 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
                     let vendor_opt = extract_json_str(trimmed, "vendor");
                     let csv_opt = extract_json_str(trimmed, "billing_csv").map(PathBuf::from);
                     let live_flag = trimmed.contains("\"live\":true") || trimmed.contains("\"live\": true");
-                    permissions::run_permissions_audit(
+                    permissions::run_permissions_audit_with_vendor(
                         &repo_slug,
                         csv_opt.as_deref(),
                         live_flag,
+                        None,
                         vendor_opt.as_deref(),
                     )
                     .to_json()
@@ -181,6 +231,11 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
                 "minici_sync_live" => {
                     mcp_invalidate_cache();
                     let repo_opt = extract_json_str(trimmed, "repo");
+                    let window_days = extract_json_u32(trimmed, "days")
+                        .or_else(|| extract_json_u32(trimmed, "window_days"))
+                        .unwrap_or(30)
+                        .clamp(1, 365);
+                    let max_runs = extract_json_u32(trimmed, "max_runs").unwrap_or(300) as usize;
                     let save_dir = if target_arg.exists() {
                         target_arg.clone()
                     } else {
@@ -209,7 +264,7 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
                         let slug = repo_opt
                             .or_else(|| infer_github_slug_from_dir(&target_arg))
                             .unwrap_or_else(|| target_arg.display().to_string());
-                        match telemetry::sync_github_live_telemetry(&slug, Some(&save_dir)) {
+                        match telemetry::sync_github_live_telemetry_window(&slug, Some(&save_dir), max_runs, window_days) {
                             Ok(snap) => snap.to_json(),
                             Err(e) => format!(
                                 "{{\"status\":\"offline_fallback\",\"repo\":\"{}\",\"note\":\"{}\"}}",
@@ -244,7 +299,20 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
                     if apply {
                         mcp_invalidate_cache();
                     }
-                    optimizer::run_surgical_optimizer(&target_arg, "shrink", "arm64", apply).to_json()
+                    let security_mode = trimmed.contains("\"security\":true") || trimmed.contains("\"security\": true");
+                    let with_fixer = trimmed.contains("\"with_fixer\":true") || trimmed.contains("\"with_fixer\": true");
+                    optimizer::run_surgical_optimizer_with_opts(
+                        &target_arg,
+                        "shrink",
+                        "arm64",
+                        apply,
+                        optimizer::MigrateOptions {
+                            security_mode,
+                            with_fixer,
+                            ..Default::default()
+                        },
+                    )
+                    .to_json()
                 }
                 "minici_migrate" => {
                     let want_apply = trimmed.contains("\"apply\":true") || trimmed.contains("\"apply\": true");
@@ -256,9 +324,27 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
                         mcp_invalidate_cache();
                     }
                     let target_mode = extract_json_str(trimmed, "target").unwrap_or_else(|| "arm64".to_string());
-                    optimizer::run_surgical_optimizer(&target_arg, "migrate", &target_mode, apply).to_json()
+                    let from_vendor = extract_json_str(trimmed, "from");
+                    optimizer::run_surgical_optimizer_with_opts(
+                        &target_arg,
+                        "migrate",
+                        &target_mode,
+                        apply,
+                        optimizer::MigrateOptions {
+                            from_vendor,
+                            ..Default::default()
+                        },
+                    )
+                    .to_json()
                 }
-                _ => {
+                "minici_ask" => {
+                    let q = extract_json_str(trimmed, "question")
+                        .or_else(|| extract_json_str(trimmed, "query"))
+                        .unwrap_or_else(|| "What is our CI/CD monthly cost and top optimization?".to_string());
+                    let cmp_opt = extract_json_str(trimmed, "compare_to").map(PathBuf::from);
+                    jev::answer_natural_language_finops_query(&q, &target_arg, cmp_opt.as_deref()).to_json()
+                }
+                "minici_breakdown" => {
                     let ck = mcp_cache_key("breakdown", &target_arg, "");
                     if let Ok(guard) = MCP_RESPONSE_CACHE.lock() {
                         if let Some((_, cached)) = guard.iter().find(|(k, _)| k == &ck) {
@@ -278,6 +364,13 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
                     }
                     res
                 }
+                other_tool => {
+                    is_error = true;
+                    format!(
+                        "{{\"error\":\"Unknown MCP tool '{}'\"}}",
+                        engine::json_escape(other_tool)
+                    )
+                }
             };
             let text = engine::json_escape(&payload_json);
             Some(format!(
@@ -285,17 +378,38 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
                 id, text, is_error
             ))
         }
+        "resources/list" => Some(format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"resources\":[]}}}}",
+            id
+        )),
+        "prompts/list" => Some(format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"prompts\":[]}}}}",
+            id
+        )),
         _ => {
-            if id != "null" {
+            if id != "null" && !method.starts_with("notifications/") {
                 Some(format!(
-                    "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{}}}}",
-                    id
+                    "{{\"jsonrpc\":\"2.0\",\"id\":{},\"error\":{{\"code\":-32601,\"message\":\"Method not found: {}\"}}}}",
+                    id,
+                    engine::json_escape(&method)
                 ))
             } else {
                 None
             }
         }
     }
+}
+
+fn extract_json_u32(raw: &str, key: &str) -> Option<u32> {
+    let needle = format!("\"{}\":", key);
+    let idx = raw.find(&needle)?;
+    let rest = raw[idx + needle.len()..].trim_start();
+    let digits: String = rest
+        .trim_start_matches('"')
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    digits.parse::<u32>().ok()
 }
 
 fn extract_json_str(raw: &str, key: &str) -> Option<String> {
@@ -524,11 +638,12 @@ fn resolve_target_to_dir_in_repo(
     raw_spec: &str,
     repo_hint: Option<&Path>,
     _force_refresh: bool,
-    _quiet: bool,
+    quiet: bool,
 ) -> (PathBuf, Option<PathBuf>, String) {
-    let p = Path::new(raw_spec);
+    let raw_clean = raw_spec.strip_prefix("git-ref:").unwrap_or(raw_spec);
+    let p = Path::new(raw_clean);
     if p.exists() {
-        return (p.to_path_buf(), None, raw_spec.to_string());
+        return (p.to_path_buf(), None, raw_clean.to_string());
     }
     let git_dir = repo_hint
         .filter(|rp| rp.exists())
@@ -538,14 +653,14 @@ fn resolve_target_to_dir_in_repo(
     let check_ref = Command::new("git")
         .arg("-C")
         .arg(git_dir)
-        .args(["rev-parse", "--verify", "--quiet", raw_spec])
+        .args(["rev-parse", "--verify", "--quiet", raw_clean])
         .output();
     if let Ok(out) = check_ref {
         if out.status.success() {
             let tmp_dir = env::temp_dir().join(format!(
                 "minici_gitref_{}_{}",
                 std::process::id(),
-                raw_spec.replace(['/', '~', '^', ':'], "_")
+                raw_clean.replace(['/', '~', '^', ':'], "_")
             ));
             let _ = fs::remove_dir_all(&tmp_dir);
             let _ = fs::create_dir_all(&tmp_dir);
@@ -553,7 +668,7 @@ fn resolve_target_to_dir_in_repo(
             let cmd_str = format!(
                 "git -C \"{}\" archive {} | tar -x -C \"{}\"",
                 git_dir.display(),
-                raw_spec,
+                raw_clean,
                 tmp_dir.display()
             );
             let status = Command::new("sh").arg("-c").arg(&cmd_str).status();
@@ -561,10 +676,18 @@ fn resolve_target_to_dir_in_repo(
                 return (
                     tmp_dir.clone(),
                     Some(tmp_dir),
-                    format!("git-ref:{}", raw_spec),
+                    format!("git-ref:{}", raw_clean),
                 );
             }
         }
+    }
+
+    if !quiet && raw_clean != "." && !raw_clean.is_empty() {
+        eprintln!(
+            "⚠️ minici: Git base ref '{}' not found locally in '{}' (shallow clone? Pass fetch-depth: 0 to actions/checkout). Comparing against empty base.",
+            raw_clean,
+            git_dir.display()
+        );
     }
 
     (p.to_path_buf(), None, raw_spec.to_string())
@@ -649,6 +772,14 @@ fn infer_github_slug_from_dir(dir: &Path) -> Option<String> {
 
 /// Routes interactive `@minici <cmd>` mentions inside GitHub Pull Request / Issue comments.
 pub fn route_at_minici_comment_command(comment_body: &str, repo_dir: &Path) -> Option<String> {
+    route_at_minici_comment_command_with_base(comment_body, repo_dir, None)
+}
+
+pub fn route_at_minici_comment_command_with_base(
+    comment_body: &str,
+    repo_dir: &Path,
+    compare_to: Option<&Path>,
+) -> Option<String> {
     let lower = comment_body.to_ascii_lowercase();
     let idx = lower.find("@minici")?;
     let after = comment_body[idx + "@minici".len()..].trim();
@@ -748,13 +879,22 @@ pub fn route_at_minici_comment_command(comment_body: &str, repo_dir: &Path) -> O
             )
         }
         "diff" => {
-            let base = load_or_analyze_in_repo(Path::new("HEAD~1"), Some(repo_dir), None, false, true);
+            let base_ref = compare_to.unwrap_or_else(|| Path::new("HEAD~1"));
+            let base = load_or_analyze_in_repo(base_ref, Some(repo_dir), None, false, true);
             let head = analyze_path(repo_dir, Some(base.usage.clone()));
             render_diff_markdown(&compute_diff(&base, &head))
         }
-        _ => {
+        "ask" => {
+            let q = after["ask".len()..].trim();
+            jev::answer_natural_language_finops_query(q, repo_dir, compare_to).render_markdown()
+        }
+        "breakdown" | "" => {
             let rep = analyze_path(repo_dir, None);
             render_breakdown_markdown(&rep)
+        }
+        _ => {
+            // Free-form natural language `@minici <question>` inside GitHub PR comments!
+            jev::answer_natural_language_finops_query(after, repo_dir, compare_to).render_markdown()
         }
     };
     Some(reply)
@@ -943,6 +1083,207 @@ fn extract_pr_number_from_event_json(raw: &str) -> Option<u64> {
     None
 }
 
+fn parse_non_negative_finite_f64(raw: &str, flag_name: &str, default_val: f64) -> f64 {
+    match raw.trim().parse::<f64>() {
+        Ok(v) if v.is_finite() && v >= 0.0 => v,
+        _ => {
+            eprintln!(
+                "⚠️ minici: invalid value '{}' for {} (must be a finite number >= 0); using default {}.",
+                raw, flag_name, default_val
+            );
+            default_val
+        }
+    }
+}
+
+fn print_subcommand_help(sub: &str) {
+    match sub {
+        "diff" => println!(
+            "Usage: minici diff [OPTIONS]\n\n\
+             Compare base vs PR workflows/branches/repos to isolate Pull Request CI cost & time deltas.\n\n\
+             OPTIONS:\n\
+               --path, --repo <PATH_OR_URL>   Head repository path or GitHub slug [default: .]\n\
+               --compare-to <REF_OR_PATH>     Base Git ref (e.g. main, origin/main, HEAD~1) or directory\n\
+               --base-path <PATH_OR_REF>      Explicit base directory or Git ref\n\
+               --head-path <PATH>             Explicit head directory\n\
+               --format <FMT>                 table, markdown (or md), or json [default: table]\n\
+               --report, --out-file <FILE>    Write diff output to file\n\
+               --tier <TIER>                  auto, free, pro, team, enterprise, or paid [default: auto]\n\
+               --prs-per-week <NUM>           Pull requests per week [default: 25]\n\
+               --pushes-per-pr <NUM>          Pushes per pull request [default: 4]\n\
+               --dev-hourly-rate <USD>        Developer hourly rate in USD [default: 65]\n\
+               --region <REGION>              Cloud region for self-hosted quotes [default: us-east-1]\n\
+               --quiet, -q                    Suppress stdout banner when writing --out-file"
+        ),
+        "comment" => println!(
+            "Usage: minici comment [github|gitlab|slack] [OPTIONS]\n\n\
+             Render or post sticky Pull Request / Merge Request / Slack CI Cost & @minici bot comment.\n\n\
+             OPTIONS:\n\
+               --path <PATH_OR_JSON>          Repository directory or saved diff JSON [default: .]\n\
+               --repo <OWNER/REPO>            GitHub repository slug for live PR comment posting\n\
+               --compare-to <REF_OR_PATH>     Base Git ref (e.g. origin/main) for PR diff mode\n\
+               --behavior <update|new>        Sticky comment upsert mode [default: update]\n\
+               --post                         Post or update live comment on GitHub PR\n\
+               --pr <NUMBER>                  Pull request number\n\
+               --event-path <FILE>            GitHub webhook event JSON path (routes @minici commands)\n\
+               --webhook-url <URL>            Slack Incoming Webhook URL (for `comment slack`)\n\
+               --out-file <FILE>              Save rendered Markdown or Slack Block Kit JSON to file\n\
+               --quiet, -q                    Suppress stdout printing"
+        ),
+        "permissions" => println!(
+            "Usage: minici permissions [check|audit] [OPTIONS]\n\n\
+             Verify least-privilege zero-source-code token security & 108-attribute telemetry coverage.\n\n\
+             OPTIONS:\n\
+               --repo, --path <SLUG_OR_DIR>   Repository slug or local directory\n\
+               --vendor, --provider <VENDOR>  github, gitlab, circleci, or bitbucket\n\
+               --token <TOKEN>                Optional explicit read-only token to inspect\n\
+               --billing-csv <FILE>           Optional FOCUS v1.1 / vendor billing CSV path\n\
+               --offline                      Audit local static posture without live API probes\n\
+               --format <FMT>                 table, markdown (or md), or json [default: table]"
+        ),
+        "sync" => println!(
+            "Usage: minici sync [OPTIONS]\n\n\
+             Sync live GitHub/GitLab/CircleCI/Bitbucket CI telemetry (ETag 304) or billing CSV into .minici/telemetry.lock.json.\n\n\
+             OPTIONS:\n\
+               --path <DIR>                   Repository root for .minici/telemetry.lock.json [default: .]\n\
+               --repo <OWNER/REPO>            GitHub repository slug\n\
+               --gitlab <GROUP/PROJECT>       GitLab project path or ID\n\
+               --circleci <ORG/REPO>          CircleCI v2 project slug\n\
+               --bitbucket <WORKSPACE/REPO>   Bitbucket repository slug\n\
+               --billing-csv <FILE>           FOCUS v1.1 or vendor billing CSV/TSV file\n\
+               --days, --window-days <NUM>    Observation window in days (1..365) [default: 30]\n\
+               --max-runs <NUM>               Maximum workflow runs to sample across pages [default: 300]\n\
+               --format <table|json>          Output format [default: table]"
+        ),
+        "shrink" => println!(
+            "Usage: minici shrink [OPTIONS]\n\n\
+             Generate or apply surgical comment-preserving workflow optimizations verified by shadow DiffReport.\n\n\
+             OPTIONS:\n\
+               --path, --repo <DIR_OR_FILE>   Repository directory or workflow YAML [default: .]\n\
+               --apply, --write               Write verified comment-preserving patches to disk\n\
+               --suggest-pr                   Emit GitHub PR committable ```suggestion Markdown blocks\n\
+               --format <table|markdown|json> Output format [default: table]"
+        ),
+        "migrate" => println!(
+            "Usage: minici migrate [OPTIONS]\n\n\
+             Evaluate or apply 6-gate verified runner & platform migrations with 5-Layer Switching TCO verdict.\n\n\
+             OPTIONS:\n\
+               --path, --repo <DIR_OR_FILE>   Repository directory or workflow YAML [default: .]\n\
+               --to, --target <TARGET>        github-arm64, ubuntu-slim, self-hosted, aws-spot, gitlab-ci, circleci, etc.\n\
+               --apply, --write               Write verified runner migrations to disk\n\
+               --suggest-pr                   Emit GitHub PR committable ```suggestion Markdown blocks\n\
+               --format <table|markdown|json> Output format [default: table]"
+        ),
+        "catalog" => println!(
+            "Usage: minici catalog [list|sync|set|reset] [OPTIONS]\n\n\
+             Inspect, filter, sync, or override the Multi-Vendor & Cloud Compute Pricing SKU Catalog.\n\n\
+             SUBCOMMANDS & OPTIONS:\n\
+               list [--filter <SUBSTR>]       Print compiled & overridden SKUs as JSON\n\
+               sync [--cloud] [--live] [--rates-url <URL>]  Sync pricing overrides & cloud VM quotes\n\
+               set <SKU> <RATE_PER_MIN_USD>   Hot-reload custom rate without recompiling\n\
+               reset                          Restore official 2026 baseline rates"
+        ),
+        "cloud-price" => println!(
+            "Usage: minici cloud-price <INSTANCE_TYPE> [OPTIONS]\n\n\
+             Resolve AWS EC2, GCP Compute Engine, or Azure VM On-Demand & Spot pricing.\n\n\
+             OPTIONS:\n\
+               --region <REGION>              Cloud region (e.g. us-east-1, sa-east-1, asia-northeast1, westeurope)\n\
+               --live                         Refresh from upstream cloud pricing API when configured\n\
+               --format <table|json>          Output format [default: table]"
+        ),
+        "telemetry" => println!(
+            "Usage: minici telemetry pull [OPTIONS]\n\n\
+             Pull live GitHub, GitLab CI, CircleCI v2, or Bitbucket Pipelines run telemetry.\n\n\
+             OPTIONS:\n\
+               --repo <OWNER/REPO>            Sync GitHub Actions telemetry into .minici/telemetry.lock.json\n\
+               --gitlab <GROUP/PROJECT>       Pull GitLab CI job telemetry into normalized CSV\n\
+               --circleci <ORG/REPO>          Pull CircleCI v2 workflow insights into normalized CSV\n\
+               --bitbucket <WORKSPACE/REPO>   Pull Bitbucket Pipelines step telemetry into normalized CSV\n\
+               --days, --window-days <NUM>    Observation window in days (1..365) [default: 30]\n\
+               --out, --out-file <FILE>       Destination CSV path [default: .minici/vendor_telemetry.csv]\n\
+               --max-runs <NUM>               Maximum runs to fetch across pages [default: 300]"
+        ),
+        "mcp" => println!(
+            "Usage: minici mcp [--path <DIR>]\n\n\
+             Start 8-tool JSON-RPC 2.0 stdio MCP server (supports both NDJSON & Content-Length framing)."
+        ),
+        "ask" => println!(
+            "Usage: minici ask \"<QUESTION>\" [OPTIONS]\n\n\
+             Answer any natural-language CI/CD FinOps question via Jev /v1/systemone intent routing + live 24-model math.\n\n\
+             OPTIONS:\n\
+               --path, --repo <PATH_OR_URL>   Repository directory or GitHub slug [default: .]\n\
+               --compare-to <REF_OR_PATH>     Optional base Git ref for PR diff questions\n\
+               --format <table|markdown|json> Output format [default: table]"
+        ),
+        "self-update" | "upgrade" => println!(
+            "Usage: minici self-update [--install-dir <DIR>] [--quiet]\n\n\
+             Sync pricing overrides, verify 0.00% catalog drift, and install binary into target directory."
+        ),
+        "init-hooks" => println!(
+            "Usage: minici init-hooks [--path <DIR>]\n\n\
+             Scaffold .minici/hooks.json (PreToolUse/PostToolUse), .mcp.json, and .github/workflows/minici-cost.yml."
+        ),
+        "launch-pack" => println!(
+            "Usage: minici launch-pack [--feature <NAME>] [--out-file <FILE>]\n\n\
+             Generate 6-Channel Launch & Partner Profile Pack Markdown."
+        ),
+        _ => print_help(),
+    }
+}
+
+pub fn run_mcp_stdio_stream<R: std::io::BufRead, W: std::io::Write>(
+    mut reader: R,
+    mut writer: W,
+    default_path: &Path,
+) {
+    loop {
+        let mut header_or_line = String::new();
+        let n = match reader.read_line(&mut header_or_line) {
+            Ok(bytes) => bytes,
+            Err(_) => break,
+        };
+        if n == 0 {
+            break;
+        }
+        let trimmed = header_or_line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if let Some(len_str) = lower.strip_prefix("content-length:") {
+            let content_len = match len_str.trim().parse::<usize>() {
+                Ok(l) if l > 0 && l <= 16 * 1024 * 1024 => l,
+                _ => continue,
+            };
+            // Consume remaining HTTP-style headers until blank line `\r\n` / `\n`
+            loop {
+                let mut hdr = String::new();
+                match reader.read_line(&mut hdr) {
+                    Ok(0) => return,
+                    Ok(_) => {
+                        if hdr.trim().is_empty() {
+                            break;
+                        }
+                    }
+                    Err(_) => return,
+                }
+            }
+            let mut body_buf = vec![0u8; content_len];
+            if reader.read_exact(&mut body_buf).is_err() {
+                break;
+            }
+            let body_str = String::from_utf8_lossy(&body_buf);
+            if let Some(resp) = handle_mcp_jsonrpc_line(&body_str, default_path) {
+                let _ = write!(writer, "Content-Length: {}\r\n\r\n{}", resp.len(), resp);
+                let _ = writer.flush();
+            }
+        } else if let Some(resp) = handle_mcp_jsonrpc_line(trimmed, default_path) {
+            let _ = writeln!(writer, "{}", resp);
+            let _ = writer.flush();
+        }
+    }
+}
+
 fn load_or_analyze_ext(path: &Path, cfg: Option<UsageConfig>, force_refresh: bool, quiet: bool) -> BreakdownReport {
     load_or_analyze_in_repo(path, None, cfg, force_refresh, quiet)
 }
@@ -953,7 +1294,7 @@ fn main() {
         print_help();
         return;
     }
-    if args[0] == "--version" || args[0] == "-V" {
+    if args[0] == "--version" || args[0] == "-V" || args[0] == "version" {
         println!("minici 0.8.0");
         return;
     }
@@ -964,6 +1305,11 @@ fn main() {
     } else {
         (args[0].as_str(), &args[1..])
     };
+
+    if rest.iter().any(|a| a == "--help" || a == "-h") {
+        print_subcommand_help(sub);
+        return;
+    }
 
     match sub {
         "breakdown" => {
@@ -979,6 +1325,8 @@ fn main() {
             let mut quiet = false;
             let mut force_refresh = false;
             let mut live_sync = false;
+            let mut window_days: u32 = 30;
+            let mut max_runs: usize = 300;
             let mut billing_csv: Option<PathBuf> = None;
 
             let mut i = 0;
@@ -991,6 +1339,18 @@ fn main() {
                         }
                     }
                     "--live" => live_sync = true,
+                    "--days" | "--window-days" => {
+                        if i + 1 < rest.len() {
+                            window_days = rest[i + 1].parse::<u32>().unwrap_or(30).clamp(1, 365);
+                            i += 1;
+                        }
+                    }
+                    "--max-runs" => {
+                        if i + 1 < rest.len() {
+                            max_runs = rest[i + 1].parse::<usize>().unwrap_or(300).clamp(1, 1000);
+                            i += 1;
+                        }
+                    }
                     "--billing-csv" => {
                         if i + 1 < rest.len() {
                             billing_csv = Some(PathBuf::from(&rest[i + 1]));
@@ -1028,25 +1388,25 @@ fn main() {
                     }
                     "--tier" => {
                         if i + 1 < rest.len() {
-                            tier = rest[i + 1].clone();
+                            tier = rest[i + 1].trim().to_ascii_lowercase();
                             i += 1;
                         }
                     }
                     "--prs-per-week" => {
                         if i + 1 < rest.len() {
-                            prs_per_week = rest[i + 1].parse().unwrap_or(25.0);
+                            prs_per_week = parse_non_negative_finite_f64(&rest[i + 1], "--prs-per-week", 25.0);
                             i += 1;
                         }
                     }
                     "--pushes-per-pr" => {
                         if i + 1 < rest.len() {
-                            pushes_per_pr = rest[i + 1].parse().unwrap_or(4.0);
+                            pushes_per_pr = parse_non_negative_finite_f64(&rest[i + 1], "--pushes-per-pr", 4.0);
                             i += 1;
                         }
                     }
                     "--dev-hourly-rate" => {
                         if i + 1 < rest.len() {
-                            dev_hourly_rate = rest[i + 1].parse().unwrap_or(65.0);
+                            dev_hourly_rate = parse_non_negative_finite_f64(&rest[i + 1], "--dev-hourly-rate", 65.0);
                             i += 1;
                         }
                     }
@@ -1088,17 +1448,22 @@ fn main() {
             };
 
             if benchmark {
+                let raw_s = path.to_str().unwrap_or(".");
+                let (res_dir, cleanup, disp) = resolve_target_to_dir_ext(raw_s, force_refresh, true);
                 let mut total_us = 0u128;
                 let iterations = 100u128;
-                let mut last_rep = analyze_path(&path, Some(cfg.clone()));
+                let mut last_rep = analyze_path(&res_dir, Some(cfg.clone()));
                 for _ in 0..iterations {
-                    last_rep = analyze_path(&path, Some(cfg.clone()));
+                    last_rep = analyze_path(&res_dir, Some(cfg.clone()));
                     total_us += last_rep.execution_time_us;
+                }
+                if let Some(tmp) = cleanup {
+                    let _ = fs::remove_dir_all(tmp);
                 }
                 let avg_us = (total_us / iterations).max(1);
                 println!(
                     "⚡ BENCHMARK (100 runs on `{}`): Avg = {} µs ({:.3} ms) | Workflows = {} | Expanded Matrix Jobs = {}",
-                    path.display(),
+                    disp,
                     avg_us,
                     (avg_us as f64) / 1000.0,
                     last_rep.total_workflows,
@@ -1135,7 +1500,7 @@ fn main() {
                     infer_github_slug_from_dir(&res_dir)
                 };
                 if let Some(repo_slug) = slug {
-                    if let Ok(snap) = telemetry::sync_github_live_telemetry(&repo_slug, None) {
+                    if let Ok(snap) = telemetry::sync_github_live_telemetry_window(&repo_slug, None, max_runs, window_days) {
                         telem_override = Some(snap);
                     }
                 }
@@ -1233,25 +1598,44 @@ fn main() {
             let mut format = "table".to_string();
             let mut out_file: Option<PathBuf> = None;
             let mut quiet = false;
+            let mut custom_usage = false;
+            let mut tier = "auto".to_string();
+            let mut prs_per_week = 25.0_f64;
+            let mut pushes_per_pr = 4.0_f64;
+            let mut dev_hourly_rate = 65.0_f64;
 
             let mut i = 0;
             while i < rest.len() {
                 match rest[i].as_str() {
-                    "--path" | "--repo" => {
+                    "--path" | "--repo" | "--head-path" => {
                         if i + 1 < rest.len() {
                             path = PathBuf::from(&rest[i + 1]);
                             i += 1;
                         }
                     }
-                    "--compare-to" => {
+                    "--compare-to" | "--base-path" => {
                         if i + 1 < rest.len() {
                             compare_to = PathBuf::from(&rest[i + 1]);
                             i += 1;
                         }
                     }
                     "--format" => {
-                        if i + 1 < rest.len() {
+                        if i + 1 < rest.len() && !rest[i + 1].starts_with("--") {
                             format = rest[i + 1].clone();
+                            i += 1;
+                        }
+                    }
+                    "--report" => {
+                        if i + 1 < rest.len() {
+                            let rpath = PathBuf::from(&rest[i + 1]);
+                            if let Some(ext) = rpath.extension().and_then(|e| e.to_str()) {
+                                match ext.to_lowercase().as_str() {
+                                    "json" => format = "json".to_string(),
+                                    "md" | "markdown" => format = "markdown".to_string(),
+                                    _ => {}
+                                }
+                            }
+                            out_file = Some(rpath);
                             i += 1;
                         }
                     }
@@ -1261,25 +1645,71 @@ fn main() {
                             i += 1;
                         }
                     }
+                    "--tier" => {
+                        if i + 1 < rest.len() {
+                            tier = rest[i + 1].trim().to_ascii_lowercase();
+                            custom_usage = true;
+                            i += 1;
+                        }
+                    }
+                    "--prs-per-week" => {
+                        if i + 1 < rest.len() {
+                            prs_per_week = parse_non_negative_finite_f64(&rest[i + 1], "--prs-per-week", 25.0);
+                            custom_usage = true;
+                            i += 1;
+                        }
+                    }
+                    "--pushes-per-pr" => {
+                        if i + 1 < rest.len() {
+                            pushes_per_pr = parse_non_negative_finite_f64(&rest[i + 1], "--pushes-per-pr", 4.0);
+                            custom_usage = true;
+                            i += 1;
+                        }
+                    }
+                    "--dev-hourly-rate" => {
+                        if i + 1 < rest.len() {
+                            dev_hourly_rate = parse_non_negative_finite_f64(&rest[i + 1], "--dev-hourly-rate", 65.0);
+                            custom_usage = true;
+                            i += 1;
+                        }
+                    }
                     "--region" => {
                         if i + 1 < rest.len() {
                             env::set_var("AWS_REGION", &rest[i + 1]);
                             i += 1;
                         }
                     }
-                    "--quiet" => quiet = true,
+                    "--quiet" | "-q" => quiet = true,
                     _ => {}
                 }
                 i += 1;
             }
 
-            let base = load_or_analyze_in_repo(&compare_to, Some(&path), None, false, true);
+            let usage_opt = if custom_usage {
+                Some(UsageConfig {
+                    tier,
+                    prs_per_week,
+                    pushes_per_pr,
+                    dev_hourly_rate_usd: dev_hourly_rate,
+                    ..Default::default()
+                })
+            } else {
+                None
+            };
+
+            let base = load_or_analyze_in_repo(
+                &compare_to,
+                Some(&path),
+                usage_opt,
+                false,
+                quiet || format == "json",
+            );
             let head = load_or_analyze_in_repo(&path, None, Some(base.usage.clone()), false, true);
             let diff = compute_diff(&base, &head);
 
             let rendered = match format.as_str() {
                 "json" => diff.to_json(),
-                "markdown" => render_diff_markdown(&diff),
+                "markdown" | "md" => render_diff_markdown(&diff),
                 _ => render_cli_compact_diff(&diff),
             };
 
@@ -1299,6 +1729,7 @@ fn main() {
         "comment" => {
             let mut platform = "github".to_string();
             let mut path = PathBuf::from(".");
+            let mut explicit_path = false;
             let mut compare_to: Option<PathBuf> = None;
             let mut behavior = "update".to_string();
             let mut out_file: Option<PathBuf> = None;
@@ -1315,14 +1746,19 @@ fn main() {
                     "--path" => {
                         if i + 1 < rest.len() {
                             path = PathBuf::from(&rest[i + 1]);
+                            explicit_path = true;
                             i += 1;
                         }
                     }
                     "--repo" => {
                         if i + 1 < rest.len() {
                             repo_slug_opt = Some(rest[i + 1].clone());
-                            if !Path::new(&rest[i + 1]).exists() {
-                                path = PathBuf::from(".");
+                            if !explicit_path {
+                                if Path::new(&rest[i + 1]).exists() {
+                                    path = PathBuf::from(&rest[i + 1]);
+                                } else {
+                                    path = PathBuf::from(".");
+                                }
                             }
                             i += 1;
                         }
@@ -1370,8 +1806,8 @@ fn main() {
                             i += 1;
                         }
                     }
-                    "--quiet" => quiet = true,
-                    arg if !arg.starts_with("--") => {
+                    "--quiet" | "-q" => quiet = true,
+                    arg if !arg.starts_with('-') => {
                         platform = arg.to_string();
                     }
                     _ => {}
@@ -1387,7 +1823,11 @@ fn main() {
                     }
                     if let Some(c_idx) = ev_raw.find("\"comment\":") {
                         if let Some(body) = extract_json_str(&ev_raw[c_idx..], "body") {
-                            routed_at_minici_md = route_at_minici_comment_command(&body, &path);
+                            routed_at_minici_md = route_at_minici_comment_command_with_base(
+                                &body,
+                                &path,
+                                compare_to.as_deref(),
+                            );
                         }
                     }
                 }
@@ -1400,8 +1840,9 @@ fn main() {
                     extract_json_str(&raw, "base_path"),
                     extract_json_str(&raw, "head_path"),
                 ) {
-                    let b = load_or_analyze(Path::new(&bp), None);
-                    let h = load_or_analyze(Path::new(&hp), Some(b.usage.clone()));
+                    let hp_path = PathBuf::from(&hp);
+                    let b = load_or_analyze_in_repo(Path::new(&bp), Some(&hp_path), None, false, true);
+                    let h = load_or_analyze_in_repo(&hp_path, None, Some(b.usage.clone()), false, true);
                     compute_diff(&b, &h)
                 } else {
                     let b = load_or_analyze(&path, None);
@@ -1494,6 +1935,7 @@ fn main() {
         "permissions" => {
             let mut repo_slug: Option<String> = None;
             let mut vendor_opt: Option<String> = None;
+            let mut token_opt: Option<String> = None;
             let mut billing_csv: Option<PathBuf> = None;
             let mut format = "table".to_string();
             let mut probe_live = true;
@@ -1510,6 +1952,12 @@ fn main() {
                     "--vendor" | "--provider" => {
                         if i + 1 < rest.len() {
                             vendor_opt = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
+                    "--token" => {
+                        if i + 1 < rest.len() {
+                            token_opt = Some(rest[i + 1].clone());
                             i += 1;
                         }
                     }
@@ -1533,10 +1981,11 @@ fn main() {
             let target_spec = repo_slug
                 .or_else(|| infer_github_slug_from_dir(Path::new(".")))
                 .unwrap_or_else(|| ".".to_string());
-            let report = permissions::run_permissions_audit(
+            let report = permissions::run_permissions_audit_with_vendor(
                 &target_spec,
                 billing_csv.as_deref(),
                 probe_live,
+                token_opt.as_deref(),
                 vendor_opt.as_deref(),
             );
             let out = match format.as_str() {
@@ -1552,8 +2001,10 @@ fn main() {
             let mut repo_slug: Option<String> = None;
             let mut gitlab_proj: Option<String> = None;
             let mut bitbucket_slug: Option<String> = None;
+            let mut circleci_slug: Option<String> = None;
             let mut billing_csv: Option<PathBuf> = None;
-            let mut max_runs: usize = 100;
+            let mut max_runs: usize = 300;
+            let mut window_days: u32 = 30;
             let mut format = "table".to_string();
             let mut i = 0;
             while i < rest.len() {
@@ -1582,6 +2033,12 @@ fn main() {
                             i += 1;
                         }
                     }
+                    "--circleci" => {
+                        if i + 1 < rest.len() {
+                            circleci_slug = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
                     "--billing-csv" => {
                         if i + 1 < rest.len() {
                             billing_csv = Some(PathBuf::from(&rest[i + 1]));
@@ -1590,7 +2047,13 @@ fn main() {
                     }
                     "--max-runs" => {
                         if i + 1 < rest.len() {
-                            max_runs = rest[i + 1].parse().unwrap_or(100);
+                            max_runs = rest[i + 1].parse().unwrap_or(300);
+                            i += 1;
+                        }
+                    }
+                    "--days" | "--window-days" => {
+                        if i + 1 < rest.len() {
+                            window_days = rest[i + 1].parse::<u32>().unwrap_or(30).clamp(1, 365);
                             i += 1;
                         }
                     }
@@ -1626,6 +2089,18 @@ fn main() {
                     }
                     Err(e) => println!("✓ minici sync --bitbucket offline fallback: {}", e),
                 }
+            } else if let Some(ref cc) = circleci_slug {
+                let csv_dest = path.join(".minici").join("circleci_telemetry.csv");
+                let win_str = window_days.to_string();
+                match telemetry::pull_circleci_telemetry_csv(cc, &win_str, &csv_dest) {
+                    Ok(n) => {
+                        if let Ok(snap) = telemetry::parse_universal_billing_csv(&csv_dest, Some(cc)) {
+                            let _ = snap.save_lockfile(&path);
+                        }
+                        println!("✅ Pulled {} CircleCI v2 workflow insights -> {}", n, csv_dest.display());
+                    }
+                    Err(e) => println!("✓ minici sync --circleci offline fallback: {}", e),
+                }
             } else if let Some(ref csv_file) = billing_csv {
                 match telemetry::parse_universal_billing_csv(csv_file, repo_slug.as_deref()) {
                     Ok(snap) => {
@@ -1647,7 +2122,7 @@ fn main() {
                 let slug = repo_slug
                     .or_else(|| infer_github_slug_from_dir(&path))
                     .unwrap_or_else(|| path.display().to_string());
-                match telemetry::sync_github_live_telemetry_with_limit(&slug, Some(&path), max_runs) {
+                match telemetry::sync_github_live_telemetry_window(&slug, Some(&path), max_runs, window_days) {
                     Ok(snap) => {
                         if format == "json" {
                             println!("{}", snap.to_json());
@@ -1680,6 +2155,10 @@ fn main() {
         "shrink" | "migrate" => {
             let mut path = PathBuf::from(".");
             let mut target_mode = "arm64".to_string();
+            let mut from_vendor: Option<String> = None;
+            let mut out_file: Option<PathBuf> = None;
+            let mut security_mode = false;
+            let mut with_fixer = false;
             let mut apply = false;
             let mut format = "table".to_string();
             let mut i = 0;
@@ -1691,11 +2170,28 @@ fn main() {
                             i += 1;
                         }
                     }
+                    "--from" | "--source" => {
+                        if i + 1 < rest.len() {
+                            from_vendor = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
                     "--target" | "--to" => {
                         if i + 1 < rest.len() {
                             target_mode = rest[i + 1].clone();
                             i += 1;
                         }
+                    }
+                    "--out" | "--out-file" => {
+                        if i + 1 < rest.len() {
+                            out_file = Some(PathBuf::from(&rest[i + 1]));
+                            i += 1;
+                        }
+                    }
+                    "--security" => security_mode = true,
+                    "--with-fixer" => {
+                        security_mode = true;
+                        with_fixer = true;
                     }
                     "--apply" | "--write" => apply = true,
                     "--suggest-pr" | "--pr-suggestions" => format = "markdown".to_string(),
@@ -1712,13 +2208,75 @@ fn main() {
                 }
                 i += 1;
             }
-            let plan = optimizer::run_surgical_optimizer(&path, sub, &target_mode, apply);
+            let plan = optimizer::run_surgical_optimizer_with_opts(
+                &path,
+                sub,
+                &target_mode,
+                apply,
+                optimizer::MigrateOptions {
+                    from_vendor,
+                    out_file,
+                    security_mode,
+                    with_fixer,
+                },
+            );
             let out = match format.as_str() {
                 "json" => plan.to_json(),
                 "markdown" | "md" => plan.render_pr_suggestions_markdown(),
                 _ => plan.render_table(),
             };
             println!("{}", out);
+        }
+
+        "ask" => {
+            let mut path = PathBuf::from(".");
+            let mut compare_to: Option<PathBuf> = None;
+            let mut format = "table".to_string();
+            let mut q_words: Vec<String> = Vec::new();
+            let mut i = 0;
+            while i < rest.len() {
+                match rest[i].as_str() {
+                    "--path" | "--repo" => {
+                        if i + 1 < rest.len() {
+                            path = PathBuf::from(&rest[i + 1]);
+                            i += 1;
+                        }
+                    }
+                    "--compare-to" | "--base-path" => {
+                        if i + 1 < rest.len() {
+                            compare_to = Some(PathBuf::from(&rest[i + 1]));
+                            i += 1;
+                        }
+                    }
+                    "--format" => {
+                        if i + 1 < rest.len() {
+                            format = rest[i + 1].clone();
+                            i += 1;
+                        }
+                    }
+                    other if !other.starts_with('-') => {
+                        q_words.push(other.to_string());
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            let raw_s = path.to_str().unwrap_or(".");
+            let (res_dir, cleanup, _) = resolve_target_to_dir_ext(raw_s, false, true);
+            let question = q_words.join(" ");
+            let ans = jev::answer_natural_language_finops_query(
+                &question,
+                &res_dir,
+                compare_to.as_deref(),
+            );
+            if let Some(tmp) = cleanup {
+                let _ = fs::remove_dir_all(tmp);
+            }
+            match format.as_str() {
+                "json" => println!("{}", ans.to_json()),
+                "markdown" | "md" => println!("{}", ans.render_markdown()),
+                _ => println!("{}", ans.render_table()),
+            }
         }
 
         "cloud-price" => {
@@ -1778,8 +2336,10 @@ fn main() {
             let mut path = PathBuf::from(".");
             let mut gitlab_proj: Option<String> = None;
             let mut bitbucket_slug: Option<String> = None;
+            let mut circleci_slug: Option<String> = None;
             let mut out_csv = PathBuf::from(".minici/vendor_telemetry.csv");
-            let mut max_runs: usize = 100;
+            let mut max_runs: usize = 300;
+            let mut window_days: u32 = 30;
             let mut i = 0;
             while i < rest.len() {
                 match rest[i].as_str() {
@@ -1808,6 +2368,12 @@ fn main() {
                             i += 1;
                         }
                     }
+                    "--circleci" => {
+                        if i + 1 < rest.len() {
+                            circleci_slug = Some(rest[i + 1].clone());
+                            i += 1;
+                        }
+                    }
                     "--out" | "--out-file" => {
                         if i + 1 < rest.len() {
                             out_csv = PathBuf::from(&rest[i + 1]);
@@ -1816,7 +2382,13 @@ fn main() {
                     }
                     "--max-runs" => {
                         if i + 1 < rest.len() {
-                            max_runs = rest[i + 1].parse().unwrap_or(100);
+                            max_runs = rest[i + 1].parse().unwrap_or(300);
+                            i += 1;
+                        }
+                    }
+                    "--days" | "--window-days" => {
+                        if i + 1 < rest.len() {
+                            window_days = rest[i + 1].parse::<u32>().unwrap_or(30).clamp(1, 365);
                             i += 1;
                         }
                     }
@@ -1825,10 +2397,10 @@ fn main() {
                 i += 1;
             }
             if let Some(slug) = gh_repo {
-                match telemetry::sync_github_live_telemetry_with_limit(&slug, Some(&path), max_runs) {
+                match telemetry::sync_github_live_telemetry_window(&slug, Some(&path), max_runs, window_days) {
                     Ok(snap) => println!(
-                        "✅ Synced GitHub live telemetry for {} ({} API calls, {} ETag 304 hits) -> .minici/telemetry.lock.json",
-                        snap.repo_slug, snap.api_calls_used, snap.etag_304_hits
+                        "✅ Synced GitHub live telemetry for {} ({}d window, {} API calls, {} ETag 304 hits) -> .minici/telemetry.lock.json",
+                        snap.repo_slug, snap.window_days, snap.api_calls_used, snap.etag_304_hits
                     ),
                     Err(e) => println!("✓ minici telemetry pull --repo offline fallback: {}", e),
                 }
@@ -1842,8 +2414,14 @@ fn main() {
                     Ok(n) => println!("✅ Pulled {} Bitbucket Pipelines step records -> {}", n, out_csv.display()),
                     Err(e) => println!("✓ minici telemetry pull --bitbucket offline fallback: {}", e),
                 }
+            } else if let Some(cc) = circleci_slug {
+                let win_str = window_days.to_string();
+                match telemetry::pull_circleci_telemetry_csv(&cc, &win_str, &out_csv) {
+                    Ok(n) => println!("✅ Pulled {} CircleCI v2 workflow insights -> {}", n, out_csv.display()),
+                    Err(e) => println!("✓ minici telemetry pull --circleci offline fallback: {}", e),
+                }
             } else {
-                println!("Usage: minici telemetry pull --repo <owner/repo> | --gitlab <group/project> | --bitbucket <workspace/repo> [--out <file.csv>]");
+                println!("Usage: minici telemetry pull --repo <owner/repo> | --gitlab <group/project> | --bitbucket <workspace/repo> | --circleci <org/repo> [--days 7..365] [--out <file.csv>]");
             }
         }
 
@@ -1865,14 +2443,15 @@ fn main() {
                     let mut synced_live = 0usize;
                     for cloud in catalog::INFRACOST_CLOUD_CATALOG {
                         let r = providers::resolve_cloud_instance_price(cloud.instance_type, "us-east-1", true);
-                        if r.source != "embedded_cloud_catalog" {
+                        if r.source == "live_cloud_graphql" {
                             synced_live += 1;
                         }
                     }
                     println!(
-                        "✅ Synced {} Cloud VM & Spot SKUs -> ~/.minici/cloud_prices.json ({} live/cached hits)",
+                        "✅ Synced {} Cloud VM & Spot SKUs -> ~/.minici/cloud_prices.json ({} live GraphQL, {} embedded seed)",
                         catalog::INFRACOST_CLOUD_CATALOG.len(),
-                        synced_live
+                        synced_live,
+                        catalog::INFRACOST_CLOUD_CATALOG.len().saturating_sub(synced_live)
                     );
                     if cloud_only && rates_url_opt.is_none() {
                         return;
@@ -2018,7 +2597,33 @@ fn main() {
                     ov_path.display()
                 );
             } else {
-                println!("{}", catalog::catalog_to_json());
+                let mut filter_opt: Option<String> = None;
+                let mut k = 0usize;
+                while k < rest.len() {
+                    if rest[k] == "--filter" && k + 1 < rest.len() {
+                        filter_opt = Some(rest[k + 1].to_ascii_lowercase());
+                        k += 1;
+                    }
+                    k += 1;
+                }
+                if let Some(flt) = filter_opt {
+                    let items: Vec<String> = catalog::EMBEDDED_SKU_CATALOG
+                        .iter()
+                        .filter_map(|s| {
+                            let mut c = s.clone();
+                            catalog::apply_live_override(&mut c, s.sku_label);
+                            let js = c.to_json();
+                            if js.to_ascii_lowercase().contains(&flt) {
+                                Some(format!("  {}", js))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    println!("[\n{}\n]", items.join(",\n"));
+                } else {
+                    println!("{}", catalog::catalog_to_json());
+                }
             }
         }
 
@@ -2214,7 +2819,6 @@ jobs:
         }
 
         "mcp" => {
-            use std::io::{self, BufRead, Write};
             let mut default_path = PathBuf::from(".");
             let mut i = 0;
             while i < rest.len() {
@@ -2224,14 +2828,9 @@ jobs:
                 }
                 i += 1;
             }
-            let stdin = io::stdin();
-            let mut stdout = io::stdout();
-            for line in stdin.lock().lines().map_while(Result::ok) {
-                if let Some(resp) = handle_mcp_jsonrpc_line(&line, &default_path) {
-                    let _ = writeln!(stdout, "{}", resp);
-                    let _ = stdout.flush();
-                }
-            }
+            let stdin = std::io::stdin();
+            let stdout = std::io::stdout();
+            run_mcp_stdio_stream(stdin.lock(), stdout.lock(), &default_path);
         }
 
         "launch-pack" => {
@@ -2565,6 +3164,7 @@ jobs:
                 "sync",
                 "shrink",
                 "migrate",
+                "ask",
                 "catalog",
                 "cloud-price",
                 "telemetry",
@@ -3036,9 +3636,16 @@ jobs:
             "minici_anomalies",
             "minici_shrink",
             "minici_migrate",
+            "minici_ask",
         ] {
             assert!(list_resp.contains(tool), "missing MCP tool {}", tool);
         }
+        let ask_mcp = handle_mcp_jsonrpc_line(
+            r#"{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"minici_ask","arguments":{"question":"How much do we save moving to ARM64?"}}}"#,
+            &dir,
+        )
+        .unwrap();
+        assert!(ask_mcp.contains("runner_migration_roi"));
         let anom_resp = handle_mcp_jsonrpc_line(
             r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"minici_anomalies"}}"#,
             &dir,
@@ -3617,6 +4224,406 @@ jobs:
         let snap = telemetry::parse_universal_billing_csv(&csv_p, None).unwrap();
         env::remove_var("MINICI_SYSTEMONE_URL");
         assert_eq!(snap.invoice_net_billed_usd, Some(42.50));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_gcp_cloudbuild_and_azure_pipelines_7_provider_discovery() {
+        let gcp_dir = std::env::temp_dir().join("minici_test_gcp_cb");
+        let _ = fs::remove_dir_all(&gcp_dir);
+        fs::create_dir_all(&gcp_dir).unwrap();
+        fs::write(
+            gcp_dir.join("cloudbuild.yaml"),
+            "options:\n  machineType: 'E2_HIGHCPU_8'\nsteps:\n  - name: 'gcr.io/cloud-builders/npm'\n    args: ['test']\n  - name: 'gcr.io/cloud-builders/docker'\n    args: ['build', '.']\n",
+        )
+        .unwrap();
+        let rep_gcp = analyze_path(&gcp_dir, None);
+        assert_eq!(rep_gcp.total_workflows, 1);
+        assert!(rep_gcp.total_expanded_matrix_jobs >= 1);
+        assert!(rep_gcp.detected_providers.contains(&"gcp-cloud-build".to_string()));
+        assert!(rep_gcp.gross_monthly_compute_cost_usd > 0.0);
+        let _ = fs::remove_dir_all(&gcp_dir);
+
+        let az_dir = std::env::temp_dir().join("minici_test_az_pipe");
+        let _ = fs::remove_dir_all(&az_dir);
+        fs::create_dir_all(&az_dir).unwrap();
+        fs::write(
+            az_dir.join("azure-pipelines.yml"),
+            "trigger:\n  - main\npool:\n  vmImage: 'ubuntu-latest'\nsteps:\n  - script: pytest\n    displayName: 'Run pytest'\n",
+        )
+        .unwrap();
+        let rep_az = analyze_path(&az_dir, None);
+        assert_eq!(rep_az.total_workflows, 1);
+        assert!(rep_az.total_expanded_matrix_jobs >= 1);
+        assert!(rep_az.detected_providers.contains(&"azure-pipelines".to_string()));
+        assert!(rep_az.gross_monthly_compute_cost_usd > 0.0);
+        let _ = fs::remove_dir_all(&az_dir);
+    }
+
+    #[test]
+    fn test_permissions_vendor_override_never_spoofs_bearer_token() {
+        let prev_gl = env::var("GITLAB_TOKEN").ok();
+        env::remove_var("GITLAB_TOKEN");
+        let rep = permissions::run_permissions_audit_with_vendor(
+            "group/proj",
+            None,
+            false,
+            None,
+            Some("gitlab"),
+        );
+        if let Some(v) = prev_gl {
+            env::set_var("GITLAB_TOKEN", v);
+        }
+        let js = rep.to_json();
+        assert!(js.contains("\"provider\": \"gitlab\""));
+        assert!(js.contains("\"token_present\": false"));
+        assert!(js.contains("\"attributes_unlocked\": 33"));
+    }
+
+    #[test]
+    fn test_shrink_step_with_intermediate_id_never_duplicates_with_key() {
+        let dir = std::env::temp_dir().join("minici_test_shrink_no_dup_with");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        fs::write(dir.join("package-lock.json"), "{}").unwrap();
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: CI\non: pull_request\njobs:\n  b:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        id: co\n        with:\n          submodules: true\n      - uses: actions/upload-artifact@v4\n        if: always()\n        with:\n          name: dist\n          path: dist/\n",
+        )
+        .unwrap();
+        let _plan = optimizer::run_surgical_optimizer(&dir, "shrink", "arm64", true);
+        let patched = fs::read_to_string(dir.join(".github/workflows/ci.yml")).unwrap();
+        let with_count = patched.lines().filter(|l| l.trim() == "with:").count();
+        assert_eq!(with_count, 2, "Expected exactly 1 `with:` per step, got:\n{}", patched);
+        assert!(patched.contains("fetch-depth: 1"));
+        assert!(patched.contains("retention-days: 7"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cloud_price_m5_t2a_and_regional_scaling_accuracy() {
+        let m5 = providers::resolve_cloud_instance_price("m5.large", "us-east-1", false);
+        assert_eq!(m5.vendor, "aws");
+        assert!((m5.on_demand_hourly_usd - 0.0960).abs() < 0.002);
+
+        let t2a = providers::resolve_cloud_instance_price("t2a-standard-4", "us-central1", false);
+        assert_eq!(t2a.vendor, "gcp");
+        assert!((t2a.on_demand_hourly_usd - 0.1540).abs() < 0.003);
+
+        let gcp_pref = providers::resolve_cloud_instance_price("gcp-n2-standard-4", "sa-east-1", false);
+        assert_eq!(gcp_pref.vendor, "gcp");
+        assert!(gcp_pref.on_demand_hourly_usd > 0.22);
+    }
+
+    #[test]
+    fn test_est_minutes_comment_cyclic_dag_and_xss_csv_escaping() {
+        let dir = std::env::temp_dir().join("minici_test_comment_dag_xss");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        fs::write(
+            dir.join(".github/workflows/ci.yml"),
+            "name: \"CI <script>alert(1)</script>\"\non: push\njobs:\n  job_a:\n    name: 'test \"quoted\" <script>'\n    runs-on: ubuntu-latest\n    needs: [job_b]\n    # est-minutes: 17.5\n    steps:\n      - run: echo a\n  job_b:\n    runs-on: ubuntu-latest\n    needs: [job_a]\n    est-minutes: 5.0\n    steps:\n      - run: echo b\n",
+        )
+        .unwrap();
+        let rep = analyze_path(&dir, None);
+        let ja = rep.jobs.iter().find(|j| j.job_id == "job_a").unwrap();
+        assert!((ja.est_raw_duration_mins_per_job - 17.5).abs() < 1e-4);
+        // Cyclic DAG must terminate cleanly without 32x unrolling
+        assert!(rep.critical_path_wait_mins_per_run <= 30.0);
+
+        let html = render_breakdown_html(&rep);
+        assert!(!html.contains("<script>alert(1)</script>"));
+        let csv = render_breakdown_csv(&rep);
+        for line in csv.lines().skip(1) {
+            if !line.trim().is_empty() {
+                // Balanced double quotes check
+                assert_eq!(line.chars().filter(|&c| c == '"').count() % 2, 0);
+            }
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_mcp_lsp_content_length_unknown_method_and_nested_id() {
+        let dir = std::env::temp_dir().join("minici_test_mcp_lsp");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        // 1. Nested `params.id` must NOT hijack top-level `"id": 42`
+        let req_nested = r#"{"jsonrpc":"2.0","params":{"arguments":{"id":999999}},"id":"req-42","method":"ping"}"#;
+        let resp_nested = handle_mcp_jsonrpc_line(req_nested, &dir).unwrap();
+        assert!(resp_nested.contains("\"id\":\"req-42\""));
+
+        // 2. Unknown method returns JSON-RPC -32601
+        let req_unk = r#"{"jsonrpc":"2.0","id":77,"method":"nonexistent/method"}"#;
+        let resp_unk = handle_mcp_jsonrpc_line(req_unk, &dir).unwrap();
+        assert!(resp_unk.contains("-32601"));
+
+        // 3. Unknown tool name returns `isError: true`
+        let req_bad_tool = r#"{"jsonrpc":"2.0","id":78,"method":"tools/call","params":{"name":"bogus_tool"}}"#;
+        let resp_bad_tool = handle_mcp_jsonrpc_line(req_bad_tool, &dir).unwrap();
+        assert!(resp_bad_tool.contains("\"isError\":true"));
+
+        // 4. LSP `Content-Length` framing without trailing newline
+        let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
+        let framed = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+        let mut out_buf: Vec<u8> = Vec::new();
+        run_mcp_stdio_stream(std::io::Cursor::new(framed.into_bytes()), &mut out_buf, &dir);
+        let out_str = String::from_utf8(out_buf).unwrap();
+        assert!(out_str.starts_with("Content-Length: "));
+        assert!(out_str.contains("\"protocolVersion\":\"2024-11-05\""));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_sprints1_to_7_dynamic_registry_150cloud_and_at_minici_nl() {
+        // 1. Dynamic 150-SKU x 12-region Cloud Seed Catalog (`pricing/cloud_instances_seed.json`)
+        let aws_r8g = providers::resolve_cloud_instance_price("r8g.2xlarge", "ap-northeast-1", false);
+        assert_eq!(aws_r8g.vendor, "aws");
+        assert!(aws_r8g.on_demand_hourly_usd > 0.35);
+        assert!(aws_r8g.spot_hourly_usd > 0.08 && aws_r8g.spot_hourly_usd < aws_r8g.on_demand_hourly_usd);
+
+        let az_arm = providers::resolve_cloud_instance_price("Standard_D8ps_v5", "westeurope", false);
+        assert_eq!(az_arm.vendor, "azure");
+        assert!(az_arm.on_demand_hourly_usd > 0.25);
+
+        // 2. True Anywhere-to-Anywhere cross-platform translations (GitLab -> CircleCI, CircleCI -> CodeBuild)
+        let gl_dir = std::env::temp_dir().join("minici_s8_gl_to_cci");
+        let _ = fs::remove_dir_all(&gl_dir);
+        fs::create_dir_all(&gl_dir).unwrap();
+        fs::write(
+            gl_dir.join(".gitlab-ci.yml"),
+            "stages: [test]\nunit_test:\n  stage: test\n  tags: [saas-linux-small-amd64]\n  script:\n    - pytest -q\n",
+        )
+        .unwrap();
+        let gl_to_cci = optimizer::run_surgical_optimizer(&gl_dir, "migrate", "circleci", false);
+        assert_eq!(gl_to_cci.source_platform, "gitlab-ci");
+        assert_eq!(gl_to_cci.target_platform, "circleci");
+        assert!(gl_to_cci
+            .converted_github_workflow_preview
+            .as_deref()
+            .unwrap_or("")
+            .contains("pytest -q"));
+
+        // 3. Natural-language `@minici <free-form question>` PR comment bot routing
+        let nl_reply = route_at_minici_comment_command(
+            "Hey @minici how much would converting this repo to GitHub Actions cost?",
+            &gl_dir,
+        )
+        .unwrap();
+        assert!(nl_reply.contains("cross_platform_migration"));
+        let _ = fs::remove_dir_all(&gl_dir);
+    }
+
+    #[test]
+    fn test_round4_audit_receipts_macos_7x7_p90_timeout_cancelled_waste_and_learned_sku() {
+        let dir = std::env::temp_dir().join("minici_round4_audit_receipts");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+
+        // 1. C1 Receipt: macOS & Windows jobs MUST preserve `macos` & `windows` OS across 7x7 `PipelineIr`!
+        fs::write(
+            dir.join(".github/workflows/multi_os.yml"),
+            "name: Cross OS\non: [push, pull_request]\njobs:\n  ios_sign:\n    runs-on: macos-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: xcodebuild -scheme App build\n  win_msi:\n    runs-on: windows-latest\n    needs: [ios_sign]\n    steps:\n      - uses: actions/checkout@v4\n      - run: msbuild App.sln\n",
+        )
+        .unwrap();
+
+        let to_gl = optimizer::run_surgical_optimizer(&dir, "migrate", "gitlab-ci", false);
+        let gl_preview = to_gl.converted_github_workflow_preview.as_deref().unwrap();
+        assert!(
+            gl_preview.contains("saas-macos-medium-m1"),
+            "C1 regression: macos-latest lost macOS OS in GitLab migration:\n{}",
+            gl_preview
+        );
+        assert!(
+            gl_preview.contains("saas-windows-medium-amd64"),
+            "C1 regression: windows-latest lost Windows OS in GitLab migration:\n{}",
+            gl_preview
+        );
+
+        let to_az = optimizer::run_surgical_optimizer(&dir, "migrate", "azure-pipelines", false);
+        let az_preview = to_az.converted_github_workflow_preview.as_deref().unwrap();
+        assert!(az_preview.contains("vmImage: 'macOS-latest'"));
+        assert!(az_preview.contains("vmImage: 'windows-latest'"));
+
+        // 2. H3 Receipt: `job_p90_durations_mins` drives dynamic `timeout-minutes: ceil(2.5 * p90)` in `shrink`,
+        //    and `observed_cancelled_wasted_mins` drives `monthly_superseded_run_waste_usd` in `engine.rs`!
+        let mut snap = telemetry::CanonicalTelemetrySnapshot::default();
+        snap.provenance_mode = "LIVE_CALIBRATED".to_string();
+        snap.window_days = 30;
+        snap.observed_monthly_runs = Some(100.0);
+        snap.observed_cancelled_wasted_mins = Some(200.0);
+        snap.job_p90_durations_mins = vec![("multi_os.yml#ios_sign".to_string(), 18.0)];
+        snap.save_lockfile(&dir).unwrap();
+
+        let shrink_p90 = optimizer::run_surgical_optimizer(&dir, "shrink", "hygiene", false);
+        assert!(
+            shrink_p90
+                .edits
+                .iter()
+                .any(|e| e.rule_id == "MINICI-SHRINK-002" && e.replacement_snippet.contains("timeout-minutes: 45")),
+            "Expected 2.5 * 18.0m = 45m dynamic p90 timeout, got: {:?}",
+            shrink_p90.edits
+        );
+        let live_rep = analyze_path(&dir, None);
+        assert!(
+            live_rep.cost_components.monthly_superseded_run_waste_usd > 5.0,
+            "Expected observed_cancelled_wasted_mins (200m on macOS+Win) to reflect real waste, got {}",
+            live_rep.cost_components.monthly_superseded_run_waste_usd
+        );
+
+        // 3. M1 Receipt: Multi-job CircleCI -> GitHub Actions preserves BOTH jobs (`lint` & `test`) + `needs: [lint]`!
+        let cci_dir = std::env::temp_dir().join("minici_round4_cci_multijob");
+        let _ = fs::remove_dir_all(&cci_dir);
+        fs::create_dir_all(cci_dir.join(".circleci")).unwrap();
+        fs::write(
+            cci_dir.join(".circleci/config.yml"),
+            "version: 2.1\njobs:\n  lint:\n    docker:\n      - image: cimg/node:20.11\n    steps:\n      - checkout\n      - run:\n          command: npm run lint\n  ios_test:\n    macos:\n      xcode: \"16.0.0\"\n    steps:\n      - checkout\n      - run:\n          command: fastlane test\nworkflows:\n  main:\n    jobs:\n      - lint\n      - ios_test\n",
+        )
+        .unwrap();
+        let cci_to_gha = optimizer::run_surgical_optimizer(&cci_dir, "migrate", "github-actions", false);
+        let gha_prev = cci_to_gha.converted_github_workflow_preview.as_deref().unwrap();
+        assert!(gha_prev.contains("  lint:\n"));
+        assert!(gha_prev.contains("  ios_test:\n    runs-on: macos-15-xlarge"));
+
+        // 4. H2 Receipt: Persisted Jev learned SKU (`~/.minici/learned_sku_registry.json`) wins even when
+        //    the custom label contains `"ubuntu"` (`acme-ubuntu-enterprise-pool` -> `ubuntu-16-core` $0.042/m)!
+        let user_learned_path = catalog::learned_sku_user_path();
+        let prev_user_learned = fs::read_to_string(&user_learned_path).ok();
+        catalog::persist_learned_sku("acme-ubuntu-enterprise-pool", "ubuntu-16-core", 0.042);
+        let learned_s = catalog::resolve_runner_sku("acme-ubuntu-enterprise-pool");
+        if let Some(prev) = prev_user_learned {
+            let _ = fs::write(&user_learned_path, prev);
+        } else {
+            let _ = fs::remove_file(&user_learned_path);
+        }
+        assert!((learned_s.rate_per_min_usd - 0.042).abs() < 1e-4);
+
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&cci_dir);
+    }
+
+    #[test]
+    fn test_pydantic_matrix_runs_on_and_maxim_blacksmith_preserve() {
+        let dir = std::env::temp_dir().join("minici_pydantic_maxim_guard");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        let wf = r#"name: Matrix & Blacksmith Guard
+on: [pull_request]
+jobs:
+  pgo_matrix:
+    strategy:
+      matrix:
+        platform:
+          - os: linux
+            runs-on: ubuntu-latest
+          - os: linux_aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+  fast_blacksmith:
+    runs-on: blacksmith-8vcpu-ubuntu-2204
+    timeout-minutes: 20
+    steps:
+      - run: cargo test
+  hosted_ubuntu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: npm test
+"#;
+        fs::write(dir.join(".github/workflows/ci.yml"), wf).unwrap();
+
+        let shr = optimizer::run_surgical_optimizer(&dir, "shrink", "hygiene", true);
+        let after_shrink = fs::read_to_string(dir.join(".github/workflows/ci.yml")).unwrap();
+        // `timeout-minutes: 30` MUST be injected ONLY once at job-level `runs-on: ${{ matrix.platform.runs-on }}`,
+        // NEVER inside `strategy.matrix.platform`!
+        assert_eq!(after_shrink.matches("timeout-minutes: 30").count(), 1);
+        assert!(after_shrink.contains("runs-on: ${{ matrix.platform.runs-on }}\n    timeout-minutes: 30"));
+        assert!(shr.edits.iter().filter(|e| e.rule_id == "MINICI-SHRINK-002").count() == 1);
+
+        // `migrate --to github-arm64` MUST rewrite `hosted_ubuntu` (`ubuntu-latest` -> `ubuntu-24.04-arm`),
+        // and MUST NOT rewrite `blacksmith-8vcpu-ubuntu-2204` OR `matrix.platform`!
+        let mig = optimizer::run_surgical_optimizer(&dir, "migrate", "github-arm64", true);
+        let after_mig = fs::read_to_string(dir.join(".github/workflows/ci.yml")).unwrap();
+        assert_eq!(mig.edits.len(), 1);
+        assert!(after_mig.contains("runs-on: blacksmith-8vcpu-ubuntu-2204"));
+        assert!(after_mig.contains("  hosted_ubuntu:\n    runs-on: ubuntu-24.04-arm"));
+        assert!(after_mig.contains("          - os: linux\n            runs-on: ubuntu-latest"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_claude_audit_round2_5repo_ux_and_ir_matrix_locks() {
+        let dir = std::env::temp_dir().join("minici_claude_round2_repo");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        let wf1 = r#"name: Matrix CI
+on: [push, pull_request]
+jobs:
+  reusable_caller:
+    uses: ./.github/workflows/lint.yml
+  test_matrix:
+    strategy:
+      matrix:
+        include:
+          - { os: "linux", py: "3.11" }
+          - { os: "macos", py: "3.12" }
+          - { os: "windows", py: "3.13" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          retention-days: 30
+      - run: pytest
+"#;
+        let wf2 = r#"name: Lint
+on: [pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: ruff check .
+"#;
+        fs::write(dir.join(".github/workflows/ci.yml"), wf1).unwrap();
+        fs::write(dir.join(".github/workflows/lint.yml"), wf2).unwrap();
+
+        // 1. Offline permissions audit slug derives folder name instead of hardcoded `local/workspace`
+        let perm = permissions::run_permissions_audit(dir.to_str().unwrap(), None, false, None);
+        assert_eq!(perm.repo_slug, "minici_claude_round2_repo");
+
+        // 1b. Inline `{ os: "linux", ... }` matrix entries NEVER leave trailing `",` on runner_label!
+        let base_rep = analyze_path(&dir, None);
+        for jb in &base_rep.jobs {
+            assert!(!jb.runner_label.contains('"') && !jb.runner_label.contains(','));
+            assert!(!jb.job_id.contains('"') && !jb.job_id.contains(','));
+        }
+
+        // 2. Shrink inserts `filter: blob:none`, respects intentional `retention-days: 30`, and never emits `-0.00`
+        let shr = optimizer::run_surgical_optimizer(&dir, "shrink", "hygiene", false);
+        assert!(shr.edits.iter().any(|e| e.replacement_snippet.contains("filter: blob:none")));
+        assert!(!shr.edits.iter().any(|e| e.rule_id == "MINICI-SHRINK-004"));
+        assert!(!shr.to_json().contains("-0.00"));
+
+        // 3. Cross-platform `migrate --to gitlab-ci` skips reusable_caller, splits multi-OS matrix buckets 1:1
+        //    (`4` expanded / `4` defined), labels `.github/workflows/*.yml (2 files)`, caps `Optimize First`
+        //    below monthly compute, and renders human-readable payback when target platform costs more!
+        let mig = optimizer::run_surgical_optimizer(&dir, "migrate", "gitlab-ci", false);
+        assert_eq!(mig.verified_diff.base_expanded_jobs, 4);
+        assert_eq!(mig.verified_diff.head_expanded_jobs, 4);
+        assert!(mig.edits[0].description.contains("4 expanded job(s) (4 definitions)"));
+        assert!(mig.edits[0].description.contains(".github/workflows/*.yml (2 files)"));
+        assert!(mig.in_place_shrink_monthly_savings_usd <= mig.verified_diff.base_monthly_compute_usd);
+        let cli_txt = mig.render_table();
+        assert!(!cli_txt.contains("0.0m payback"));
+
         let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -15,7 +15,7 @@ inputs:
     required: false
     default: ""
   tier:
-    description: "Pricing tier mode: auto, free, or paid"
+    description: "Pricing tier mode: auto, free, pro, team, enterprise, or paid"
     required: false
     default: "auto"
   prs-per-week:
@@ -179,7 +179,7 @@ runs:
           if [ "$OS_RAW" = "Darwin" ] && [ "$ARCH_RAW" = "arm64" ]; then ASSET="minici-macos-aarch64"; fi
           if [ "$OS_RAW" = "Darwin" ] && [ "$ARCH_RAW" = "x86_64" ]; then ASSET="minici-macos-x86_64"; fi
           REL_BASE="https://github.com/Aamir-raza-1/minici-cost-action/releases/latest/download"
-          if [[ "${ACTION_REF:-}" == v* ]]; then
+          if [[ "${ACTION_REF:-}" == v*.*.* ]]; then
             REL_BASE="https://github.com/Aamir-raza-1/minici-cost-action/releases/download/${ACTION_REF}"
           fi
           TMP_DL="$(mktemp -d)"
@@ -239,10 +239,18 @@ runs:
           "$BIN_PATH" diff \
             --path "$INPUT_PATH" \
             --compare-to "$INPUT_COMPARE_TO" \
+            --tier "$INPUT_TIER" \
+            --prs-per-week "$INPUT_PRS_PER_WEEK" \
+            --pushes-per-pr "$INPUT_PUSHES_PER_PR" \
+            --dev-hourly-rate "$INPUT_DEV_HOURLY_RATE" \
             --format table
           "$BIN_PATH" diff \
             --path "$INPUT_PATH" \
             --compare-to "$INPUT_COMPARE_TO" \
+            --tier "$INPUT_TIER" \
+            --prs-per-week "$INPUT_PRS_PER_WEEK" \
+            --pushes-per-pr "$INPUT_PUSHES_PER_PR" \
+            --dev-hourly-rate "$INPUT_DEV_HOURLY_RATE" \
             --format markdown \
             --out-file .minici_diff.md \
             --quiet
@@ -318,3 +326,4 @@ runs:
             ws("provenance_mode", d.get("provenance_mode", "static_heuristic"))
         '
         fi
+        rm -f .minici_breakdown.md .minici_diff.md .minici_breakdown.json

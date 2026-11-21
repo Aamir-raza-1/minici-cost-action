@@ -11,7 +11,7 @@ This document provides complete engineering transparency into:
 ## 1. Zero External Runtime Dependencies (100% Standalone Rust)
 
 * **Zero External Crates:** `crates/minici/Cargo.toml` has `[dependencies]` completely empty (`std` only).
-* **Zero Runtime Third-Party Binaries or Cloud APIs:** `minici` **never** shells out to third-party cost CLIs and **never** queries external GraphQL/REST pricing endpoints during `breakdown`, `diff`, `comment`, `catalog`, or `mcp`.
+* **Zero Runtime Third-Party Binaries or Default Cloud Egress:** `minici` **never** shells out to third-party cost CLIs and **never** queries external GraphQL/REST pricing endpoints by default during `breakdown`, `diff`, `comment`, `catalog`, or `mcp`. Only when a user explicitly opts into live cloud VM pricing (`minici cloud-price <instance> --live` or `minici catalog sync --cloud` with a configured cloud pricing API key) does `minici` refresh `~/.minici/cloud_prices.json`, falling back cleanly in `< 0.05 ms` to the embedded catalog when offline.
 * **Compiled Multi-Vendor SKU Catalog (`crates/minici/src/catalog.rs`):** All `160+` runner and cloud instance rates across `GitHub Actions`, `GitLab CI`, `CircleCI`, `Bitbucket Pipelines`, `AWS CodeBuild`, `Google Cloud Build`, `Azure Pipelines`, `AWS EC2` (On-Demand & Spot), `GCP Compute Engine`, `Azure Virtual Machines`, `S3`, and `NAT Gateway` are compiled directly into the binary and verified against `pricing/*.json` at `0.00%` drift (`tools/sync_rust_sku_catalog.py --check`).
   * *Schema Note:* JSON output (`--format json`) preserves legacy field keys under `cost_components` for backwards compatibility with existing automation consumers, populated purely from `minici`'s internal Rust catalog.
 
@@ -67,8 +67,8 @@ jobs:
 ### Core CI/CD Invoice Components (`C1–C6`)
 1. **Build Minutes & Sub-Minute Rounding Tax (`build_minutes_cost`):** Linux/Windows/macOS minute split, OS free-tier multipliers (`1x` Linux, `2x` Windows, `10x` macOS), and whole-minute ceiling overhead.
 2. **Runner Compute & Self-Hosted Breakeven (`runner_cost`):** Hosted SaaS spend vs. right-sized cloud Spot/On-Demand VMs, always-on idle utilization %, and `5,000 mins/mo` self-hosted breakeven check.
-3. **Artifact Storage (`artifact_storage_cost`):** Steady-state GB accumulation using the workflow's actual `retention-days` (`$0.083/GB-month` 2026 GitHub Actions rate after plan storage allowance vs. object-storage lifecycle retention). Shown in summary only when `jobs_uploading_artifacts > 0`.
-4. **Concurrency & Parallelism Cap Tax (`parallelism_cost`):** Stage-by-stage `needs:` DAG concurrent job fan-out vs. plan runner slot caps.
+3. **Artifact Storage (`artifact_storage_cost`):** Steady-state GB accumulation using the workflow's actual `retention-days` (`$0.25/GB-month` published CI vendor rate after plan storage allowance vs. `$0.023/GB-month` S3 / `$0.018/GB-month` S3 Intelligent-Tiering object-storage lifecycle retention). Shown in summary only when `jobs_uploading_artifacts > 0`.
+4. **Concurrency & Parallelism Cap Tax (`parallelism_cost`):** Stage-by-stage `needs:` DAG concurrent job fan-out vs. plan runner slot caps (with optional **Tier 4 — `108/108`** local kernel CPU/RAM telemetry via `telemetry-step`).
 5. **Log Retention & External SIEM Shipping (`log_retention_cost`):** Native vendor retention (`$0/mo`) vs. external log ingestion strictly when log-shipping steps are detected.
 6. **Cloud VPC & NAT Gateway Egress (`cross_region_egress_cost`):** Shown only when self-hosted cloud VPC runners (`self-hosted`, `aws-*`, `gcp-*`, `azure-*`, `codebuild`) or cloud registry transfers are active (`$0/mo` on standard hosted SaaS runners).
 

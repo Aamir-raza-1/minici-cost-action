@@ -307,31 +307,45 @@ impl CiProvider for GitHubProvider {
     }
     fn os_pool_multiplier(&self, os: &str) -> f64 {
         let low = os.to_ascii_lowercase();
+        let plan = crate::catalog::lookup_declarative_plan("github", "free");
         if low.contains("mac") {
-            10.0
+            plan.map(|p| p.os_mult_macos).unwrap_or(10.0)
         } else if low.contains("win") {
-            2.0
+            plan.map(|p| p.os_mult_windows).unwrap_or(2.0)
         } else {
-            1.0
+            plan.map(|p| p.os_mult_linux).unwrap_or(1.0)
         }
     }
     fn plan_pool_minutes(&self, tier_mode: &str) -> f64 {
-        match tier_mode {
-            "pro" | "team" => 3000.0,
-            "enterprise" => 50000.0,
-            _ => 2000.0,
-        }
+        let pname = match tier_mode {
+            "pro" => "pro",
+            "team" => "team",
+            "enterprise" => "enterprise",
+            _ => "free",
+        };
+        crate::catalog::lookup_declarative_plan("github", pname)
+            .map(|p| p.included_minutes)
+            .unwrap_or(2000.0)
     }
     fn plan_included_storage_gb(&self, tier_mode: &str) -> f64 {
-        match tier_mode {
-            "pro" => 1.0,
-            "team" => 2.0,
-            "enterprise" => 50.0,
-            _ => 0.5,
-        }
+        let pname = match tier_mode {
+            "pro" => "pro",
+            "team" => "team",
+            "enterprise" => "enterprise",
+            _ => "free",
+        };
+        crate::catalog::lookup_declarative_plan("github", pname)
+            .map(|p| p.included_storage_gb)
+            .unwrap_or(0.5)
     }
     fn concurrency_caps(&self) -> (usize, usize) {
-        (20, 60)
+        let free_cap = crate::catalog::lookup_declarative_plan("github", "free")
+            .map(|p| p.concurrent_jobs)
+            .unwrap_or(20);
+        let team_cap = crate::catalog::lookup_declarative_plan("github", "team")
+            .map(|p| p.concurrent_jobs)
+            .unwrap_or(60);
+        (free_cap, team_cap)
     }
 }
 
@@ -349,21 +363,32 @@ impl CiProvider for GitLabProvider {
         is_self_hosted_job(job) || is_third_party_microvm_job(job)
     }
     fn os_pool_multiplier(&self, os: &str) -> f64 {
+        let plan = crate::catalog::lookup_declarative_plan("gitlab", "free");
         if os.to_ascii_lowercase().contains("mac") {
-            6.0
+            plan.map(|p| p.os_mult_macos).unwrap_or(6.0)
         } else {
-            1.0
+            plan.map(|p| p.os_mult_linux).unwrap_or(1.0)
         }
     }
     fn plan_pool_minutes(&self, tier_mode: &str) -> f64 {
-        match tier_mode {
-            "team" | "premium" => 10000.0,
-            "enterprise" | "ultimate" => 50000.0,
-            _ => 400.0,
-        }
+        let pname = match tier_mode {
+            "team" | "premium" => "premium",
+            "enterprise" | "ultimate" => "ultimate",
+            _ => "free",
+        };
+        crate::catalog::lookup_declarative_plan("gitlab", pname)
+            .map(|p| p.included_minutes)
+            .unwrap_or(400.0)
     }
-    fn plan_included_storage_gb(&self, _tier_mode: &str) -> f64 {
-        5.0
+    fn plan_included_storage_gb(&self, tier_mode: &str) -> f64 {
+        let pname = match tier_mode {
+            "team" | "premium" => "premium",
+            "enterprise" | "ultimate" => "ultimate",
+            _ => "free",
+        };
+        crate::catalog::lookup_declarative_plan("gitlab", pname)
+            .map(|p| p.included_storage_gb)
+            .unwrap_or(5.0)
     }
     fn concurrency_caps(&self) -> (usize, usize) {
         (20, 100)
@@ -422,14 +447,24 @@ impl CiProvider for BitbucketProvider {
         1.0
     }
     fn plan_pool_minutes(&self, tier_mode: &str) -> f64 {
-        match tier_mode {
-            "team" | "standard" => 2500.0,
-            "enterprise" | "premium" => 3500.0,
-            _ => 50.0,
-        }
+        let pname = match tier_mode {
+            "team" | "standard" => "standard",
+            "enterprise" | "premium" => "premium",
+            _ => "free",
+        };
+        crate::catalog::lookup_declarative_plan("bitbucket", pname)
+            .map(|p| p.included_minutes)
+            .unwrap_or(50.0)
     }
-    fn plan_included_storage_gb(&self, _tier_mode: &str) -> f64 {
-        1.0
+    fn plan_included_storage_gb(&self, tier_mode: &str) -> f64 {
+        let pname = match tier_mode {
+            "team" | "standard" => "standard",
+            "enterprise" | "premium" => "premium",
+            _ => "free",
+        };
+        crate::catalog::lookup_declarative_plan("bitbucket", pname)
+            .map(|p| p.included_storage_gb)
+            .unwrap_or(1.0)
     }
     fn concurrency_caps(&self) -> (usize, usize) {
         (10, 100)
@@ -551,14 +586,26 @@ fn discover_upstream_cloud_api_key() -> Option<String> {
     None
 }
 
-fn regional_cloud_multiplier(region: &str) -> f64 {
+pub fn regional_cloud_multiplier(region: &str) -> f64 {
     match region.trim().to_ascii_lowercase().as_str() {
-        "us-east-1" | "us-east-2" | "us-west-2" | "us-central1" | "eastus" => 1.00,
-        "us-west-1" | "eu-west-1" | "europe-west1" | "westeurope" => 1.08,
-        "eu-central-1" | "eu-west-2" | "europe-west3" => 1.12,
-        "ap-south-1" | "ap-southeast-1" | "asia-southeast1" => 1.14,
-        "ap-northeast-1" | "asia-northeast1" => 1.18,
-        "sa-east-1" => 1.38,
+        "us-east-1" | "us-east-2" | "us-west-2" | "us-central1" | "us-west1" | "eastus"
+        | "eastus2" | "westus2" => 1.00,
+        "centralus" => 1.02,
+        "eu-north-1" | "northeurope" => 1.05,
+        "ca-central-1" | "us-east4" => 1.06,
+        "us-west-1" | "westus" | "eu-west-1" | "europe-west1" | "europe-west4" | "westeurope" => {
+            1.08
+        }
+        "uksouth" | "francecentral" => 1.10,
+        "eu-central-1" | "eu-west-2" | "europe-west2" | "europe-west3" | "germanywestcentral"
+        | "asia-east1" | "centralindia" => 1.12,
+        "ap-south-1" | "ap-southeast-1" | "ap-northeast-2" | "asia-southeast1"
+        | "southeastasia" => 1.14,
+        "ap-southeast-2" | "australiaeast" => 1.16,
+        "ap-northeast-1" | "asia-northeast1" | "japaneast" | "me-central-1"
+        | "australia-southeast1" => 1.18,
+        "af-south-1" => 1.22,
+        "sa-east-1" | "southamerica-east1" | "brazilsouth" => 1.38,
         _ => 1.00,
     }
 }
@@ -571,7 +618,7 @@ pub fn load_cached_cloud_price(instance_type: &str, region: &str) -> Option<(f64
         return None;
     }
     let raw = fs::read_to_string(&cache_path).ok()?;
-    let lower_inst = instance_type.trim().to_ascii_lowercase();
+    let lower_inst = strip_cloud_vendor_prefix(&instance_type.trim().to_ascii_lowercase()).to_string();
     let lower_reg = region.trim().to_ascii_lowercase();
     for candidate_reg in [lower_reg.as_str(), "us-east-1"] {
         let needle = format!("\"{}@{}\":", lower_inst, candidate_reg);
@@ -583,14 +630,28 @@ pub fn load_cached_cloud_price(instance_type: &str, region: &str) -> Option<(f64
                     extract_num_field(obj, "od_hr"),
                     extract_num_field(obj, "spot_hr"),
                 ) {
+                    let scale = if candidate_reg == lower_reg {
+                        1.0
+                    } else {
+                        crate::catalog::regional_seed_multiplier(&lower_reg)
+                    };
+                    let od_scaled = ((od * scale) * 10000.0).round() / 10000.0;
+                    let sp_scaled = ((sp * scale) * 10000.0).round() / 10000.0;
                     let vcpus = extract_num_field(obj, "vcpus").unwrap_or(4.0) as u32;
                     let ram_gb = extract_num_field(obj, "ram_gb").unwrap_or(8.0);
-                    return Some((od, sp, vcpus, ram_gb));
+                    return Some((od_scaled, sp_scaled, vcpus, ram_gb));
                 }
             }
         }
     }
     None
+}
+
+fn strip_cloud_vendor_prefix(inst: &str) -> &str {
+    inst.strip_prefix("aws-")
+        .or_else(|| inst.strip_prefix("gcp-"))
+        .or_else(|| inst.strip_prefix("azure-"))
+        .unwrap_or(inst)
 }
 
 /// Queries live upstream cloud pricing API when `allow_network == true` and caches into `~/.minici/cloud_prices.json`,
@@ -600,7 +661,9 @@ pub fn resolve_cloud_instance_price(
     region: &str,
     allow_network: bool,
 ) -> CloudInstanceQuote {
-    let lower_inst = instance_type.trim().to_ascii_lowercase();
+    let raw_lower = instance_type.trim().to_ascii_lowercase();
+    let detected_vendor = infer_cloud_vendor(&raw_lower);
+    let lower_inst = strip_cloud_vendor_prefix(&raw_lower).to_string();
     let lower_reg = region.trim().to_ascii_lowercase();
     let cache_key = format!("{}@{}", lower_inst, lower_reg);
     let cache_path = cloud_prices_cache_path();
@@ -609,7 +672,7 @@ pub fn resolve_cloud_instance_price(
     if !allow_network {
         if let Some((od, sp, vcpus, ram_gb)) = load_cached_cloud_price(&lower_inst, &lower_reg) {
             return CloudInstanceQuote {
-                vendor: infer_cloud_vendor(&lower_inst).to_string(),
+                vendor: detected_vendor.to_string(),
                 instance_type: lower_inst,
                 region: lower_reg,
                 vcpus,
@@ -624,24 +687,20 @@ pub fn resolve_cloud_instance_price(
     // 2. Optional live GraphQL lookup against upstream Cloud Pricing API when network sync is requested
     if allow_network {
         if let Some(api_key) = discover_upstream_cloud_api_key() {
-            let vendor = match infer_cloud_vendor(&lower_inst) {
-                "gcp" => "gcp",
-                "azure" => "azure",
-                _ => "aws",
-            };
+            let vendor = detected_vendor;
             let service = match vendor {
                 "gcp" => "Compute Engine",
                 "azure" => "Virtual Machines",
                 _ => "AmazonEC2",
             };
-            // Filter strictly to Linux Shared Used instances on AWS so Windows/Dedicated Host prices never pollute quotes
-            let attr_filters = if vendor == "aws" {
-                format!(
+            // Filter strictly to Linux Shared Used instances on AWS; use `machineType` on GCP and `armSkuName` on Azure
+            let attr_filters = match vendor {
+                "aws" => format!(
                     "[{{ key: \\\"instanceType\\\", value: \\\"{}\\\" }}, {{ key: \\\"operatingSystem\\\", value: \\\"Linux\\\" }}, {{ key: \\\"tenancy\\\", value: \\\"Shared\\\" }}, {{ key: \\\"capacityStatus\\\", value: \\\"Used\\\" }}]",
                     lower_inst
-                )
-            } else {
-                format!("[{{ key: \\\"instanceType\\\", value: \\\"{}\\\" }}]", lower_inst)
+                ),
+                "gcp" => format!("[{{ key: \\\"machineType\\\", value: \\\"{}\\\" }}]", lower_inst),
+                _ => format!("[{{ key: \\\"armSkuName\\\", value: \\\"{}\\\" }}]", lower_inst),
             };
             let gql = format!(
                 "{{\"query\":\"{{ products(filter: {{ vendorName: \\\"{}\\\", service: \\\"{}\\\", region: \\\"{}\\\", attributeFilters: {} }}) {{ onDemand: prices(filter: {{ purchaseOption: \\\"on_demand\\\" }}) {{ USD }} spot: prices(filter: {{ purchaseOption: \\\"spot\\\" }}) {{ USD }} }} }}\"}}",
@@ -705,32 +764,32 @@ pub fn resolve_cloud_instance_price(
                 }
             }
         }
-        // Even if API key is absent, persist regional embedded quote into hot-cache so `cloud_prices.json` is populated and verifiable
-        let reg_mult = regional_cloud_multiplier(&lower_reg);
+        // Persist regional embedded quote into hot-cache so `cloud_prices.json` is populated, while honestly reporting `embedded_seed`
+        let reg_mult = crate::catalog::regional_seed_multiplier(&lower_reg);
         if let Some(seed) = lookup_infracost_cloud_spec(&lower_inst) {
             let od_hr = ((seed.on_demand_per_min_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
             let sp_hr = ((seed.spot_per_min_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
             persist_cloud_price_entry(&cache_path, &cache_key, od_hr, sp_hr, seed.vcpus, seed.ram_gb);
             return CloudInstanceQuote {
-                vendor: infer_cloud_vendor(&lower_inst).to_string(),
+                vendor: detected_vendor.to_string(),
                 instance_type: seed.instance_type.to_string(),
                 region: lower_reg,
                 vcpus: seed.vcpus,
                 ram_gb: seed.ram_gb,
                 on_demand_hourly_usd: od_hr,
                 spot_hourly_usd: sp_hr,
-                source: "hot_cache".to_string(),
+                source: "embedded_seed".to_string(),
             };
         }
     }
 
-    // 3. Deterministic sub-microsecond embedded seed catalog + regional multiplier fallback
-    let reg_mult = regional_cloud_multiplier(&lower_reg);
+    // 3. Deterministic sub-microsecond embedded 150-instance seed catalog + regional multiplier fallback
+    let reg_mult = crate::catalog::regional_seed_multiplier(&lower_reg);
     if let Some(seed) = lookup_infracost_cloud_spec(&lower_inst) {
         let od_hr = ((seed.on_demand_per_min_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
         let sp_hr = ((seed.spot_per_min_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
         return CloudInstanceQuote {
-            vendor: infer_cloud_vendor(&lower_inst).to_string(),
+            vendor: detected_vendor.to_string(),
             instance_type: seed.instance_type.to_string(),
             region: lower_reg,
             vcpus: seed.vcpus,
@@ -740,15 +799,41 @@ pub fn resolve_cloud_instance_price(
             source: "embedded_seed".to_string(),
         };
     }
+    if let Some(seed150) = crate::catalog::lookup_seeded_cloud_spec(&lower_inst) {
+        let od_hr = ((seed150.on_demand_per_min_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
+        let sp_hr = ((seed150.spot_per_min_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
+        return CloudInstanceQuote {
+            vendor: detected_vendor.to_string(),
+            instance_type: seed150.instance_type.clone(),
+            region: lower_reg,
+            vcpus: seed150.vcpus,
+            ram_gb: seed150.ram_gb,
+            on_demand_hourly_usd: od_hr,
+            spot_hourly_usd: sp_hr,
+            source: "cloud_instances_seed_150".to_string(),
+        };
+    }
 
+    // Fallback for novel/unlisted cloud VM families: use cloud VM per-vCPU On-Demand rates (never SaaS hosted runner rates!)
     let sku = resolve_runner_sku(&lower_inst);
-    let od_hr = ((sku.rate_per_min_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
-    let sp_hr = ((sku.self_hosted_spot_rate_usd * 60.0 * reg_mult) * 10000.0).round() / 10000.0;
+    let vcpus = sku.vcpus.max(2);
+    let is_arm = lower_inst.contains("arm")
+        || lower_inst.contains("t2a")
+        || lower_inst.contains("c7g")
+        || lower_inst.contains("c8g")
+        || lower_inst.contains("m6g")
+        || lower_inst.contains("m7g")
+        || lower_inst.contains("r6g")
+        || lower_inst.contains("r7g")
+        || lower_inst.contains("t4g");
+    let per_vcpu_hr = if is_arm { 0.0385 } else { 0.0480 };
+    let od_hr = (((vcpus as f64) * per_vcpu_hr * reg_mult) * 10000.0).round() / 10000.0;
+    let sp_hr = ((od_hr * 0.33) * 10000.0).round() / 10000.0;
     CloudInstanceQuote {
-        vendor: infer_cloud_vendor(&lower_inst).to_string(),
+        vendor: detected_vendor.to_string(),
         instance_type: lower_inst,
         region: lower_reg,
-        vcpus: sku.vcpus,
+        vcpus,
         ram_gb: sku.ram_gb,
         on_demand_hourly_usd: od_hr,
         spot_hourly_usd: sp_hr,
@@ -757,9 +842,33 @@ pub fn resolve_cloud_instance_price(
 }
 
 fn infer_cloud_vendor(inst: &str) -> &'static str {
-    if inst.starts_with("n2-") || inst.starts_with("e2-") || inst.starts_with("c3-") || inst.starts_with("t2a-") {
+    if inst.starts_with("gcp-") {
+        return "gcp";
+    }
+    if inst.starts_with("azure-") {
+        return "azure";
+    }
+    if inst.starts_with("aws-") {
+        return "aws";
+    }
+    let clean = strip_cloud_vendor_prefix(inst);
+    if clean.starts_with("n1-")
+        || clean.starts_with("n2-")
+        || clean.starts_with("n2d-")
+        || clean.starts_with("e2-")
+        || clean.starts_with("c2-")
+        || clean.starts_with("c2d-")
+        || clean.starts_with("c3-")
+        || clean.starts_with("c3d-")
+        || clean.starts_with("c4-")
+        || clean.starts_with("t2a-")
+        || clean.starts_with("t2d-")
+        || clean.starts_with("a2-")
+        || clean.starts_with("g2-")
+        || clean.starts_with("m1-")
+    {
         "gcp"
-    } else if inst.starts_with("standard_") {
+    } else if clean.starts_with("standard_") {
         "azure"
     } else {
         "aws"

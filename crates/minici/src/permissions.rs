@@ -25,6 +25,8 @@ pub struct EndpointProbeResult {
     pub status: String, // "GRANTED" | "DENIED" | "SKIPPED_OFFLINE"
 }
 
+pub type PermissionsAuditReceipt = PermissionsAuditReport;
+
 #[derive(Debug, Clone)]
 pub struct PermissionsAuditReport {
     pub provider: String, // "github" | "gitlab" | "circleci" | "bitbucket"
@@ -288,6 +290,37 @@ pub fn infer_repo_slug(repo_or_path: &str) -> String {
             }
         }
     }
+    if trimmed != "." && trimmed != "local/workspace" && !trimmed.is_empty() {
+        let p = Path::new(trimmed);
+        let comps: Vec<String> = p
+            .components()
+            .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+            .filter(|s| s != "/" && s != "." && s != "..")
+            .collect();
+        if let Some(last) = comps.last() {
+            if last.contains("__") {
+                let parts: Vec<&str> = last.splitn(2, "__").collect();
+                let left = parts[0]
+                    .trim_start_matches(|c: char| c.is_ascii_digit() || c == '_' || c == '-');
+                if !left.is_empty() && parts.len() == 2 {
+                    return format!("{}/{}", left, parts[1]);
+                }
+            }
+            // Handle numbered `NN-owner-repo` cache directories (`01-microsoft-vscode` -> `microsoft/vscode`)
+            let digits_prefix = last.chars().take_while(|c| c.is_ascii_digit()).count();
+            if digits_prefix > 0 && last[digits_prefix..].starts_with('-') {
+                let rest = &last[(digits_prefix + 1)..];
+                let parts: Vec<&str> = rest.splitn(2, '-').collect();
+                if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+                    return format!("{}/{}", parts[0], parts[1]);
+                }
+            }
+            if !trimmed.starts_with('/') && comps.len() == 2 {
+                return format!("{}/{}", comps[0], comps[1]);
+            }
+            return last.clone();
+        }
+    }
     "local/workspace".to_string()
 }
 
@@ -398,26 +431,111 @@ fn probe_github_status(url: &str, token: Option<&str>) -> (u16, String, String) 
     (0, String::new(), String::new())
 }
 
+fn probe_http_status_with_header(url: &str, auth_header: Option<&str>) -> (u16, String, String) {
+    let mut cmd = Command::new("curl");
+    cmd.args([
+        "-sS",
+        "-i",
+        "--connect-timeout",
+        "2",
+        "-m",
+        "4",
+        "-H",
+        "User-Agent: minici-security-check/0.8.0",
+    ]);
+    if let Some(hdr) = auth_header {
+        cmd.arg("-H").arg(hdr);
+    }
+    cmd.arg(url);
+    if let Ok(out) = cmd.output() {
+        if out.status.success() {
+            let raw = String::from_utf8_lossy(&out.stdout);
+            let (headers, body) = raw
+                .split_once("\r\n\r\n")
+                .or_else(|| raw.split_once("\n\n"))
+                .unwrap_or((&raw, ""));
+            let code = headers
+                .lines()
+                .next()
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|s| s.parse::<u16>().ok())
+                .unwrap_or(0);
+            return (code, headers.to_string(), body.to_string());
+        }
+    }
+    (0, String::new(), String::new())
+}
+
+fn format_probe_status(code: u16) -> String {
+    if code == 200 {
+        "GRANTED".to_string()
+    } else if code == 0 {
+        "UNREACHABLE".to_string()
+    } else {
+        format!("DENIED ({})", code)
+    }
+}
+
+fn normalize_vendor_override(v: &str) -> Option<&'static str> {
+    let low = v.trim().to_ascii_lowercase();
+    match low.as_str() {
+        "github" | "github-actions" | "gh" => Some("github"),
+        "gitlab" | "gitlab-ci" => Some("gitlab"),
+        "circleci" | "circle-ci" | "circle" => Some("circleci"),
+        "bitbucket" | "bitbucket-pipelines" => Some("bitbucket"),
+        _ if low.contains("gitlab") => Some("gitlab"),
+        _ if low.contains("circle") => Some("circleci"),
+        _ if low.contains("bitbucket") => Some("bitbucket"),
+        _ if low.contains("github") => Some("github"),
+        _ => None,
+    }
+}
+
 pub fn run_permissions_audit(
     repo_or_path: &str,
     billing_csv: Option<&Path>,
     allow_network: bool,
     explicit_token: Option<&str>,
 ) -> PermissionsAuditReport {
-    let provider = infer_provider_from_input(repo_or_path);
+    run_permissions_audit_with_vendor(
+        repo_or_path,
+        billing_csv,
+        allow_network,
+        explicit_token,
+        None,
+    )
+}
+
+pub fn run_permissions_audit_with_vendor(
+    repo_or_path: &str,
+    billing_csv: Option<&Path>,
+    allow_network: bool,
+    explicit_token: Option<&str>,
+    vendor_override: Option<&str>,
+) -> PermissionsAuditReport {
+    let provider = vendor_override
+        .and_then(normalize_vendor_override)
+        .unwrap_or_else(|| infer_provider_from_input(repo_or_path));
     let slug = infer_repo_slug(repo_or_path);
-    let token_opt = explicit_token.map(|s| s.to_string()).or_else(|| match provider {
-        "gitlab" => env::var("GITLAB_TOKEN").ok().filter(|s| !s.trim().is_empty()),
-        "circleci" => env::var("CIRCLE_TOKEN").ok().filter(|s| !s.trim().is_empty()),
-        "bitbucket" => env::var("BITBUCKET_TOKEN").ok().filter(|s| !s.trim().is_empty()),
-        _ => discover_github_token(),
-    });
+    let token_opt = explicit_token
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| match provider {
+            "gitlab" => env::var("GITLAB_TOKEN").ok().filter(|s| !s.trim().is_empty()),
+            "circleci" => env::var("CIRCLE_TOKEN").ok().filter(|s| !s.trim().is_empty()),
+            "bitbucket" => env::var("BITBUCKET_TOKEN").ok().filter(|s| !s.trim().is_empty()),
+            _ => discover_github_token(),
+        });
     let token_present = token_opt.is_some();
     let has_csv = billing_csv.map(|p| p.exists()).unwrap_or(false);
     let has_cpu_ram_csv = csv_has_cpu_ram_columns(billing_csv);
     let has_telem_step = detect_telemetry_step_in_repo(repo_or_path);
 
-    let mut visibility = if slug == "local/workspace" {
+    let is_local_dir = repo_or_path == "local/workspace"
+        || repo_or_path == "."
+        || Path::new(repo_or_path).exists();
+    let mut visibility = if slug == "local/workspace" || (!allow_network && is_local_dir) {
         "local-only".to_string()
     } else {
         "unknown".to_string()
@@ -428,22 +546,32 @@ pub fn run_permissions_audit(
     let mut rate_remaining = rate_limit;
     let mut api_reachable = false;
 
+    let mut org_billing_granted = false;
+    let mut fleet_runners_granted = false;
+
     if allow_network && slug != "local/workspace" && provider == "github" {
         let tok_ref = token_opt.as_deref();
+        let owner = slug.split('/').next().unwrap_or(&slug);
         let u_repo = format!("https://api.github.com/repos/{}", slug);
         let u_wf = format!("https://api.github.com/repos/{}/contents/.github/workflows", slug);
+        let u_act_wf = format!("https://api.github.com/repos/{}/actions/workflows?per_page=1", slug);
         let u_runs = format!("https://api.github.com/repos/{}/actions/runs?per_page=1", slug);
         let u_cache = format!("https://api.github.com/repos/{}/actions/cache/usage", slug);
         let u_art = format!("https://api.github.com/repos/{}/actions/artifacts?per_page=1", slug);
         let u_pulls = format!("https://api.github.com/repos/{}/pulls?state=closed&per_page=1", slug);
+        let u_runners = format!("https://api.github.com/repos/{}/actions/runners?per_page=1", slug);
+        let u_billing = format!("https://api.github.com/orgs/{}/settings/billing/actions", owner);
 
-        let (r_repo, r_wf, r_runs, r_cache, r_art, r_pulls) = std::thread::scope(|s| {
+        let (r_repo, r_wf, r_act_wf, r_runs, r_cache, r_art, r_pulls, r_runners, r_billing) = std::thread::scope(|s| {
             let h1 = s.spawn(|| probe_github_status(&u_repo, tok_ref));
             let h2 = s.spawn(|| probe_github_status(&u_wf, tok_ref));
-            let h3 = s.spawn(|| probe_github_status(&u_runs, tok_ref));
-            let h4 = s.spawn(|| probe_github_status(&u_cache, tok_ref));
-            let h5 = s.spawn(|| probe_github_status(&u_art, tok_ref));
-            let h6 = s.spawn(|| probe_github_status(&u_pulls, tok_ref));
+            let h3 = s.spawn(|| probe_github_status(&u_act_wf, tok_ref));
+            let h4 = s.spawn(|| probe_github_status(&u_runs, tok_ref));
+            let h5 = s.spawn(|| probe_github_status(&u_cache, tok_ref));
+            let h6 = s.spawn(|| probe_github_status(&u_art, tok_ref));
+            let h7 = s.spawn(|| probe_github_status(&u_pulls, tok_ref));
+            let h8 = s.spawn(|| probe_github_status(&u_runners, tok_ref));
+            let h9 = s.spawn(|| probe_github_status(&u_billing, tok_ref));
             (
                 h1.join().unwrap_or((0, String::new(), String::new())),
                 h2.join().unwrap_or((0, String::new(), String::new())),
@@ -451,26 +579,29 @@ pub fn run_permissions_audit(
                 h4.join().unwrap_or((0, String::new(), String::new())),
                 h5.join().unwrap_or((0, String::new(), String::new())),
                 h6.join().unwrap_or((0, String::new(), String::new())),
+                h7.join().unwrap_or((0, String::new(), String::new())),
+                h8.join().unwrap_or((0, String::new(), String::new())),
+                h9.join().unwrap_or((0, String::new(), String::new())),
             )
         });
+
+        org_billing_granted = r_billing.0 == 200;
+        fleet_runners_granted = r_runners.0 == 200;
 
         for (lbl, code) in [
             ("/repos", r_repo.0),
             ("/contents/.github/workflows", r_wf.0),
+            ("/actions/workflows", r_act_wf.0),
             ("/actions/runs", r_runs.0),
             ("/actions/cache/usage", r_cache.0),
             ("/actions/artifacts", r_art.0),
             ("/pulls", r_pulls.0),
+            ("/actions/runners", r_runners.0),
+            ("/orgs/{org}/settings/billing/actions", r_billing.0),
         ] {
             endpoint_probes.push(EndpointProbeResult {
                 endpoint: lbl.to_string(),
-                status: if code == 200 {
-                    "GRANTED".to_string()
-                } else if code == 0 {
-                    "UNREACHABLE".to_string()
-                } else {
-                    format!("DENIED ({})", code)
-                },
+                status: format_probe_status(code),
             });
         }
 
@@ -481,7 +612,6 @@ pub fn run_permissions_audit(
             } else if r_repo.2.contains("\"private\":true") || r_repo.2.contains("\"private\": true") {
                 visibility = "private".to_string();
             }
-            // Detect Fine-Grained PAT or Classic PAT write capabilities via `/repos` `permissions` object when authenticated
             if token_present {
                 if let Some(p_idx) = r_repo.2.find("\"permissions\":") {
                     let p_sub = &r_repo.2[p_idx..];
@@ -507,7 +637,6 @@ pub fn run_permissions_audit(
                         }
                     }
                 } else if let Some(rest) = low.strip_prefix("x-accepted-github-permissions:") {
-                    // Fine-Grained PAT / GitHub App permission inspection
                     for perm in rest.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
                         if !detected_scopes.iter().any(|x| x == perm) {
                             detected_scopes.push(perm.to_string());
@@ -523,6 +652,93 @@ pub fn run_permissions_audit(
                     }
                 }
             }
+        }
+    } else if allow_network && slug != "local/workspace" && provider == "gitlab" {
+        let enc_slug = slug.replace('/', "%2F");
+        let hdr = token_opt.as_ref().map(|t| format!("PRIVATE-TOKEN: {}", t));
+        let u_proj = format!("https://gitlab.com/api/v4/projects/{}", enc_slug);
+        let u_pipes = format!("https://gitlab.com/api/v4/projects/{}/pipelines?per_page=1", enc_slug);
+        let u_jobs = format!("https://gitlab.com/api/v4/projects/{}/jobs?per_page=1", enc_slug);
+        let (r_proj, r_pipes, r_jobs) = std::thread::scope(|s| {
+            let h1 = s.spawn(|| probe_http_status_with_header(&u_proj, hdr.as_deref()));
+            let h2 = s.spawn(|| probe_http_status_with_header(&u_pipes, hdr.as_deref()));
+            let h3 = s.spawn(|| probe_http_status_with_header(&u_jobs, hdr.as_deref()));
+            (
+                h1.join().unwrap_or((0, String::new(), String::new())),
+                h2.join().unwrap_or((0, String::new(), String::new())),
+                h3.join().unwrap_or((0, String::new(), String::new())),
+            )
+        });
+        if r_proj.0 == 200 {
+            api_reachable = true;
+            if r_proj.2.contains("\"visibility\":\"public\"") {
+                visibility = "public".to_string();
+            } else if r_proj.2.contains("\"visibility\":\"private\"") {
+                visibility = "private".to_string();
+            }
+        }
+        for (lbl, code) in [
+            ("/api/v4/projects/:id", r_proj.0),
+            ("/api/v4/projects/:id/pipelines", r_pipes.0),
+            ("/api/v4/projects/:id/jobs", r_jobs.0),
+        ] {
+            endpoint_probes.push(EndpointProbeResult {
+                endpoint: lbl.to_string(),
+                status: format_probe_status(code),
+            });
+        }
+    } else if allow_network && slug != "local/workspace" && provider == "circleci" {
+        let hdr = token_opt.as_ref().map(|t| format!("Circle-Token: {}", t));
+        let u_pipe = format!("https://circleci.com/api/v2/project/gh/{}/pipeline", slug);
+        let u_ins = format!("https://circleci.com/api/v2/insights/gh/{}/workflows", slug);
+        let (r_pipe, r_ins) = std::thread::scope(|s| {
+            let h1 = s.spawn(|| probe_http_status_with_header(&u_pipe, hdr.as_deref()));
+            let h2 = s.spawn(|| probe_http_status_with_header(&u_ins, hdr.as_deref()));
+            (
+                h1.join().unwrap_or((0, String::new(), String::new())),
+                h2.join().unwrap_or((0, String::new(), String::new())),
+            )
+        });
+        if r_pipe.0 == 200 {
+            api_reachable = true;
+        }
+        for (lbl, code) in [
+            ("/api/v2/project/:slug/pipeline", r_pipe.0),
+            ("/api/v2/insights/:slug/workflows", r_ins.0),
+        ] {
+            endpoint_probes.push(EndpointProbeResult {
+                endpoint: lbl.to_string(),
+                status: format_probe_status(code),
+            });
+        }
+    } else if allow_network && slug != "local/workspace" && provider == "bitbucket" {
+        let hdr = token_opt.as_ref().map(|t| format!("Authorization: Bearer {}", t));
+        let u_repo = format!("https://api.bitbucket.org/2.0/repositories/{}", slug);
+        let u_pipes = format!("https://api.bitbucket.org/2.0/repositories/{}/pipelines/?pagelen=1", slug);
+        let (r_repo, r_pipes) = std::thread::scope(|s| {
+            let h1 = s.spawn(|| probe_http_status_with_header(&u_repo, hdr.as_deref()));
+            let h2 = s.spawn(|| probe_http_status_with_header(&u_pipes, hdr.as_deref()));
+            (
+                h1.join().unwrap_or((0, String::new(), String::new())),
+                h2.join().unwrap_or((0, String::new(), String::new())),
+            )
+        });
+        if r_repo.0 == 200 {
+            api_reachable = true;
+            if r_repo.2.contains("\"is_private\": false") || r_repo.2.contains("\"is_private\":false") {
+                visibility = "public".to_string();
+            } else if r_repo.2.contains("\"is_private\": true") || r_repo.2.contains("\"is_private\":true") {
+                visibility = "private".to_string();
+            }
+        }
+        for (lbl, code) in [
+            ("/2.0/repositories/:slug", r_repo.0),
+            ("/2.0/repositories/:slug/pipelines", r_pipes.0),
+        ] {
+            endpoint_probes.push(EndpointProbeResult {
+                endpoint: lbl.to_string(),
+                status: format_probe_status(code),
+            });
         }
     } else if !allow_network {
         for lbl in [
@@ -583,14 +799,19 @@ pub fn run_permissions_audit(
     // - Tier 2 Least-Privilege Read Token: `89 / 108` (`82.4%`)
     // - Tier 3 Read Token + Billing CSV: `99 / 108` (`91.7%`; `104 / 108` = `96.3%` with CircleCI CPU/RAM CSV!)
     // - Tier 4 + In-Workflow `/proc` Kernel Telemetry Step: `108 / 108` (`100.0%`)
+    let live_token_denied =
+        allow_network && token_present && !endpoint_probes.is_empty() && !api_reachable;
+    let token_effective = token_present && !live_token_denied;
     let attributes_total = 108_usize;
-    let attributes_unlocked = if has_telem_step && (has_csv || token_present) {
+    let attributes_unlocked = if has_telem_step && (has_csv || org_billing_granted || token_effective) {
         108
     } else if has_csv && has_cpu_ram_csv {
         104
-    } else if has_csv {
+    } else if has_csv || org_billing_granted {
         99
-    } else if token_present {
+    } else if token_effective && fleet_runners_granted {
+        92
+    } else if token_effective {
         89
     } else if api_reachable || visibility == "public" {
         68
@@ -634,7 +855,7 @@ pub fn run_permissions_audit(
         "Optimal Tier 4 (100.0% — 108/108 FinOps + kernel CPU/RAM attributes unlocked with strict Read-Only posture).".to_string()
     } else if has_csv && token_present && write_scopes.is_empty() {
         format!(
-            "Tier 3 Invoice-Reconciled ({:.1}% — {}/108 attributes). Optional: add `uses: minici/telemetry-step@v1` in workflow YAML to unlock the final kernel CPU/RAM attributes (108/108 = 100.0%).",
+            "Tier 3 Invoice-Reconciled ({:.1}% — {}/108 attributes). Optional: add `uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1` in workflow YAML to unlock the final kernel CPU/RAM attributes (108/108 = 100.0%).",
             coverage_pct, attributes_unlocked
         )
     } else if !write_scopes.is_empty() {
@@ -735,10 +956,10 @@ mod tests {
         assert_eq!(rep_cci.attributes_unlocked, 104);
         assert!((rep_cci.coverage_pct - 96.3).abs() < 0.1);
 
-        // Tier 4: + `minici/telemetry-step` in workflow YAML = 108/108 (100.0%)
+        // Tier 4: + `Aamir-raza-1/minici-cost-action/telemetry-step@v1` in workflow YAML = 108/108 (100.0%)
         let wf_dir = tmp.join(".github").join("workflows");
         fs::create_dir_all(&wf_dir).unwrap();
-        fs::write(wf_dir.join("ci.yml"), "steps:\n  - uses: minici/telemetry-step@v1\n").unwrap();
+        fs::write(wf_dir.join("ci.yml"), "steps:\n  - uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1\n").unwrap();
         let rep_t4 = run_permissions_audit(
             tmp.to_str().unwrap(),
             Some(&gh_csv),
@@ -747,6 +968,18 @@ mod tests {
         );
         assert_eq!(rep_t4.attributes_unlocked, 108);
         assert!((rep_t4.coverage_pct - 100.0).abs() < 0.1);
+
+        // Vendor override must set provider without treating vendor_override as a token
+        let rep_gl = run_permissions_audit_with_vendor("owner/repo", None, false, None, Some("gitlab-ci"));
+        assert_eq!(rep_gl.provider, "gitlab");
+        if env::var("GITLAB_TOKEN").unwrap_or_default().trim().is_empty() {
+            assert!(!rep_gl.token_present);
+        }
+        let rep_bb = run_permissions_audit_with_vendor("owner/repo", None, false, None, Some("bitbucket-pipelines"));
+        assert_eq!(rep_bb.provider, "bitbucket");
+        if env::var("BITBUCKET_TOKEN").unwrap_or_default().trim().is_empty() {
+            assert!(!rep_bb.token_present);
+        }
 
         let _ = fs::remove_dir_all(&tmp);
     }

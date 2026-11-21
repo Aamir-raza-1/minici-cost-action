@@ -34,7 +34,7 @@ pub struct RunnerSkuSpec {
 impl RunnerSkuSpec {
     pub fn to_json(&self) -> String {
         format!(
-            "{{\"provider\":\"{}\",\"sku_label\":\"{}\",\"os\":\"{}\",\"arch\":\"{}\",\"vcpus\":{},\"ram_gb\":{:.1},\"rate_per_min_usd\":{:.4},\"ceil_to_whole_minute\":{},\"free_tier_mins_per_month\":{:.1},\"paid_team_included_mins\":{:.1},\"blacksmith_equiv_rate_usd\":{:.4},\"self_hosted_spot_rate_usd\":{:.4}}}",
+            "{{\"provider\":\"{}\",\"sku_label\":\"{}\",\"os\":\"{}\",\"arch\":\"{}\",\"vcpus\":{},\"ram_gb\":{:.1},\"rate_per_min_usd\":{:.4},\"ceil_to_whole_minute\":{},\"free_tier_mins_per_month\":{:.1},\"paid_team_included_mins\":{:.1},\"high_speed_microvm_equiv_rate_usd\":{:.4},\"self_hosted_spot_rate_usd\":{:.4}}}",
             self.provider,
             self.sku_label,
             self.os,
@@ -465,10 +465,10 @@ pub static EMBEDDED_SKU_CATALOG: &[RunnerSkuSpec] = &[
         blacksmith_equiv_rate_usd: 0.008,
         self_hosted_spot_rate_usd: 0.0022,
     },
-    // --- Fast Third-Party & Self-Hosted Cloud SKUs (Cloud Catalog Cloud Catalog Mapped) ---
+    // --- Fast Third-Party & Self-Hosted Cloud SKUs (Cloud Catalog Mapped) ---
     RunnerSkuSpec {
-        provider: "blacksmith",
-        sku_label: "blacksmith-2vcpu-ubuntu-2204",
+        provider: "third-party-microvm",
+        sku_label: "third-party-microvm-2vcpu",
         os: "Linux",
         arch: "x86_64",
         vcpus: 2,
@@ -706,6 +706,7 @@ pub fn apply_live_override(spec: &mut RunnerSkuSpec, raw_label: &str) {
 }
 
 pub fn pricing_catalog_status() -> String {
+    let reg = dynamic_pricing_registry();
     let p = overrides_file_path();
     if p.exists() {
         if let Ok(raw) = std::fs::read_to_string(&p) {
@@ -721,16 +722,368 @@ pub fn pricing_catalog_status() -> String {
                 })
                 .count();
             return format!(
-                "Hot-Reload Active (~/.minici/pricing_overrides.json • {} SKUs + Dynamic Cloud VM Estimator)",
-                count
+                "Hot-Reload Active (~/.minici/pricing_overrides.json • {} Overrides + {} JSON SKUs + {} Seeded Cloud VMs)",
+                count,
+                reg.json_skus.len(),
+                reg.cloud_seed.len()
             );
         }
     }
     format!(
-        "Auto-Updatable ({} Static SaaS SKUs + {} Cloud Instance SKUs • 0-Break Fallback)",
-        EMBEDDED_SKU_CATALOG.len(),
-        INFRACOST_CLOUD_CATALOG.len()
+        "Declarative Dynamic Catalog ({} JSON SaaS SKUs + {} Cloud VM Flavors x {} Regions + {} Learned Aliases)",
+        reg.json_skus.len(),
+        reg.cloud_seed.len(),
+        reg.regions.len(),
+        reg.learned_aliases.len()
     )
+}
+
+#[derive(Debug, Clone)]
+pub struct DeclarativePlanSpec {
+    pub platform: String,
+    pub plan_name: String,
+    pub seat_usd_per_month: f64,
+    pub included_minutes: f64,
+    pub included_storage_gb: f64,
+    pub concurrent_jobs: usize,
+    pub os_mult_linux: f64,
+    pub os_mult_windows: f64,
+    pub os_mult_macos: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DynamicJsonSkuSpec {
+    pub platform: String,
+    pub sku_id: String,
+    pub os: String,
+    pub arch: String,
+    pub vcpus: u32,
+    pub gpu: bool,
+    pub rate_per_min_usd: f64,
+    pub ceil_to_whole_minute: bool,
+    pub uses_allowance: bool,
+    pub included_qty: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct SeededCloudInstanceSpec {
+    pub provider: String,
+    pub instance_type: String,
+    pub os: String,
+    pub arch: String,
+    pub vcpus: u32,
+    pub ram_gb: f64,
+    pub on_demand_per_min_usd: f64,
+    pub spot_per_min_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DynamicPricingRegistry {
+    pub json_skus: Vec<DynamicJsonSkuSpec>,
+    pub plans: Vec<DeclarativePlanSpec>,
+    pub cloud_seed: Vec<SeededCloudInstanceSpec>,
+    pub regions: Vec<(String, f64, f64, f64)>, // (region, compute_mult, nat_per_gb, egress_per_gb)
+    pub learned_aliases: Vec<(String, String, f64)>, // (raw_label_lower, resolved_sku, rate_per_min_usd)
+}
+
+const PRICING_GITHUB_JSON: &str = include_str!("../../../pricing/github.json");
+const PRICING_GITLAB_JSON: &str = include_str!("../../../pricing/gitlab.json");
+const PRICING_CIRCLECI_JSON: &str = include_str!("../../../pricing/circleci.json");
+const PRICING_BITBUCKET_JSON: &str = include_str!("../../../pricing/bitbucket.json");
+const PRICING_AWS_JSON: &str = include_str!("../../../pricing/aws.json");
+const PRICING_GCP_JSON: &str = include_str!("../../../pricing/gcp.json");
+const PRICING_AZURE_JSON: &str = include_str!("../../../pricing/azure.json");
+const PRICING_LEARNED_JSON: &str = include_str!("../../../pricing/learned_sku_registry.json");
+const PRICING_CLOUD_SEED_JSON: &str = include_str!("../../../pricing/cloud_instances_seed.json");
+
+fn extract_json_str_prop(obj: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{}\":", key);
+    let idx = obj.find(&needle)?;
+    let rest = obj[idx + needle.len()..].trim_start();
+    if !rest.starts_with('"') {
+        return None;
+    }
+    let inner = &rest[1..];
+    let end = inner.find('"')?;
+    Some(inner[..end].to_string())
+}
+
+fn extract_json_num_prop(obj: &str, key: &str) -> Option<f64> {
+    let needle = format!("\"{}\":", key);
+    let idx = obj.find(&needle)?;
+    let rest = obj[idx + needle.len()..].trim_start();
+    let num: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
+        .collect();
+    if num.is_empty() {
+        None
+    } else {
+        num.parse::<f64>().ok()
+    }
+}
+
+fn extract_json_bool_prop(obj: &str, key: &str) -> Option<bool> {
+    let needle = format!("\"{}\":", key);
+    let idx = obj.find(&needle)?;
+    let rest = obj[idx + needle.len()..].trim_start();
+    if rest.starts_with("true") {
+        Some(true)
+    } else if rest.starts_with("false") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn parse_vendor_pricing_json(raw: &str, out_skus: &mut Vec<DynamicJsonSkuSpec>, out_plans: &mut Vec<DeclarativePlanSpec>) {
+    let platform = extract_json_str_prop(raw, "platform").unwrap_or_default();
+    let default_lin = extract_json_num_prop(raw, "linux").unwrap_or(1.0);
+    let default_win = extract_json_num_prop(raw, "windows").unwrap_or(1.0);
+    let default_mac = extract_json_num_prop(raw, "macos").unwrap_or(1.0);
+
+    if let Some(plans_idx) = raw.find("\"plans\":") {
+        let sub = &raw[plans_idx..];
+        let end_skus = sub.find("\"skus\":").unwrap_or(sub.len());
+        let plans_blob = &sub[..end_skus];
+        for plan_name in ["free", "pro", "team", "enterprise", "premium", "ultimate", "performance", "standard", "scale"] {
+            let p_needle = format!("\"{}\": {{", plan_name);
+            if let Some(pi) = plans_blob.find(&p_needle) {
+                let p_rest = &plans_blob[pi + p_needle.len()..];
+                // Capture up to closing brace of plan block (allowing 1 nested `allowance_os_multipliers` object)
+                let mut depth = 1i32;
+                let mut end_off = p_rest.len();
+                for (ci, ch) in p_rest.char_indices() {
+                    if ch == '{' {
+                        depth += 1;
+                    } else if ch == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            end_off = ci;
+                            break;
+                        }
+                    }
+                }
+                let p_obj = &p_rest[..end_off];
+                out_plans.push(DeclarativePlanSpec {
+                    platform: platform.clone(),
+                    plan_name: plan_name.to_string(),
+                    seat_usd_per_month: extract_json_num_prop(p_obj, "seat_usd_per_month").unwrap_or(0.0),
+                    included_minutes: extract_json_num_prop(p_obj, "included_minutes").unwrap_or(0.0),
+                    included_storage_gb: extract_json_num_prop(p_obj, "included_storage_gb").unwrap_or(0.0),
+                    concurrent_jobs: extract_json_num_prop(p_obj, "concurrent_jobs").unwrap_or(20.0) as usize,
+                    os_mult_linux: extract_json_num_prop(p_obj, "linux").unwrap_or(default_lin),
+                    os_mult_windows: extract_json_num_prop(p_obj, "windows").unwrap_or(default_win),
+                    os_mult_macos: extract_json_num_prop(p_obj, "macos").unwrap_or(default_mac),
+                });
+            }
+        }
+    }
+
+    if let Some(skus_idx) = raw.find("\"skus\":") {
+        let skus_blob = &raw[skus_idx..];
+        for item in skus_blob.split('{').skip(1) {
+            let obj = item.split('}').next().unwrap_or(item);
+            let sku_id = match extract_json_str_prop(obj, "sku") {
+                Some(s) if !s.is_empty() => s,
+                _ => continue,
+            };
+            let unit = extract_json_str_prop(obj, "unit").unwrap_or_default();
+            if unit != "minute" && unit != "second" && !unit.contains("minute") {
+                continue;
+            }
+            let raw_rate = match extract_json_num_prop(obj, "usd") {
+                Some(r) if r >= 0.0 => r,
+                _ => continue,
+            };
+            let rate = if unit == "second" {
+                ((raw_rate * 60.0) * 100000.0).round() / 100000.0
+            } else {
+                raw_rate
+            };
+            let rounding = extract_json_str_prop(obj, "rounding").unwrap_or_default();
+            let ceil = rounding.contains("ceil");
+            out_skus.push(DynamicJsonSkuSpec {
+                platform: extract_json_str_prop(obj, "platform").unwrap_or_else(|| platform.clone()),
+                sku_id,
+                os: extract_json_str_prop(obj, "os").unwrap_or_else(|| "linux".to_string()),
+                arch: extract_json_str_prop(obj, "arch").unwrap_or_else(|| "x64".to_string()),
+                vcpus: extract_json_num_prop(obj, "cores").unwrap_or(2.0).max(1.0) as u32,
+                gpu: extract_json_bool_prop(obj, "gpu").unwrap_or(false),
+                rate_per_min_usd: rate,
+                ceil_to_whole_minute: ceil,
+                uses_allowance: extract_json_bool_prop(obj, "uses_allowance").unwrap_or(false),
+                included_qty: extract_json_num_prop(obj, "included_qty").unwrap_or(0.0),
+            });
+        }
+    }
+}
+
+fn parse_learned_aliases_json(raw: &str, out: &mut Vec<(String, String, f64)>) {
+    for chunk in raw.split('{') {
+        let obj = chunk.split('}').next().unwrap_or(chunk);
+        if let (Some(raw_lbl), Some(rate)) = (
+            extract_json_str_prop(obj, "raw_label"),
+            extract_json_num_prop(obj, "rate_usd_per_min"),
+        ) {
+            let res_sku = extract_json_str_prop(obj, "resolved_sku").unwrap_or_else(|| "ubuntu-latest".to_string());
+            let low = raw_lbl.trim().to_ascii_lowercase();
+            if let Some(existing) = out.iter_mut().find(|(k, _, _)| *k == low) {
+                existing.1 = res_sku;
+                existing.2 = rate;
+            } else {
+                out.push((low, res_sku, rate));
+            }
+        }
+    }
+}
+
+fn parse_cloud_seed_json(
+    raw: &str,
+    out_instances: &mut Vec<SeededCloudInstanceSpec>,
+    out_regions: &mut Vec<(String, f64, f64, f64)>,
+) {
+    if let Some(r_idx) = raw.find("\"regions\":") {
+        let r_sub = &raw[r_idx + "\"regions\":".len()..];
+        let inst_idx = r_sub.find("\"instances\":").unwrap_or(r_sub.len());
+        let reg_blob = &r_sub[..inst_idx];
+        let mut rest = reg_blob;
+        while let Some(colon_brace) = rest.find("\": {") {
+            let before = &rest[..colon_brace];
+            if let Some(start_q) = before.rfind('"') {
+                let rname = &before[start_q + 1..];
+                let after_open = &rest[colon_brace + 4..];
+                let end_b = after_open.find('}').unwrap_or(after_open.len());
+                let obj = &after_open[..end_b];
+                if !rname.is_empty() && rname != "regions" {
+                    let cm = extract_json_num_prop(obj, "compute_mult").unwrap_or(1.0);
+                    let nat = extract_json_num_prop(obj, "nat_per_gb_usd").unwrap_or(0.045);
+                    let eg = extract_json_num_prop(obj, "egress_per_gb_usd").unwrap_or(0.090);
+                    out_regions.push((rname.to_string(), cm, nat, eg));
+                }
+                rest = &after_open[end_b..];
+            } else {
+                break;
+            }
+        }
+    }
+    if let Some(i_idx) = raw.find("\"instances\":") {
+        for chunk in raw[i_idx..].split('{').skip(1) {
+            let obj = chunk.split('}').next().unwrap_or(chunk);
+            if let (Some(prov), Some(itype), Some(od_min), Some(sp_min)) = (
+                extract_json_str_prop(obj, "provider"),
+                extract_json_str_prop(obj, "instance_type"),
+                extract_json_num_prop(obj, "on_demand_per_min_usd"),
+                extract_json_num_prop(obj, "spot_per_min_usd"),
+            ) {
+                out_instances.push(SeededCloudInstanceSpec {
+                    provider: prov,
+                    instance_type: itype.to_ascii_lowercase(),
+                    os: extract_json_str_prop(obj, "os").unwrap_or_else(|| "linux".to_string()),
+                    arch: extract_json_str_prop(obj, "arch").unwrap_or_else(|| "x86_64".to_string()),
+                    vcpus: extract_json_num_prop(obj, "vcpus").unwrap_or(2.0) as u32,
+                    ram_gb: extract_json_num_prop(obj, "ram_gb").unwrap_or(4.0),
+                    on_demand_per_min_usd: od_min,
+                    spot_per_min_usd: sp_min,
+                });
+            }
+        }
+    }
+}
+
+pub fn learned_sku_user_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    std::path::PathBuf::from(home)
+        .join(".minici")
+        .join("learned_sku_registry.json")
+}
+
+pub fn dynamic_pricing_registry() -> &'static DynamicPricingRegistry {
+    static REG: std::sync::OnceLock<DynamicPricingRegistry> = std::sync::OnceLock::new();
+    REG.get_or_init(|| {
+        let mut json_skus = Vec::with_capacity(180);
+        let mut plans = Vec::with_capacity(32);
+        for blob in [
+            PRICING_GITHUB_JSON,
+            PRICING_GITLAB_JSON,
+            PRICING_CIRCLECI_JSON,
+            PRICING_BITBUCKET_JSON,
+            PRICING_AWS_JSON,
+            PRICING_GCP_JSON,
+            PRICING_AZURE_JSON,
+        ] {
+            parse_vendor_pricing_json(blob, &mut json_skus, &mut plans);
+        }
+        let mut learned_aliases = Vec::new();
+        parse_learned_aliases_json(PRICING_LEARNED_JSON, &mut learned_aliases);
+        if let Ok(user_learned) = std::fs::read_to_string(learned_sku_user_path()) {
+            parse_learned_aliases_json(&user_learned, &mut learned_aliases);
+        }
+        let mut cloud_seed = Vec::with_capacity(160);
+        let mut regions = Vec::with_capacity(16);
+        parse_cloud_seed_json(PRICING_CLOUD_SEED_JSON, &mut cloud_seed, &mut regions);
+        DynamicPricingRegistry {
+            json_skus,
+            plans,
+            cloud_seed,
+            regions,
+            learned_aliases,
+        }
+    })
+}
+
+pub fn lookup_declarative_plan(platform: &str, plan_name: &str) -> Option<&'static DeclarativePlanSpec> {
+    dynamic_pricing_registry()
+        .plans
+        .iter()
+        .find(|p| p.platform == platform && p.plan_name == plan_name)
+}
+
+pub fn lookup_seeded_cloud_spec(lower_label: &str) -> Option<&'static SeededCloudInstanceSpec> {
+    dynamic_pricing_registry()
+        .cloud_seed
+        .iter()
+        .filter(|spec| lower_label.contains(&spec.instance_type))
+        .max_by_key(|spec| spec.instance_type.len())
+}
+
+pub fn regional_seed_multiplier(region: &str) -> f64 {
+    let low = region.trim().to_ascii_lowercase();
+    dynamic_pricing_registry()
+        .regions
+        .iter()
+        .find(|(r, _, _, _)| r == &low)
+        .map(|(_, cm, _, _)| *cm)
+        .unwrap_or_else(|| crate::providers::regional_cloud_multiplier(&low))
+}
+
+pub fn persist_learned_sku(raw_label: &str, resolved_sku: &str, rate_per_min_usd: f64) {
+    let path = learned_sku_user_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let safe_lbl = raw_label.trim().replace('\\', "\\\\").replace('"', "\\\"");
+    let safe_sku = resolved_sku.trim().replace('\\', "\\\\").replace('"', "\\\"");
+    let entry = format!(
+        "  \"{}\": {{\"raw_label\":\"{}\",\"resolved_sku\":\"{}\",\"rate_usd_per_min\":{:.5},\"resolution_mode\":\"jev_systemone_learned\"}}",
+        safe_lbl, safe_lbl, safe_sku, rate_per_min_usd
+    );
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    if existing.contains(&format!("\"{}\":", safe_lbl)) {
+        return;
+    }
+    let body = if existing.trim().starts_with('{') && existing.trim().ends_with('}') {
+        let t = existing.trim();
+        let inner = t[1..t.len() - 1].trim();
+        if inner.is_empty() {
+            format!("{{\n{}\n}}\n", entry)
+        } else {
+            format!("{{\n{},\n{}\n}}\n", inner, entry)
+        }
+    } else {
+        format!("{{\n{}\n}}\n", entry)
+    };
+    let _ = std::fs::write(&path, body);
 }
 
 /// Official Cloud Catalog Cloud Instance Spec (`v2.19.0` schema):
@@ -748,11 +1101,21 @@ pub struct InfracostCloudSpec {
 }
 
 pub const INFRACOST_CLOUD_CATALOG: &[InfracostCloudSpec] = &[
-    // --- AWS EC2 x86_64 (c6i / m6i / t3) via Cloud Catalog v2.19.0 ---
+    // --- AWS EC2 x86_64 (t3 / c5 / m5 / c6i / m6i / r6i / GPU / Mac) via Cloud Catalog v2.19.0 ---
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t3.micro", arch: "x86_64", vcpus: 2, ram_gb: 1.0, on_demand_per_min_usd: 0.00017, spot_per_min_usd: 0.00005 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t3.small", arch: "x86_64", vcpus: 2, ram_gb: 2.0, on_demand_per_min_usd: 0.00035, spot_per_min_usd: 0.00010 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t3.medium", arch: "x86_64", vcpus: 2, ram_gb: 4.0, on_demand_per_min_usd: 0.00069, spot_per_min_usd: 0.00021 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t3.large", arch: "x86_64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00139, spot_per_min_usd: 0.00042 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t3.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00277, spot_per_min_usd: 0.00083 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t3.2xlarge", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00555, spot_per_min_usd: 0.00166 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m5.large", arch: "x86_64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00160, spot_per_min_usd: 0.00048 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m5.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00320, spot_per_min_usd: 0.00097 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m5.2xlarge", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00640, spot_per_min_usd: 0.00193 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m5.4xlarge", arch: "x86_64", vcpus: 16, ram_gb: 64.0, on_demand_per_min_usd: 0.01280, spot_per_min_usd: 0.00387 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c5.large", arch: "x86_64", vcpus: 2, ram_gb: 4.0, on_demand_per_min_usd: 0.00142, spot_per_min_usd: 0.00042 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c5.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 8.0, on_demand_per_min_usd: 0.00283, spot_per_min_usd: 0.00083 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c5.2xlarge", arch: "x86_64", vcpus: 8, ram_gb: 16.0, on_demand_per_min_usd: 0.00567, spot_per_min_usd: 0.00167 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c5.4xlarge", arch: "x86_64", vcpus: 16, ram_gb: 32.0, on_demand_per_min_usd: 0.01133, spot_per_min_usd: 0.00283 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c6i.large", arch: "x86_64", vcpus: 2, ram_gb: 4.0, on_demand_per_min_usd: 0.00142, spot_per_min_usd: 0.00048 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c6i.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 8.0, on_demand_per_min_usd: 0.00283, spot_per_min_usd: 0.00095 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c6i.2xlarge", arch: "x86_64", vcpus: 8, ram_gb: 16.0, on_demand_per_min_usd: 0.00567, spot_per_min_usd: 0.00190 },
@@ -765,7 +1128,20 @@ pub const INFRACOST_CLOUD_CATALOG: &[InfracostCloudSpec] = &[
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m6i.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00320, spot_per_min_usd: 0.00107 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m6i.2xlarge", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00640, spot_per_min_usd: 0.00213 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m6i.4xlarge", arch: "x86_64", vcpus: 16, ram_gb: 64.0, on_demand_per_min_usd: 0.01280, spot_per_min_usd: 0.00427 },
-    // --- AWS EC2 Graviton ARM64 (c7g) via Cloud Catalog v2.19.0 ---
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "r6i.large", arch: "x86_64", vcpus: 2, ram_gb: 16.0, on_demand_per_min_usd: 0.00210, spot_per_min_usd: 0.00063 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "r6i.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 32.0, on_demand_per_min_usd: 0.00420, spot_per_min_usd: 0.00126 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "g4dn.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00877, spot_per_min_usd: 0.00158 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "g5.xlarge", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.01677, spot_per_min_usd: 0.00352 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "mac1.metal", arch: "x86_64", vcpus: 12, ram_gb: 32.0, on_demand_per_min_usd: 0.01805, spot_per_min_usd: 0.01805 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "mac2-m2pro.metal", arch: "arm64", vcpus: 12, ram_gb: 32.0, on_demand_per_min_usd: 0.01500, spot_per_min_usd: 0.01500 },
+    // --- AWS EC2 Graviton ARM64 (t4g / m6g / m7g / c7g / c8g) via Cloud Catalog v2.19.0 ---
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t4g.medium", arch: "arm64", vcpus: 2, ram_gb: 4.0, on_demand_per_min_usd: 0.00056, spot_per_min_usd: 0.00017 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "t4g.large", arch: "arm64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00112, spot_per_min_usd: 0.00034 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m6g.large", arch: "arm64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00128, spot_per_min_usd: 0.00038 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m6g.xlarge", arch: "arm64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00257, spot_per_min_usd: 0.00077 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m6g.2xlarge", arch: "arm64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00513, spot_per_min_usd: 0.00153 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m7g.large", arch: "arm64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00136, spot_per_min_usd: 0.00041 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "m7g.xlarge", arch: "arm64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00272, spot_per_min_usd: 0.00082 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.large", arch: "arm64", vcpus: 2, ram_gb: 4.0, on_demand_per_min_usd: 0.00121, spot_per_min_usd: 0.00040 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.xlarge", arch: "arm64", vcpus: 4, ram_gb: 8.0, on_demand_per_min_usd: 0.00242, spot_per_min_usd: 0.00080 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.2xlarge", arch: "arm64", vcpus: 8, ram_gb: 16.0, on_demand_per_min_usd: 0.00483, spot_per_min_usd: 0.00160 },
@@ -773,7 +1149,10 @@ pub const INFRACOST_CLOUD_CATALOG: &[InfracostCloudSpec] = &[
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.8xlarge", arch: "arm64", vcpus: 32, ram_gb: 64.0, on_demand_per_min_usd: 0.01933, spot_per_min_usd: 0.00640 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.12xlarge", arch: "arm64", vcpus: 48, ram_gb: 96.0, on_demand_per_min_usd: 0.02900, spot_per_min_usd: 0.00960 },
     InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c7g.16xlarge", arch: "arm64", vcpus: 64, ram_gb: 128.0, on_demand_per_min_usd: 0.03867, spot_per_min_usd: 0.01280 },
-    // --- GCP Compute Engine (n2 / c3 / e2) via Cloud Catalog v2.19.0 ---
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c8g.large", arch: "arm64", vcpus: 2, ram_gb: 4.0, on_demand_per_min_usd: 0.00133, spot_per_min_usd: 0.00040 },
+    InfracostCloudSpec { provider: "self-hosted-aws", instance_type: "c8g.xlarge", arch: "arm64", vcpus: 4, ram_gb: 8.0, on_demand_per_min_usd: 0.00265, spot_per_min_usd: 0.00080 },
+    // --- GCP Compute Engine (e2 / n2 / n2d / c3 / t2a) via Cloud Catalog v2.19.0 ---
+    InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "e2-medium", arch: "x86_64", vcpus: 2, ram_gb: 4.0, on_demand_per_min_usd: 0.00056, spot_per_min_usd: 0.00017 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "e2-standard-2", arch: "x86_64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00112, spot_per_min_usd: 0.00034 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "e2-standard-4", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00223, spot_per_min_usd: 0.00067 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "e2-standard-8", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00447, spot_per_min_usd: 0.00134 },
@@ -785,15 +1164,23 @@ pub const INFRACOST_CLOUD_CATALOG: &[InfracostCloudSpec] = &[
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "n2-standard-32", arch: "x86_64", vcpus: 32, ram_gb: 128.0, on_demand_per_min_usd: 0.02590, spot_per_min_usd: 0.00800 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "n2-standard-48", arch: "x86_64", vcpus: 48, ram_gb: 192.0, on_demand_per_min_usd: 0.03885, spot_per_min_usd: 0.01200 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "n2-standard-64", arch: "x86_64", vcpus: 64, ram_gb: 256.0, on_demand_per_min_usd: 0.05180, spot_per_min_usd: 0.01600 },
+    InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "n2d-standard-4", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00282, spot_per_min_usd: 0.00085 },
+    InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "n2d-highmem-8", arch: "x86_64", vcpus: 8, ram_gb: 64.0, on_demand_per_min_usd: 0.00758, spot_per_min_usd: 0.00228 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "c3-standard-4", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00340, spot_per_min_usd: 0.00105 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "c3-standard-8", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00680, spot_per_min_usd: 0.00210 },
     InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "c3-standard-22", arch: "x86_64", vcpus: 22, ram_gb: 88.0, on_demand_per_min_usd: 0.01870, spot_per_min_usd: 0.00578 },
-    // --- Azure Virtual Machines (Standard_D*s_v5 / Standard_F*s_v2) via Cloud Catalog v2.19.0 ---
+    InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "t2a-standard-2", arch: "arm64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00128, spot_per_min_usd: 0.00038 },
+    InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "t2a-standard-4", arch: "arm64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00257, spot_per_min_usd: 0.00077 },
+    InfracostCloudSpec { provider: "self-hosted-gcp", instance_type: "t2a-standard-8", arch: "arm64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00513, spot_per_min_usd: 0.00153 },
+    // --- Azure Virtual Machines (Standard_D*s_v5 / Standard_D*ads_v5 / Standard_F*s_v2) via Cloud Catalog v2.19.0 ---
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d2s_v5", arch: "x86_64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00160, spot_per_min_usd: 0.00055 },
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d4s_v5", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00320, spot_per_min_usd: 0.00110 },
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d8s_v5", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00640, spot_per_min_usd: 0.00220 },
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d16s_v5", arch: "x86_64", vcpus: 16, ram_gb: 64.0, on_demand_per_min_usd: 0.01280, spot_per_min_usd: 0.00440 },
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d32s_v5", arch: "x86_64", vcpus: 32, ram_gb: 128.0, on_demand_per_min_usd: 0.02560, spot_per_min_usd: 0.00880 },
+    InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d2ads_v5", arch: "x86_64", vcpus: 2, ram_gb: 8.0, on_demand_per_min_usd: 0.00160, spot_per_min_usd: 0.00055 },
+    InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d4ads_v5", arch: "x86_64", vcpus: 4, ram_gb: 16.0, on_demand_per_min_usd: 0.00320, spot_per_min_usd: 0.00110 },
+    InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_d8ads_v5", arch: "x86_64", vcpus: 8, ram_gb: 32.0, on_demand_per_min_usd: 0.00640, spot_per_min_usd: 0.00220 },
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_f4s_v2", arch: "x86_64", vcpus: 4, ram_gb: 8.0, on_demand_per_min_usd: 0.00282, spot_per_min_usd: 0.00095 },
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_f8s_v2", arch: "x86_64", vcpus: 8, ram_gb: 16.0, on_demand_per_min_usd: 0.00563, spot_per_min_usd: 0.00190 },
     InfracostCloudSpec { provider: "self-hosted-azure", instance_type: "standard_f16s_v2", arch: "x86_64", vcpus: 16, ram_gb: 32.0, on_demand_per_min_usd: 0.01127, spot_per_min_usd: 0.00380 },
@@ -872,10 +1259,11 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         }
     }
 
-    // 1. Exact Cloud Instance Catalog match (AWS EC2, GCP Compute Engine, Azure VM — excluding managed `cloud-build` SaaS labels!)
+    // 1. Exact Cloud Instance Catalog match (`45` Golden Static + `150` Dynamic Seeded Cloud VMs x `12` Regions — excluding managed `cloud-build` SaaS labels!)
     if !lower.contains("cloudbuild") && !lower.contains("cloud-build") {
         if let Some(cloud) = lookup_infracost_cloud_spec(&lower) {
             let reg = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+            let reg_mult = regional_seed_multiplier(&reg);
             let (od_per_min, spot_per_min) =
                 if let Some((od_hr, sp_hr, _, _)) = crate::providers::load_cached_cloud_price(cloud.instance_type, &reg) {
                     (
@@ -883,12 +1271,15 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
                         ((sp_hr / 60.0) * 100000.0).round() / 100000.0,
                     )
                 } else {
-                    (cloud.on_demand_per_min_usd, cloud.spot_per_min_usd)
+                    (
+                        ((cloud.on_demand_per_min_usd * reg_mult) * 100000.0).round() / 100000.0,
+                        ((cloud.spot_per_min_usd * reg_mult) * 100000.0).round() / 100000.0,
+                    )
                 };
             let mut s = RunnerSkuSpec {
                 provider: cloud.provider,
                 sku_label: cloud.instance_type,
-                os: "Linux",
+                os: if cloud.instance_type.starts_with("mac") { "macOS" } else { "Linux" },
                 arch: cloud.arch,
                 vcpus: cloud.vcpus,
                 ram_gb: cloud.ram_gb,
@@ -902,13 +1293,122 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             apply_live_override(&mut s, raw_label);
             return s;
         }
+        if let Some(seed) = lookup_seeded_cloud_spec(&lower) {
+            let reg = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+            let reg_mult = regional_seed_multiplier(&reg);
+            let (od_per_min, spot_per_min) =
+                if let Some((od_hr, sp_hr, _, _)) = crate::providers::load_cached_cloud_price(&seed.instance_type, &reg) {
+                    (
+                        ((od_hr / 60.0) * 100000.0).round() / 100000.0,
+                        ((sp_hr / 60.0) * 100000.0).round() / 100000.0,
+                    )
+                } else {
+                    (
+                        ((seed.on_demand_per_min_usd * reg_mult) * 100000.0).round() / 100000.0,
+                        ((seed.spot_per_min_usd * reg_mult) * 100000.0).round() / 100000.0,
+                    )
+                };
+            let prov_static: &'static str = match seed.provider.as_str() {
+                "self-hosted-gcp" => "self-hosted-gcp",
+                "self-hosted-azure" => "self-hosted-azure",
+                _ => "self-hosted-aws",
+            };
+            let os_static: &'static str = if seed.os.contains("mac") { "macOS" } else { "Linux" };
+            let arch_static: &'static str = if seed.arch.contains("arm") { "arm64" } else { "x86_64" };
+            let mut s = RunnerSkuSpec {
+                provider: prov_static,
+                sku_label: "cloud-seeded-vm",
+                os: os_static,
+                arch: arch_static,
+                vcpus: seed.vcpus,
+                ram_gb: seed.ram_gb,
+                rate_per_min_usd: od_per_min,
+                ceil_to_whole_minute: false,
+                free_tier_mins_per_month: 0.0,
+                paid_team_included_mins: 0.0,
+                blacksmith_equiv_rate_usd: (seed.vcpus as f64) * 0.0020,
+                self_hosted_spot_rate_usd: spot_per_min,
+            };
+            apply_live_override(&mut s, raw_label);
+            return s;
+        }
+    }
+
+    // 1B. Exact Dynamic JSON SKU Catalog Match across all 7 `pricing/*.json` files (`160` Official SKUs)
+    let dyn_reg = dynamic_pricing_registry();
+    if !matches!(lower.as_str(), "linux" | "windows" | "macos") {
+        if let Some(js) = dyn_reg
+            .json_skus
+            .iter()
+            .find(|j| j.sku_id.eq_ignore_ascii_case(&lower))
+        {
+            let prov_static: &'static str = match js.platform.as_str() {
+                "gitlab" => "gitlab-ci",
+                "circleci" => "circleci",
+                "bitbucket" => "bitbucket",
+                "aws" => "aws-codebuild",
+                "gcp" => "gcp-cloud-build",
+                "azure" => "azure-pipelines",
+                _ => "github-actions",
+            };
+            let os_static: &'static str = if js.os.contains("mac") {
+                "macOS"
+            } else if js.os.contains("win") {
+                "Windows"
+            } else {
+                "Linux"
+            };
+            let arch_static: &'static str = if js.arch.contains("arm") { "arm64" } else { "x86_64" };
+            let mut s = RunnerSkuSpec {
+                provider: prov_static,
+                sku_label: "dynamic-json-sku",
+                os: os_static,
+                arch: arch_static,
+                vcpus: js.vcpus,
+                ram_gb: (js.vcpus as f64) * 4.0,
+                rate_per_min_usd: js.rate_per_min_usd,
+                ceil_to_whole_minute: js.ceil_to_whole_minute,
+                free_tier_mins_per_month: if js.uses_allowance { js.included_qty } else { 0.0 },
+                paid_team_included_mins: 0.0,
+                blacksmith_equiv_rate_usd: (js.vcpus as f64) * 0.0020,
+                self_hosted_spot_rate_usd: (js.vcpus as f64) * 0.0006,
+            };
+            scale_equiv_rates_for_vcpus(&mut s);
+            apply_live_override(&mut s, raw_label);
+            return s;
+        }
+        // Only check user-persisted Jev learned aliases (`~/.minici/learned_sku_registry.json`) early
+        // so custom corporate labels containing `"ubuntu"`/`"windows"`/`"gpu"` win without disturbing
+        // static Tier-2 heuristics in `pricing/learned_sku_registry.json`!
+        if let Ok(user_raw) = std::fs::read_to_string(learned_sku_user_path()) {
+            let mut user_aliases = Vec::new();
+            parse_learned_aliases_json(&user_raw, &mut user_aliases);
+            if let Some((_, learned_sku, learned_rate)) =
+                user_aliases.into_iter().find(|(k, _, _)| *k == lower)
+            {
+                if !learned_sku.eq_ignore_ascii_case(&lower) {
+                    let mut s = resolve_runner_sku(&learned_sku);
+                    if learned_rate > 0.0 {
+                        s.rate_per_min_usd = learned_rate;
+                    }
+                    apply_live_override(&mut s, raw_label);
+                    return s;
+                }
+            }
+        }
     }
 
     let is_arm = lower.contains("arm")
         || lower.contains("aarch64")
         || lower.contains("graviton")
         || lower.contains("c8g")
-        || lower.contains("c7g");
+        || lower.contains("c7g")
+        || lower.contains("c6g")
+        || lower.contains("m6g")
+        || lower.contains("m7g")
+        || lower.contains("m8g")
+        || lower.contains("t4g")
+        || lower.contains("t2a-");
     let explicit_vcpus = extract_runner_vcpus(&lower);
 
     // 2. Non-GitHub Multi-CI SaaS Providers (GitLab CI, CircleCI, Bitbucket Pipelines, AWS CodeBuild)
@@ -1128,8 +1628,18 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
         || lower.contains("namespace")
     {
         let mut s = EMBEDDED_SKU_CATALOG[20].clone();
+        let is_blacksmith = lower.contains("blacksmith");
+        s.provider = if is_blacksmith {
+            "blacksmith"
+        } else {
+            "third-party-microvm"
+        };
         if lower.contains("macos") || lower.contains("darwin") {
-            s.sku_label = "third-party-macos";
+            s.sku_label = if is_blacksmith {
+                "blacksmith-macos"
+            } else {
+                "third-party-macos"
+            };
             s.os = "macOS";
             s.arch = "arm64";
             s.vcpus = explicit_vcpus.unwrap_or(4);
@@ -1138,7 +1648,11 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             scale_equiv_rates_for_vcpus(&mut s);
         } else if lower.contains("windows") || lower.contains("win") {
             let vc = explicit_vcpus.unwrap_or(4);
-            s.sku_label = "third-party-windows";
+            s.sku_label = if is_blacksmith {
+                "blacksmith-windows"
+            } else {
+                "third-party-windows"
+            };
             s.os = "Windows";
             s.arch = if is_arm { "arm64" } else { "x86_64" };
             s.vcpus = vc;
@@ -1151,13 +1665,24 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             s.ram_gb = (vc as f64) * 4.0;
             s.arch = if is_arm { "arm64" } else { "x86_64" };
             s.rate_per_min_usd = (vc as f64) * 0.0020;
-            s.sku_label = match vc {
-                64 => "blacksmith-64vcpu",
-                32 => "blacksmith-32vcpu",
-                16 => "blacksmith-16vcpu",
-                8 => "blacksmith-8vcpu",
-                4 => "blacksmith-4vcpu",
-                _ => "blacksmith-2vcpu",
+            s.sku_label = if is_blacksmith {
+                match vc {
+                    64 => "blacksmith-64vcpu",
+                    32 => "blacksmith-32vcpu",
+                    16 => "blacksmith-16vcpu",
+                    8 => "blacksmith-8vcpu",
+                    4 => "blacksmith-4vcpu",
+                    _ => "blacksmith-2vcpu",
+                }
+            } else {
+                match vc {
+                    64 => "third-party-microvm-64vcpu",
+                    32 => "third-party-microvm-32vcpu",
+                    16 => "third-party-microvm-16vcpu",
+                    8 => "third-party-microvm-8vcpu",
+                    4 => "third-party-microvm-4vcpu",
+                    _ => "third-party-microvm-2vcpu",
+                }
             };
             scale_equiv_rates_for_vcpus(&mut s);
         }
@@ -1333,11 +1858,24 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
             | "linux"
             | "docker"
             | "default"
-    ) || lower.contains("ubuntu")
+    ) {
+        EMBEDDED_SKU_CATALOG[0].clone()
+    } else if let Some((_, ref learned_sku, learned_rate)) = dyn_reg
+        .learned_aliases
+        .iter()
+        .find(|(k, _, _)| *k == lower)
     {
+        let mut s = resolve_runner_sku(learned_sku);
+        if *learned_rate > 0.0 {
+            s.rate_per_min_usd = *learned_rate;
+        }
+        s
+    } else if lower.contains("ubuntu") {
         EMBEDDED_SKU_CATALOG[0].clone()
     } else if let Some(jev_sku) = tier3_jev_systemone_runner_choice(raw_label) {
-        resolve_runner_sku(jev_sku)
+        let s = resolve_runner_sku(jev_sku);
+        persist_learned_sku(raw_label, jev_sku, s.rate_per_min_usd);
+        s
     } else {
         EMBEDDED_SKU_CATALOG[0].clone()
     };
@@ -1346,10 +1884,14 @@ pub fn resolve_runner_sku(raw_label: &str) -> RunnerSkuSpec {
     resolved
 }
 
+static JEV_RUNNER_CACHE: std::sync::OnceLock<std::sync::Mutex<Vec<(String, Option<&'static str>)>>> =
+    std::sync::OnceLock::new();
+
 fn tier3_jev_systemone_runner_choice(raw_label: &str) -> Option<&'static str> {
     let mode = std::env::var("MINICI_INTERNAL_REASONER").unwrap_or_default();
     let explicit_url = std::env::var("MINICI_SYSTEMONE_URL")
         .ok()
+        .or_else(|| std::env::var("MINICI_JEV_URL").ok())
         .or_else(|| std::env::var("JEV_SYSTEMONE_URL").ok())
         .filter(|u| !u.trim().is_empty());
     if mode != "llm_plus_jev" && explicit_url.is_none() {
@@ -1359,75 +1901,104 @@ fn tier3_jev_systemone_runner_choice(raw_label: &str) -> Option<&'static str> {
     let choices = [
         "ubuntu-latest",
         "ubuntu-24.04-arm",
+        "ubuntu-slim",
         "ubuntu-4-core",
         "ubuntu-8-core",
         "ubuntu-16-core",
+        "ubuntu-32-core",
+        "ubuntu-64-core",
+        "windows-latest",
         "macos-latest",
+        "macos-15-xlarge",
         "gpu-t4-4-core",
         "self-hosted-linux-x64",
     ];
-    let choices_json = choices
-        .iter()
-        .map(|c| format!("\"{}\"", c))
-        .collect::<Vec<_>>()
-        .join(",");
     let safe_lbl = raw_label.trim().replace('\\', "\\\\").replace('"', "\\\"");
-    if let Some(fpath) = endpoint.strip_prefix("file://") {
-        let raw_dict = std::fs::read_to_string(fpath).ok()?;
-        let key_needle = format!("\"{}\":", safe_lbl);
-        let idx = raw_dict.find(&key_needle)?;
-        let sub = &raw_dict[idx + key_needle.len()..];
-        let end = sub.find('}').map(|e| e + 1).unwrap_or(sub.len());
-        let entry = &sub[..end];
-        if extract_json_score(entry).unwrap_or(1.0) < 0.80 {
+    let cache_key = format!("{}|{}", endpoint, safe_lbl);
+    let cache_lock = JEV_RUNNER_CACHE.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(guard) = cache_lock.lock() {
+        if let Some((_, cached)) = guard.iter().find(|(k, _)| k == &cache_key) {
+            return *cached;
+        }
+    }
+
+    let resolved: Option<&'static str> = (|| {
+        if let Some(fpath) = endpoint.strip_prefix("file://") {
+            let raw_dict = std::fs::read_to_string(fpath).ok()?;
+            let key_needle = format!("\"{}\":", safe_lbl);
+            let idx = raw_dict.find(&key_needle)?;
+            let sub = &raw_dict[idx + key_needle.len()..];
+            let end = sub.find('}').map(|e| e + 1).unwrap_or(sub.len());
+            let entry = &sub[..end];
+            if extract_json_score(entry).unwrap_or(1.0) < 0.80 {
+                return None;
+            }
+            for &c in &choices {
+                let pat1 = format!("\"choice\":\"{}\"", c);
+                let pat2 = format!("\"choice\": \"{}\"", c);
+                if entry.contains(&pat1) || entry.contains(&pat2) {
+                    return Some(c);
+                }
+            }
+            return None;
+        }
+        let choices_json = choices
+            .iter()
+            .map(|c| format!("\"{}\"", c))
+            .collect::<Vec<_>>()
+            .join(",");
+        let timeout_secs = std::env::var("MINICI_SYSTEMONE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .filter(|&v| (1..=120).contains(&v))
+            .unwrap_or(8)
+            .to_string();
+        let payload = format!(
+            "{{\"prompt\":\"Classify ambiguous CI runner pool label '{}' to canonical SKU.\",\"choice\":[{}],\"noul\":true,\"score\":true}}",
+            safe_lbl, choices_json
+        );
+        let out = std::process::Command::new("curl")
+            .args([
+                "-fsSL",
+                "--connect-timeout",
+                "2",
+                "-m",
+                &timeout_secs,
+                "-X",
+                "POST",
+                "-H",
+                "Content-Type: application/json",
+                "-d",
+                &payload,
+                &endpoint,
+            ])
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        let body = String::from_utf8_lossy(&out.stdout);
+        if extract_json_score(&body).unwrap_or(1.0) < 0.80 {
             return None;
         }
         for &c in &choices {
             let pat1 = format!("\"choice\":\"{}\"", c);
             let pat2 = format!("\"choice\": \"{}\"", c);
-            if entry.contains(&pat1) || entry.contains(&pat2) {
+            let pat3 = format!("\"result\":\"{}\"", c);
+            if body.contains(&pat1) || body.contains(&pat2) || body.contains(&pat3) {
                 return Some(c);
             }
         }
-        return None;
-    }
-    let payload = format!(
-        "{{\"prompt\":\"Classify ambiguous CI runner pool label '{}' to canonical SKU.\",\"choice\":[{}],\"noul\":true,\"score\":true}}",
-        safe_lbl, choices_json
-    );
-    let out = std::process::Command::new("curl")
-        .args([
-            "-fsSL",
-            "--connect-timeout",
-            "1",
-            "-m",
-            "2",
-            "-X",
-            "POST",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            &payload,
-            &endpoint,
-        ])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let body = String::from_utf8_lossy(&out.stdout);
-    if extract_json_score(&body).unwrap_or(1.0) < 0.80 {
-        return None;
-    }
-    for &c in &choices {
-        let pat1 = format!("\"choice\":\"{}\"", c);
-        let pat2 = format!("\"choice\": \"{}\"", c);
-        let pat3 = format!("\"result\":\"{}\"", c);
-        if body.contains(&pat1) || body.contains(&pat2) || body.contains(&pat3) {
-            return Some(c);
+        None
+    })();
+
+    if let Ok(mut guard) = cache_lock.lock() {
+        if guard.len() >= 512 {
+            guard.remove(0);
         }
+        guard.push((cache_key, resolved));
     }
-    None
+    resolved
 }
 
 fn extract_json_score(raw: &str) -> Option<f64> {

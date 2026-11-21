@@ -53,7 +53,7 @@ minici breakdown \
   --dev-hourly-rate 85
 ```
 
-* `--tier <auto|free|paid>`: `auto` checks whether monthly OS-weighted minutes exceed your provider's free-tier quota (`2,000 mins/mo` on GitHub Free) and switches to paid rates automatically when exceeded.
+* `--tier <auto|free|pro|team|enterprise|paid>`: `auto` checks whether monthly OS-weighted minutes exceed your provider's free-tier quota (`2,000 mins/mo` on GitHub Free, `3,000 mins/mo` on Pro/Team, `50,000 mins/mo` on Enterprise) and switches to paid rates automatically when exceeded.
 * `--prs-per-week <NUM>` & `--pushes-per-pr <NUM>`: Controls monthly CI run projection (`prs_per_week * pushes_per_pr * 4.33`).
 * `--dev-hourly-rate <USD>`: Engineering hourly rate for critical-path wait-time & context-switch payroll calculations (`0` disables wait-time math).
 
@@ -166,9 +166,10 @@ jobs:
 
 ## 4. Shift-Left Hooks & 7-Tool MCP Server
 
-Run `minici init-hooks --path .` inside any repository to scaffold:
-1. `.minici/hooks.json` — Configures shift-left workflow cost-delta hook automation (`minici breakdown --hook pre-edit`).
-2. `.mcp.json` — Registers the stdio JSON-RPC 2.0 MCP server (`minici mcp --path .`) so AI agents can call all `7` live tools (`minici_breakdown`, `minici_diff`, `minici_sync_live`, `minici_permissions`, `minici_anomalies`, `minici_shrink`, and `minici_migrate`) directly during workflow edits.
+Run `minici init-hooks --path .` inside any repository to scaffold all 3 shift-left & CI integration files:
+1. `.minici/hooks.json` — Configures `PreToolUse` (`minici breakdown --path . --hook pre-tool-use`) and `PostToolUse` (`minici diff --path . --compare-to HEAD`) shift-left workflow cost-delta hooks.
+2. `.mcp.json` — Registers the stdio JSON-RPC 2.0 MCP server (`minici mcp`) so AI agents can call all `7` live tools (`minici_breakdown`, `minici_diff`, `minici_sync_live`, `minici_permissions`, `minici_anomalies`, `minici_shrink`, and `minici_migrate`) directly during workflow edits.
+3. `.github/workflows/minici-cost.yml` — Installs the non-blocking GitHub Action Pull Request & push cost receipt workflow (`exit 0` informational).
 
 Test the MCP server directly from your shell:
 

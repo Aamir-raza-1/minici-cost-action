@@ -180,7 +180,13 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
             wf_job_raw
         };
 
-        let mat_runner_raw = format!("{}x {}", j.matrix_combination_count, j.runner_label);
+        let clean_runner_lbl = j
+            .runner_label
+            .trim()
+            .trim_end_matches(',')
+            .trim_matches('"')
+            .trim_matches('\'');
+        let mat_runner_raw = format!("{}x {}", j.matrix_combination_count, clean_runner_lbl);
         let mat_runner = if mat_runner_raw.chars().count() > 24 {
             let truncated: String = mat_runner_raw.chars().take(21).collect();
             format!("{}...", truncated)
@@ -472,17 +478,36 @@ pub fn render_cli_compact_summary(r: &BreakdownReport) -> String {
     out
 }
 
+fn csv_escape(s: &str) -> String {
+    s.replace('"', "\"\"").replace(['\r', '\n'], " ")
+}
+
+pub fn html_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 pub fn render_breakdown_csv(r: &BreakdownReport) -> String {
     let mut out = String::from("workflow_file,job_id,matrix_count,runner_label,provider,os,vcpus,raw_mins,billed_mins_total,rate_per_min_usd,cost_per_run_usd\n");
     for j in &r.jobs {
         out.push_str(&format!(
             "\"{}\",\"{}\",{},\"{}\",\"{}\",\"{}\",{},{:.2},{:.2},{:.4},{:.4}\n",
-            j.workflow_file,
-            j.job_id,
+            csv_escape(&j.workflow_file),
+            csv_escape(&j.job_id),
             j.matrix_combination_count,
-            j.runner_label,
-            j.provider,
-            j.os,
+            csv_escape(&j.runner_label),
+            csv_escape(&j.provider),
+            csv_escape(&j.os),
             j.vcpus,
             j.est_raw_duration_mins_per_job,
             j.total_billed_mins_all_matrix,
@@ -558,17 +583,18 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
     for j in &r.jobs {
         rows.push_str(&format!(
             "<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}x (<code>{}</code>)</td><td>{:.1}m ({:.1}m billed)</td><td>${:.4}/m</td><td><strong>${:.3}/run</strong></td></tr>\n",
-            j.workflow_file,
-            j.job_id,
+            html_escape(&j.workflow_file),
+            html_escape(&j.job_id),
             j.matrix_combination_count,
-            j.runner_label,
+            html_escape(&j.runner_label),
             j.est_raw_duration_mins_per_job,
             j.total_billed_mins_all_matrix,
             j.rate_per_min_usd,
             j.run_compute_cost_usd
         ));
     }
-    let rec = build_contextual_recommendation(r);
+    let rec = html_escape(&build_contextual_recommendation(r));
+    let safe_target = html_escape(&r.target_path);
     let cc = &r.cost_components;
     let mut extra_summary = String::new();
     if cc.jobs_uploading_artifacts > 0 {
@@ -586,13 +612,14 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
             hygiene_items.push(format!(
                 "Monorepo ({} units, {} affected-only saves ~${:.2}/mo)",
                 cc.detected_workspace_units_count,
-                cc.recommended_affected_tool,
+                html_escape(&cc.recommended_affected_tool),
                 cc.monthly_affected_only_savings_usd
             ));
         } else {
             hygiene_items.push(format!(
                 "Monorepo ({} units • {})",
-                cc.detected_workspace_units_count, cc.detected_monorepo_tool
+                cc.detected_workspace_units_count,
+                html_escape(&cc.detected_monorepo_tool)
             ));
         }
     } else if cc.detected_pipeline_shape == "multi-service-microservices" {
@@ -638,7 +665,7 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
     if cc.best_first_optimization_monthly_savings_usd >= 5.0 {
         hygiene_items.push(format!(
             "Top ROI phase: {} (~{:.0}h effort saves ~${:.2}/mo, {:.1}m payback)",
-            cc.best_first_optimization_phase,
+            html_escape(&cc.best_first_optimization_phase),
             cc.best_first_optimization_effort_hours,
             cc.best_first_optimization_monthly_savings_usd,
             cc.best_first_optimization_payback_months
@@ -671,7 +698,10 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
             ),
         ];
         if cc.codeowners_detected && cc.top_codeowners_team != "unassigned" {
-            econ_parts.push(format!("Owner: <code>{}</code>", cc.top_codeowners_team));
+            econ_parts.push(format!(
+                "Owner: <code>{}</code>",
+                html_escape(&cc.top_codeowners_team)
+            ));
         }
         if cc.container_images_built_count > 0 && cc.monthly_registry_storage_and_pull_usd > 0.0 {
             econ_parts.push(format!(
@@ -690,6 +720,23 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
         extra_summary.push_str(&format!(
             "<p style=\"margin:6px 0 0\"><strong>Unit Economics:</strong> {}</p>",
             econ_parts.join(" • ")
+        ));
+    }
+    let uses_self_hosted_cloud_vpc = r.jobs.iter().any(|j| {
+        j.provider.starts_with("self-hosted")
+            || j.provider == "aws-codebuild"
+            || j.provider == "gcp-cloud-build"
+    });
+    if uses_self_hosted_cloud_vpc
+        && cc.monthly_transfer_gb > 0.0
+        && cc.monthly_infracost_private_subnet_nat_worst_case_usd > 0.0
+    {
+        extra_summary.push_str(&format!(
+            "<p style=\"margin:6px 0 0\"><strong>Cloud Network:</strong> {:.2} GB/mo (<code>{}</code>) • Private Subnet + NAT: <strong>${:.2}/mo</strong> (VPC Endpoint + Cache: ${:.2}/mo)</p>",
+            cc.monthly_transfer_gb,
+            html_escape(&cc.infracost_cloud_region),
+            cc.monthly_infracost_private_subnet_nat_worst_case_usd,
+            cc.monthly_infracost_vpc_endpoint_cache_optimized_usd
         ));
     }
     format!(
@@ -712,8 +759,8 @@ pub fn render_breakdown_html(r: &BreakdownReport) -> String {
          <div class=\"card\"><h2>Per-Job Matrix Breakdown</h2>\
          <table><thead><tr><th>Workflow</th><th>Job ID</th><th>Matrix × SKU</th><th>Duration (Billed)</th><th>Official Rate</th><th>Cost / Run</th></tr></thead>\
          <tbody>{}</tbody></table></div></body></html>\n",
-        r.target_path,
-        r.target_path,
+        safe_target,
+        safe_target,
         r.execution_time_ms,
         r.total_workflows,
         r.total_expanded_matrix_jobs,
@@ -920,6 +967,23 @@ fn render_applicable_summary_notes_markdown(r: &BreakdownReport) -> String {
             cc.monthly_always_on_idle_waste_usd
         ));
     }
+    let uses_self_hosted_cloud_vpc = r.jobs.iter().any(|j| {
+        j.provider.starts_with("self-hosted")
+            || j.provider == "aws-codebuild"
+            || j.provider == "gcp-cloud-build"
+    });
+    if uses_self_hosted_cloud_vpc
+        && cc.monthly_transfer_gb > 0.0
+        && cc.monthly_infracost_private_subnet_nat_worst_case_usd > 0.0
+    {
+        notes.push(format!(
+            "- **Cloud Network:** `{:.2} GB/mo` (`{}`) • Private Subnet + NAT: **`${:.2}/mo`** (VPC Endpoint + Cache: `${:.2}/mo`)",
+            cc.monthly_transfer_gb,
+            cc.infracost_cloud_region,
+            cc.monthly_infracost_private_subnet_nat_worst_case_usd,
+            cc.monthly_infracost_vpc_endpoint_cache_optimized_usd
+        ));
+    }
     notes.push(format!("- **Recommendation:** {}", build_contextual_recommendation(r)));
     format!("\n{}\n", notes.join("\n"))
 }
@@ -974,8 +1038,9 @@ pub fn render_breakdown_markdown(r: &BreakdownReport) -> String {
 }
 
 pub fn render_diff_markdown(d: &DiffReport) -> String {
-    let sign = if d.delta_monthly_compute_usd >= 0.0 { "+" } else { "" };
-    let wait_sign = if d.delta_monthly_dev_wait_usd >= 0.0 { "+" } else { "" };
+    let usd_sign = if d.delta_monthly_compute_usd >= 0.0 { "+" } else { "-" };
+    let pct_sign = if d.delta_monthly_compute_pct >= 0.0 { "+" } else { "-" };
+    let wait_sign = if d.delta_monthly_dev_wait_usd >= 0.0 { "+" } else { "-" };
     let change_lines = if d.job_changes.is_empty() {
         "- *No workflow or matrix SKU changes detected between base and head.*".to_string()
     } else {
@@ -995,8 +1060,8 @@ pub fn render_diff_markdown(d: &DiffReport) -> String {
 | **Expanded Matrix Jobs** | `{} jobs` | **`{} jobs`** | **`{:+} jobs`** |\n\
 | **Billed Minutes / Run** | `{:.1} mins` | **`{:.1} mins`** | **`{:+.1} mins / run`** |\n\
 | **Free-Tier Quota Burn %** | `{:.1}%` | **`{:.1}%`** | **`{:+.1}%` monthly quota** |\n\
-| **Monthly CI Compute Cost** | `${:.2} / mo` | **`${:.2} / mo`** | **`{}{:.2} / mo` (`{}{:.1}%`)** |\n\
-| **Monthly Developer Wait-Time (`$`)** | `${:.2} / mo` | **`${:.2} / mo`** | **`{}{:.2} / mo`** |\n\n\
+| **Monthly CI Compute Cost** | `${:.2}/mo` | **`${:.2}/mo`** | **`{}${:.2}/mo` (`{}{:.1}%`)** |\n\
+| **Monthly Developer Wait-Time (`$`)** | `${:.2}/mo` | **`${:.2}/mo`** | **`{}${:.2}/mo`** |\n\n\
 #### 🔍 Workflow & Matrix Cost Drivers Changed in This PR\n\
 {}\n\
 {}",
@@ -1012,14 +1077,14 @@ pub fn render_diff_markdown(d: &DiffReport) -> String {
         d.head_free_quota_burn_pct - d.base_free_quota_burn_pct,
         d.base_monthly_compute_usd,
         d.head_monthly_compute_usd,
-        sign,
-        d.delta_monthly_compute_usd,
-        sign,
-        d.delta_monthly_compute_pct,
+        usd_sign,
+        d.delta_monthly_compute_usd.abs(),
+        pct_sign,
+        d.delta_monthly_compute_pct.abs(),
         d.base_monthly_dev_wait_usd,
         d.head_monthly_dev_wait_usd,
         wait_sign,
-        d.delta_monthly_dev_wait_usd,
+        d.delta_monthly_dev_wait_usd.abs(),
         change_lines,
         six_comp_md
     )
@@ -1051,13 +1116,14 @@ pub fn render_slack_breakdown_payload(r: &BreakdownReport) -> String {
 }
 
 pub fn render_slack_payload(d: &DiffReport) -> String {
-    let sign = if d.delta_monthly_compute_usd >= 0.0 { "+" } else { "" };
+    let usd_sign = if d.delta_monthly_compute_usd >= 0.0 { "+" } else { "-" };
+    let pct_sign = if d.delta_monthly_compute_pct >= 0.0 { "+" } else { "-" };
     let text = format!(
         "MiniCI PR Cost Diff: {}${:.2}/mo ({}{:.1}%) | Jobs: {} -> {} | Dev Wait: ${:.2}/mo",
-        sign,
-        d.delta_monthly_compute_usd,
-        sign,
-        d.delta_monthly_compute_pct,
+        usd_sign,
+        d.delta_monthly_compute_usd.abs(),
+        pct_sign,
+        d.delta_monthly_compute_pct.abs(),
         d.base_expanded_jobs,
         d.head_expanded_jobs,
         d.head_monthly_dev_wait_usd
@@ -1065,10 +1131,10 @@ pub fn render_slack_payload(d: &DiffReport) -> String {
     format!(
         "{{\n  \"text\": \"{}\",\n  \"blocks\": [\n    {{\n      \"type\": \"header\",\n      \"text\": {{ \"type\": \"plain_text\", \"text\": \"MiniCI Pull Request CI/CD Cost Diff\" }}\n    }},\n    {{\n      \"type\": \"section\",\n      \"fields\": [\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Monthly Compute Delta:*\\n`{}${:.2}/mo` (`{}{:.1}%`)\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Expanded Matrix Jobs:*\\n`{} -> {} jobs` (`{:+} jobs`)\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Free-Tier Quota Burn:*\\n`{:.1}% -> {:.1}%`\" }},\n        {{ \"type\": \"mrkdwn\", \"text\": \"*Developer Wait Cost:*\\n`${:.2}/mo -> ${:.2}/mo`\" }}\n      ]\n    }}\n  ]\n}}",
         json_escape(&text),
-        sign,
-        d.delta_monthly_compute_usd,
-        sign,
-        d.delta_monthly_compute_pct,
+        usd_sign,
+        d.delta_monthly_compute_usd.abs(),
+        pct_sign,
+        d.delta_monthly_compute_pct.abs(),
         d.base_expanded_jobs,
         d.head_expanded_jobs,
         d.delta_expanded_jobs,
