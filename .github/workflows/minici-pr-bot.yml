@@ -38,8 +38,13 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           BASE_REF_DEFAULT: ${{ github.base_ref }}
         run: |
-          cargo build --release --manifest-path crates/minici/Cargo.toml
-          BIN="$(pwd)/crates/minici/target/release/minici"
+          if [ -f "crates/minici/Cargo.toml" ]; then
+            cargo build --release --manifest-path crates/minici/Cargo.toml
+            BIN="$(pwd)/crates/minici/target/release/minici"
+          else
+            curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/v1/scripts/install.sh | MINICI_INSTALL_DIR="$(pwd)/.minici-bin" bash
+            BIN="$(pwd)/.minici-bin/minici"
+          fi
           if [ "$EVENT_NAME" = "issue_comment" ]; then
             PR_JSON="$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
             BASE_REF="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("base",{}).get("ref","main"))' <<< "$PR_JSON")"
@@ -58,5 +63,6 @@ jobs:
               --compare-to "origin/${BASE_REF_DEFAULT}" \
               --pr "$PR_NUMBER" \
               --behavior update \
+              --suggest-fixes \
               --post
           fi

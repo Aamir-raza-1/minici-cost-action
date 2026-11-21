@@ -9,8 +9,11 @@
   "assets": {
     "directory": "./web",
     "binding": "ASSETS"
+  },
+  "ai": {
+    "binding": "AI"
   }
-  // Uncomment or bind in Cloudflare Dashboard / `wrangler d1 create minici-telemetry` & `wrangler kv namespace create MINICI_KV`:
+  // Optional stateful persistence — uncomment after creating in Cloudflare Dashboard (`wrangler d1 create minici-telemetry` & `wrangler kv namespace create MINICI_KV`):
   // "kv_namespaces": [
   //   { "binding": "MINICI_KV", "id": "00000000000000000000000000000000" }
   // ],
@@ -21,6 +24,5 @@
   //     "database_id": "00000000-0000-0000-0000-000000000000",
   //     "migrations_dir": "migrations"
   //   }
-  // ],
-  // "ai": { "binding": "AI" }
+  // ]
 }

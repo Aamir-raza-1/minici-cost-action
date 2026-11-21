@@ -4,7 +4,9 @@
 
 use crate::catalog::resolve_runner_sku;
 use crate::engine::json_escape;
-use crate::permissions::{discover_github_token, infer_repo_slug};
+use crate::permissions::{
+    discover_github_token_with_keyring, infer_repo_slug, parse_final_curl_http_response,
+};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
@@ -272,55 +274,115 @@ impl CanonicalTelemetrySnapshot {
         }
 
         if let Some(w_idx) = raw.find("\"workflow_monthly_runs\":") {
-            let after = &raw[w_idx..];
-            let section = after.find(']').map(|e| &after[..e]).unwrap_or(after);
-            for item in section.split("{\"workflow\":\"") {
-                if let Some(end_q) = item.find('"') {
-                    let wname = &item[..end_q];
-                    if let Some(r) = parse_num_field(item, "runs_30d") {
-                        s.workflow_monthly_runs.push((wname.to_string(), r));
+            let after = raw[w_idx + 24..].trim_start();
+            if after.starts_with('[') {
+                let section = after.find(']').map(|e| &after[1..e]).unwrap_or(&after[1..]);
+                for item in section.split('{').skip(1) {
+                    if let (Some(wname), Some(r)) =
+                        (parse_str_field(item, "workflow"), parse_num_field(item, "runs_30d"))
+                    {
+                        s.workflow_monthly_runs.push((wname, r));
                     }
                 }
             }
         }
 
         if let Some(j_idx) = raw.find("\"job_durations_mins\":") {
-            let after = &raw[j_idx..];
-            let section = after.find(']').map(|e| &after[..e]).unwrap_or(after);
-            for item in section.split("{\"job\":\"") {
-                if let Some(end_q) = item.find('"') {
-                    let jname = &item[..end_q];
-                    if let Some(m) = parse_num_field(item, "p50_mins") {
-                        s.job_durations_mins.push((jname.to_string(), m));
+            let after = raw[j_idx + 21..].trim_start();
+            if after.starts_with('[') {
+                let section = after.find(']').map(|e| &after[1..e]).unwrap_or(&after[1..]);
+                for item in section.split('{').skip(1) {
+                    if let (Some(jname), Some(m)) =
+                        (parse_str_field(item, "job"), parse_num_field(item, "p50_mins"))
+                    {
+                        s.job_durations_mins.push((jname, m));
                     }
                 }
             }
         }
         if let Some(p90_idx) = raw.find("\"job_p90_durations_mins\":") {
-            let after = &raw[p90_idx..];
-            let section = after.find(']').map(|e| &after[..e]).unwrap_or(after);
-            for item in section.split("{\"job\":\"") {
-                if let Some(end_q) = item.find('"') {
-                    let jname = &item[..end_q];
-                    if let Some(m) = parse_num_field(item, "p90_mins") {
-                        s.job_p90_durations_mins.push((jname.to_string(), m));
+            let after = raw[p90_idx + 25..].trim_start();
+            if after.starts_with('[') {
+                let section = after.find(']').map(|e| &after[1..e]).unwrap_or(&after[1..]);
+                for item in section.split('{').skip(1) {
+                    if let (Some(jname), Some(m)) =
+                        (parse_str_field(item, "job"), parse_num_field(item, "p90_mins"))
+                    {
+                        s.job_p90_durations_mins.push((jname, m));
                     }
                 }
             }
         }
         if let Some(lbl_idx) = raw.find("\"job_runtime_labels\":") {
-            let after = &raw[lbl_idx..];
-            let section = after.find(']').map(|e| &after[..e]).unwrap_or(after);
-            for item in section.split("{\"job\":\"") {
-                if let Some(end_q) = item.find('"') {
-                    let jname = &item[..end_q];
-                    if let Some(lbl) = parse_str_field(item, "label") {
-                        s.job_runtime_labels.push((jname.to_string(), lbl));
+            let after = raw[lbl_idx + 21..].trim_start();
+            if after.starts_with('[') {
+                let section = after.find(']').map(|e| &after[1..e]).unwrap_or(&after[1..]);
+                for item in section.split('{').skip(1) {
+                    if let (Some(jname), Some(lbl)) =
+                        (parse_str_field(item, "job"), parse_str_field(item, "label"))
+                    {
+                        s.job_runtime_labels.push((jname, lbl));
                     }
                 }
             }
         }
         s
+    }
+
+    /// Merges an `invoice_reconciled` CSV snapshot onto any existing Tier-2 live `.minici/telemetry.lock.json`
+    /// inside `repo_dir` so live run counts, cache GB, `p50`/`p90` durations, and 6-phase shares are preserved!
+    pub fn merge_invoice_onto_existing(mut self, repo_dir: &Path) -> Self {
+        if let Some(base) = Self::load_lockfile(repo_dir) {
+            let inv_gross = self.invoice_gross_usd;
+            let inv_disc = self.invoice_discount_usd;
+            let inv_net = self.invoice_net_billed_usd;
+            let inv_art = self.observed_artifact_storage_gb;
+            let inv_ghcr = self.observed_ghcr_storage_gb;
+            let inv_cpu = self.median_cpu_util_pct;
+            let inv_ram = self.median_ram_util_pct;
+            let inv_wf_runs = self.workflow_monthly_runs;
+            let inv_obs_runs = self.observed_monthly_runs;
+            let inv_slug = self.repo_slug;
+            let inv_epoch = self.synced_at_epoch_s;
+
+            let mut merged = base;
+            merged.provenance_mode = "invoice_reconciled".to_string();
+            if merged.repo_slug.is_empty() || merged.repo_slug == "billing-csv" {
+                merged.repo_slug = inv_slug;
+            }
+            if inv_epoch > 0 {
+                merged.synced_at_epoch_s = inv_epoch;
+            }
+            if inv_gross.is_some() {
+                merged.invoice_gross_usd = inv_gross;
+            }
+            if inv_disc.is_some() {
+                merged.invoice_discount_usd = inv_disc;
+            }
+            if inv_net.is_some() {
+                merged.invoice_net_billed_usd = inv_net;
+            }
+            if inv_art.is_some() {
+                merged.observed_artifact_storage_gb = inv_art;
+            }
+            if inv_ghcr.is_some() {
+                merged.observed_ghcr_storage_gb = inv_ghcr;
+            }
+            if inv_cpu.is_some() {
+                merged.median_cpu_util_pct = inv_cpu;
+            }
+            if inv_ram.is_some() {
+                merged.median_ram_util_pct = inv_ram;
+            }
+            if merged.workflow_monthly_runs.is_empty() && !inv_wf_runs.is_empty() {
+                merged.workflow_monthly_runs = inv_wf_runs;
+            }
+            if merged.observed_monthly_runs.is_none() && inv_obs_runs.is_some() {
+                merged.observed_monthly_runs = inv_obs_runs;
+            }
+            self = merged;
+        }
+        self
     }
 }
 
@@ -433,16 +495,7 @@ fn http_get_with_etag_inner(
         return None;
     }
     let raw = String::from_utf8_lossy(&out.stdout);
-    let (headers, body_part) = raw
-        .split_once("\r\n\r\n")
-        .or_else(|| raw.split_once("\n\n"))
-        .unwrap_or((&raw, ""));
-    let first_line = headers.lines().next().unwrap_or("");
-    let status_code = first_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(0);
+    let (status_code, headers, body_part) = parse_final_curl_http_response(&raw);
 
     let mut new_etag: Option<String> = None;
     let mut rate_rem: Option<u32> = None;
@@ -475,6 +528,12 @@ fn http_get_with_etag_inner(
     }
 
     if status_code == 200 {
+        if accept_header.contains("json") {
+            let tb = body_part.trim_start();
+            if !tb.starts_with('{') && !tb.starts_with('[') {
+                return None;
+            }
+        }
         if let Some(et) = new_etag {
             let _ = fs::write(&etag_file, et);
             let tmp = body_file.with_extension("json.tmp");
@@ -596,7 +655,7 @@ pub fn sync_github_live_telemetry_window(
     if slug == "local/workspace" {
         return Err("Cannot infer GitHub `owner/repo` slug; pass `--repo owner/repo`.".to_string());
     }
-    let token = discover_github_token();
+    let token = discover_github_token_with_keyring(true);
     let tok_ref = token.as_deref();
     let eff_window_days = window_days.clamp(1, 365);
     let effective_max_runs = if token.is_some() {
