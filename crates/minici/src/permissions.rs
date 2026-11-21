@@ -201,15 +201,103 @@ impl PermissionsAuditReport {
 }
 
 pub fn discover_github_token() -> Option<String> {
+    discover_github_token_with_keyring(false)
+}
+
+pub fn discover_github_token_with_keyring(allow_keyring: bool) -> Option<String> {
+    let mut saw_explicit_empty = false;
     for var in ["MINICI_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"] {
         if let Ok(val) = env::var(var) {
             let t = val.trim();
             if !t.is_empty() {
                 return Some(t.to_string());
             }
+            saw_explicit_empty = true;
+        }
+    }
+    if saw_explicit_empty || !allow_keyring {
+        return None;
+    }
+    let mut cmd = Command::new("gh");
+    cmd.args(["auth", "token"]);
+    if let Ok(gh_user) = env::var("MINICI_GH_USER") {
+        let u = gh_user.trim();
+        if !u.is_empty() {
+            cmd.args(["-u", u]);
+        }
+    }
+    if let Ok(out) = cmd.output() {
+        if out.status.success() {
+            let t = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !t.is_empty() {
+                return Some(t);
+            }
         }
     }
     None
+}
+
+/// Splits raw `curl -i` output across any intermediate `HTTP/1.1 200 Connection established`
+/// proxy tunnels, `100 Continue`, or `301`/`302` redirect header blocks, returning the
+/// `(final_status_code, final_headers_block, response_body)`.
+pub fn parse_final_curl_http_response(raw: &str) -> (u16, &str, &str) {
+    let mut rest = raw;
+    let mut last_headers = "";
+    loop {
+        let split_opt = match (rest.find("\r\n\r\n"), rest.find("\n\n")) {
+            (Some(r), Some(n)) => {
+                if r <= n {
+                    Some((r, 4))
+                } else {
+                    Some((n, 2))
+                }
+            }
+            (Some(r), None) => Some((r, 4)),
+            (None, Some(n)) => Some((n, 2)),
+            (None, None) => None,
+        };
+        match split_opt {
+            Some((idx, sep_len)) => {
+                let hdr = &rest[..idx];
+                let after = &rest[idx + sep_len..];
+                if hdr.trim_start().starts_with("HTTP/") {
+                    last_headers = hdr.trim_start();
+                    if after.trim_start().starts_with("HTTP/") {
+                        rest = after.trim_start();
+                        continue;
+                    }
+                    let code = last_headers
+                        .lines()
+                        .next()
+                        .and_then(|l| l.split_whitespace().nth(1))
+                        .and_then(|s| s.parse::<u16>().ok())
+                        .unwrap_or(0);
+                    return (code, last_headers, after);
+                }
+                break;
+            }
+            None => {
+                if last_headers.is_empty() && rest.trim_start().starts_with("HTTP/") {
+                    last_headers = rest.trim_start();
+                    let code = last_headers
+                        .lines()
+                        .next()
+                        .and_then(|l| l.split_whitespace().nth(1))
+                        .and_then(|s| s.parse::<u16>().ok())
+                        .unwrap_or(0);
+                    return (code, last_headers, "");
+                }
+                break;
+            }
+        }
+    }
+    let code = last_headers
+        .lines()
+        .next()
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(0);
+    (code, last_headers, rest)
 }
 
 fn infer_provider_from_input(repo_or_path: &str) -> &'static str {
@@ -415,16 +503,7 @@ fn probe_github_status(url: &str, token: Option<&str>) -> (u16, String, String) 
     if let Ok(out) = cmd.output() {
         if out.status.success() {
             let raw = String::from_utf8_lossy(&out.stdout);
-            let (headers, body) = raw
-                .split_once("\r\n\r\n")
-                .or_else(|| raw.split_once("\n\n"))
-                .unwrap_or((&raw, ""));
-            let code = headers
-                .lines()
-                .next()
-                .and_then(|l| l.split_whitespace().nth(1))
-                .and_then(|s| s.parse::<u16>().ok())
-                .unwrap_or(0);
+            let (code, headers, body) = parse_final_curl_http_response(&raw);
             return (code, headers.to_string(), body.to_string());
         }
     }
@@ -441,7 +520,7 @@ fn probe_http_status_with_header(url: &str, auth_header: Option<&str>) -> (u16, 
         "-m",
         "4",
         "-H",
-        "User-Agent: minici-security-check/0.8.0",
+        "User-Agent: minici-security-check/0.9.0",
     ]);
     if let Some(hdr) = auth_header {
         cmd.arg("-H").arg(hdr);
@@ -450,16 +529,7 @@ fn probe_http_status_with_header(url: &str, auth_header: Option<&str>) -> (u16, 
     if let Ok(out) = cmd.output() {
         if out.status.success() {
             let raw = String::from_utf8_lossy(&out.stdout);
-            let (headers, body) = raw
-                .split_once("\r\n\r\n")
-                .or_else(|| raw.split_once("\n\n"))
-                .unwrap_or((&raw, ""));
-            let code = headers
-                .lines()
-                .next()
-                .and_then(|l| l.split_whitespace().nth(1))
-                .and_then(|s| s.parse::<u16>().ok())
-                .unwrap_or(0);
+            let (code, headers, body) = parse_final_curl_http_response(&raw);
             return (code, headers.to_string(), body.to_string());
         }
     }
@@ -525,7 +595,7 @@ pub fn run_permissions_audit_with_vendor(
             "gitlab" => env::var("GITLAB_TOKEN").ok().filter(|s| !s.trim().is_empty()),
             "circleci" => env::var("CIRCLE_TOKEN").ok().filter(|s| !s.trim().is_empty()),
             "bitbucket" => env::var("BITBUCKET_TOKEN").ok().filter(|s| !s.trim().is_empty()),
-            _ => discover_github_token(),
+            _ => discover_github_token_with_keyring(allow_network),
         });
     let token_present = token_opt.is_some();
     let has_csv = billing_csv.map(|p| p.exists()).unwrap_or(false);
@@ -560,7 +630,7 @@ pub fn run_permissions_audit_with_vendor(
         let u_art = format!("https://api.github.com/repos/{}/actions/artifacts?per_page=1", slug);
         let u_pulls = format!("https://api.github.com/repos/{}/pulls?state=closed&per_page=1", slug);
         let u_runners = format!("https://api.github.com/repos/{}/actions/runners?per_page=1", slug);
-        let u_billing = format!("https://api.github.com/orgs/{}/settings/billing/actions", owner);
+        let u_billing = format!("https://api.github.com/organizations/{}/settings/billing/usage", owner);
 
         let (r_repo, r_wf, r_act_wf, r_runs, r_cache, r_art, r_pulls, r_runners, r_billing) = std::thread::scope(|s| {
             let h1 = s.spawn(|| probe_github_status(&u_repo, tok_ref));
@@ -585,7 +655,9 @@ pub fn run_permissions_audit_with_vendor(
             )
         });
 
-        org_billing_granted = r_billing.0 == 200;
+        let owner_is_personal_user = r_repo.0 == 200
+            && (r_repo.2.contains("\"type\":\"User\"") || r_repo.2.contains("\"type\": \"User\""));
+        org_billing_granted = !owner_is_personal_user && r_billing.0 == 200;
         fleet_runners_granted = r_runners.0 == 200;
 
         for (lbl, code) in [
@@ -597,11 +669,16 @@ pub fn run_permissions_audit_with_vendor(
             ("/actions/artifacts", r_art.0),
             ("/pulls", r_pulls.0),
             ("/actions/runners", r_runners.0),
-            ("/orgs/{org}/settings/billing/actions", r_billing.0),
         ] {
             endpoint_probes.push(EndpointProbeResult {
                 endpoint: lbl.to_string(),
                 status: format_probe_status(code),
+            });
+        }
+        if !owner_is_personal_user {
+            endpoint_probes.push(EndpointProbeResult {
+                endpoint: "/organizations/{org}/settings/billing/usage".to_string(),
+                status: format_probe_status(r_billing.0),
             });
         }
 
@@ -851,22 +928,30 @@ pub fn run_permissions_audit_with_vendor(
         )
     };
 
-    let recommended_least_privilege_setup = if attributes_unlocked == 108 && write_scopes.is_empty() {
+    let recommended_least_privilege_setup = if attributes_unlocked >= 108 && write_scopes.is_empty() {
         "Optimal Tier 4 (100.0% — 108/108 FinOps + kernel CPU/RAM attributes unlocked with strict Read-Only posture).".to_string()
-    } else if has_csv && token_present && write_scopes.is_empty() {
+    } else if !write_scopes.is_empty() {
+        minimal_bundle_guide.to_string()
+    } else if attributes_unlocked >= 99 {
         format!(
             "Tier 3 Invoice-Reconciled ({:.1}% — {}/108 attributes). Optional: add `uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1` in workflow YAML to unlock the final kernel CPU/RAM attributes (108/108 = 100.0%).",
             coverage_pct, attributes_unlocked
         )
-    } else if !write_scopes.is_empty() {
-        minimal_bundle_guide.to_string()
+    } else if attributes_unlocked >= 89 {
+        format!(
+            "Tier 2 Read-Only Active ({:.1}% — {}/108 attributes). Pass `--billing-csv usage.csv` to reach Tier 3 (91.7%–96.3% exact invoice reconciliation).",
+            coverage_pct, attributes_unlocked
+        )
     } else if !token_present {
         format!(
             "Optional upgrade: {} -> unlocks 82.4% (89/108) live telemetry, or pass `--billing-csv export.csv` for 91.7% (99/108) invoice reconciliation.",
             minimal_bundle_guide
         )
     } else {
-        "Tier 2 Read-Only Active (82.4% — 89/108 attributes). Pass `--billing-csv usage.csv` to reach Tier 3 (91.7%–96.3% exact invoice reconciliation).".to_string()
+        format!(
+            "Read-Only Token Present ({:.1}% — {}/108 attributes). Pass `--billing-csv usage.csv` to reach Tier 3 (91.7%–96.3% exact invoice reconciliation).",
+            coverage_pct, attributes_unlocked
+        )
     };
 
     PermissionsAuditReport {

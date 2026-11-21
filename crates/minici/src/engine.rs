@@ -4723,12 +4723,28 @@ pub fn analyze_path_with_telemetry(
             default_retention_days
         }
     });
-    let monthly_created_gb = if jobs.is_empty() {
+    let monthly_created_gb = if jobs.is_empty() || !any_artifacts {
         0.0
-    } else if any_artifacts {
-        usage.artifact_gb_per_run * monthly_runs * (jobs_uploading_artifacts.max(1) as f64).min(3.0)
+    } else if has_live_wf_runs {
+        let mut wf_art_jobs: Vec<(String, usize)> = Vec::new();
+        for j in &jobs {
+            if j.uploads_artifacts {
+                if let Some(entry) = wf_art_jobs.iter_mut().find(|(w, _)| w == &j.workflow_file) {
+                    entry.1 += j.matrix_combination_count;
+                } else {
+                    wf_art_jobs.push((j.workflow_file.clone(), j.matrix_combination_count));
+                }
+            }
+        }
+        wf_art_jobs
+            .iter()
+            .map(|(wf, cnt)| {
+                let r = lookup_live_wf_runs(wf).unwrap_or(0.0);
+                usage.artifact_gb_per_run * r * ((*cnt).max(1) as f64).min(3.0)
+            })
+            .sum()
     } else {
-        0.0
+        usage.artifact_gb_per_run * monthly_runs * (jobs_uploading_artifacts.max(1) as f64).min(3.0)
     };
     let steady_state_stored_gb_configured = if let Some(obs_gb) = active_telemetry
         .as_ref()
@@ -4859,7 +4875,25 @@ pub fn analyze_path_with_telemetry(
             .round()
             / 100.0
     };
-    let monthly_transfer_gb = ((est_transfer_gb_per_run * monthly_runs) * 100.0).round() / 100.0;
+    let monthly_transfer_gb = if total_expanded_matrix_jobs == 0 || !has_cloud_vpc_egress {
+        0.0
+    } else if has_live_wf_runs {
+        let g: f64 = jobs
+            .iter()
+            .map(|j| {
+                let r = lookup_live_wf_runs(&j.workflow_file).unwrap_or(0.0);
+                let art_c = if j.uploads_artifacts {
+                    j.matrix_combination_count as f64
+                } else {
+                    0.0
+                };
+                ((j.matrix_combination_count as f64) * 0.18 + art_c * 0.35) * r
+            })
+            .sum();
+        (g * 100.0).round() / 100.0
+    } else {
+        ((est_transfer_gb_per_run * monthly_runs) * 100.0).round() / 100.0
+    };
     let worst_case_rate_per_gb = 0.80 * infracost_aws_nat_gateway_per_gb_usd
         + 0.20 * (infracost_aws_nat_gateway_per_gb_usd + AWS_INTERNET_EGRESS_USD_PER_GB);
     let (
@@ -4956,12 +4990,17 @@ pub fn analyze_path_with_telemetry(
     let mut jobs_with_cache = 0_usize;
     let mut jobs_missing_cache = 0_usize;
     let mut uncached_run_cost_usd = 0.0_f64;
+    let mut live_monthly_uncached_cost_usd = 0.0_f64;
     for j in &jobs {
         if j.uses_cache {
             jobs_with_cache += j.matrix_combination_count;
         } else if j.est_raw_duration_mins_per_job > 2.0 {
             jobs_missing_cache += j.matrix_combination_count;
             uncached_run_cost_usd += j.run_compute_cost_usd;
+            if has_live_wf_runs {
+                live_monthly_uncached_cost_usd +=
+                    j.run_compute_cost_usd * lookup_live_wf_runs(&j.workflow_file).unwrap_or(0.0);
+            }
         }
     }
     let estimated_cache_hit_rate_pct = if jobs_with_cache == 0 {
@@ -4984,8 +5023,11 @@ pub fn analyze_path_with_telemetry(
             .unwrap_or("github-actions")
     };
     let (vendor_cache_limit, vendor_cache_eviction) = vendor_cache_mechanics(primary_provider);
-    let monthly_uncached_compute_usd =
-        ((uncached_run_cost_usd * monthly_runs) * 100.0).round() / 100.0;
+    let monthly_uncached_compute_usd = if has_live_wf_runs {
+        (live_monthly_uncached_cost_usd * 100.0).round() / 100.0
+    } else {
+        ((uncached_run_cost_usd * monthly_runs) * 100.0).round() / 100.0
+    };
     let monthly_unrealized_cache_savings_usd =
         ((monthly_uncached_compute_usd * cache_mid_ratio) * 100.0).round() / 100.0;
 
@@ -5039,6 +5081,7 @@ pub fn analyze_path_with_telemetry(
         .count();
     let mut pr_unconditional_matrix_cells = 0_usize;
     let mut pr_excess_matrix_run_cost_usd = 0.0_f64;
+    let mut live_pr_excess_matrix_monthly_usd = 0.0_f64;
     for j in &jobs {
         if j.matrix_combination_count > 1
             && hygiene
@@ -5048,12 +5091,20 @@ pub fn analyze_path_with_telemetry(
         {
             pr_unconditional_matrix_cells += j.matrix_combination_count;
             let single_cell_cost = j.run_compute_cost_usd / (j.matrix_combination_count as f64);
-            pr_excess_matrix_run_cost_usd += (j.run_compute_cost_usd - single_cell_cost).max(0.0);
+            let excess = (j.run_compute_cost_usd - single_cell_cost).max(0.0);
+            pr_excess_matrix_run_cost_usd += excess;
+            if has_live_wf_runs {
+                live_pr_excess_matrix_monthly_usd +=
+                    excess * lookup_live_wf_runs(&j.workflow_file).unwrap_or(0.0);
+            }
         }
     }
     // Running 1 primary cell on PR (~80% of monthly volume) and full N cells on main/nightly saves ~80% of excess matrix cells
-    let conditional_pr_matrix_monthly_savings_usd =
-        ((pr_excess_matrix_run_cost_usd * monthly_runs * 0.80) * 100.0).round() / 100.0;
+    let conditional_pr_matrix_monthly_savings_usd = if has_live_wf_runs {
+        ((live_pr_excess_matrix_monthly_usd * 0.80) * 100.0).round() / 100.0
+    } else {
+        ((pr_excess_matrix_run_cost_usd * monthly_runs * 0.80) * 100.0).round() / 100.0
+    };
     let is_library_or_sdk = hygiene.has_library_release_signals
         || (hygiene.pr_push_runs_multi_os_all_three && !hygiene.has_deploy_or_release_steps)
         || (pr_unconditional_matrix_cells >= 6
@@ -5171,6 +5222,8 @@ pub fn analyze_path_with_telemetry(
         .sum();
     let mut uncancelled_run_cost_usd = 0.0_f64;
     let mut unfiltered_run_cost_usd = 0.0_f64;
+    let mut live_uncancelled_monthly_usd = 0.0_f64;
+    let mut live_unfiltered_monthly_usd = 0.0_f64;
     for j in &jobs {
         if hygiene
             .uncancelled_workflow_files
@@ -5178,6 +5231,10 @@ pub fn analyze_path_with_telemetry(
             .any(|wf| wf == &j.workflow_file)
         {
             uncancelled_run_cost_usd += j.run_compute_cost_usd;
+            if has_live_wf_runs {
+                live_uncancelled_monthly_usd +=
+                    j.run_compute_cost_usd * lookup_live_wf_runs(&j.workflow_file).unwrap_or(0.0);
+            }
         }
         if hygiene
             .unfiltered_workflow_files
@@ -5185,6 +5242,10 @@ pub fn analyze_path_with_telemetry(
             .any(|wf| wf == &j.workflow_file)
         {
             unfiltered_run_cost_usd += j.run_compute_cost_usd;
+            if has_live_wf_runs {
+                live_unfiltered_monthly_usd +=
+                    j.run_compute_cost_usd * lookup_live_wf_runs(&j.workflow_file).unwrap_or(0.0);
+            }
         }
     }
     // Cancelling superseded runs saves 10-25% (15% midpoint) on workflows without cancel-in-progress,
@@ -5205,12 +5266,18 @@ pub fn analyze_path_with_telemetry(
         };
         let monthly_wasted = wasted_mins * (30.0 / win_days) * eff_rate;
         ((monthly_wasted) * 100.0).round() / 100.0
+    } else if has_live_wf_runs {
+        ((live_uncancelled_monthly_usd * 0.15) * 100.0).round() / 100.0
     } else {
         ((uncancelled_run_cost_usd * monthly_runs * 0.15) * 100.0).round() / 100.0
     };
     // Path filtering saves 30-50% (40% midpoint) on multi-workflow PR checks missing path filters
     let monthly_unfiltered_check_savings_usd = if workflow_count > 1 || total_expanded_matrix_jobs > 3 {
-        ((unfiltered_run_cost_usd * monthly_runs * 0.40) * 100.0).round() / 100.0
+        if has_live_wf_runs {
+            ((live_unfiltered_monthly_usd * 0.40) * 100.0).round() / 100.0
+        } else {
+            ((unfiltered_run_cost_usd * monthly_runs * 0.40) * 100.0).round() / 100.0
+        }
     } else {
         0.0
     };

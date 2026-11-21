@@ -42,6 +42,14 @@ inputs:
     description: "Automatically post or update a sticky Pull Request CI cost diff comment when running on pull_request"
     required: false
     default: "false"
+  suggest-fixes:
+    description: "Attach verified, committable YAML optimization patches (minici shrink + ARM64 right-sizing) directly inside Pull Request comments"
+    required: false
+    default: "true"
+  slack-webhook-url:
+    description: "Optional Slack Incoming Webhook URL to deliver Block Kit CI FinOps & Pull Request cost diff receipts"
+    required: false
+    default: ""
 
 outputs:
   gross_monthly_compute_cost_usd:
@@ -167,6 +175,10 @@ runs:
         INPUT_LIVE_TELEMETRY: ${{ inputs.live-telemetry }}
         INPUT_BILLING_CSV: ${{ inputs.billing-csv }}
         INPUT_POST_PR_COMMENT: ${{ inputs.post-pr-comment }}
+        INPUT_SUGGEST_FIXES: ${{ inputs.suggest-fixes }}
+        INPUT_SLACK_WEBHOOK_URL: ${{ inputs.slack-webhook-url }}
+        EVENT_NAME: ${{ github.event_name }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
       run: |
         BIN_PATH="${ACTION_PATH}/target/release/minici"
         if ! "$BIN_PATH" --version >/dev/null 2>&1; then
@@ -209,6 +221,19 @@ runs:
           mkdir -p "${ACTION_PATH}/target/release"
           rm -f "$BIN_PATH"
           cp "${ACTION_PATH}/crates/minici/target/release/minici" "$BIN_PATH"
+        fi
+        if [ "${EVENT_NAME:-}" = "issue_comment" ] && [ -n "${EVENT_PR_NUMBER:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+          PR_JSON="$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${EVENT_PR_NUMBER}")"
+          BASE_REF="$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("base",{}).get("ref","main"))' <<< "$PR_JSON")"
+          git fetch origin "refs/pull/${EVENT_PR_NUMBER}/head:minici-pr-head" "refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          git checkout minici-pr-head
+          "$BIN_PATH" comment github \
+            --path "$INPUT_PATH" \
+            --compare-to "origin/${BASE_REF}" \
+            --pr "$EVENT_PR_NUMBER" \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --behavior new \
+            --post || true
         fi
         EXTRA_BD_ARGS=()
         if [ "$INPUT_LIVE_TELEMETRY" = "true" ]; then
@@ -254,19 +279,36 @@ runs:
             --format markdown \
             --out-file .minici_diff.md \
             --quiet
-          if [ "$INPUT_POST_PR_COMMENT" = "true" ] && [ -n "${GITHUB_EVENT_PATH:-}" ]; then
+          if [ "$INPUT_POST_PR_COMMENT" = "true" ] && [ -n "${GITHUB_EVENT_PATH:-}" ] && [ "${EVENT_NAME:-}" != "issue_comment" ]; then
+            SUGGEST_FLAG="--no-suggest-fixes"
+            if [ "${INPUT_SUGGEST_FIXES:-true}" = "true" ]; then
+              SUGGEST_FLAG="--suggest-fixes"
+            fi
             "$BIN_PATH" comment github \
               --path "$INPUT_PATH" \
               --compare-to "$INPUT_COMPARE_TO" \
               --event-path "$GITHUB_EVENT_PATH" \
               --behavior update \
+              "$SUGGEST_FLAG" \
               --post \
+              --quiet || true
+          fi
+          if [ -n "${INPUT_SLACK_WEBHOOK_URL:-}" ]; then
+            "$BIN_PATH" comment slack \
+              --path "$INPUT_PATH" \
+              --compare-to "$INPUT_COMPARE_TO" \
+              --webhook-url "$INPUT_SLACK_WEBHOOK_URL" \
               --quiet || true
           fi
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f .minici_diff.md ]; then
             cat .minici_diff.md >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
           fi
+        elif [ -n "${INPUT_SLACK_WEBHOOK_URL:-}" ]; then
+          "$BIN_PATH" comment slack \
+            --path "$INPUT_PATH" \
+            --webhook-url "$INPUT_SLACK_WEBHOOK_URL" \
+            --quiet || true
         fi
         if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f .minici_breakdown.md ]; then
           cat .minici_breakdown.md >> "$GITHUB_STEP_SUMMARY"
