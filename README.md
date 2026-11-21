@@ -1,4 +1,4 @@
-# MiniCI
+<h1><img src="web/minici-icon.svg" width="38" height="38" align="top" alt="MiniCI Icon" /> MiniCI</h1>
 
 **Sub-millisecond CI/CD FinOps CLI, Pull Request Cost Diff Action, `@minici` Bot, and MCP Server.**
 
@@ -206,11 +206,23 @@ Register `minici` in `.mcp.json` (compatible with Claude Code, Antigravity, Curs
 
 ---
 
-## Duration Estimation & Known Boundaries
+## Duration Estimation, Custom Overrides & Known Boundaries
 
-When running in offline static mode (`< 2 ms`), `minici` estimates job runtime from workflow step signals (`+0.50m` VM boot, `+0.35m` checkout/artifact I/O, `+2.50m` test suites, `+3.50m` container/release builds, `+0.25m` standard steps), applies each provider's exact billing rounding (`ceil(mins)` per job on GitHub Actions and Bitbucket; fractional minutes on GitLab, CircleCI, and Cloud Build), and traverses `needs:` DAGs for critical-path wait time.
+When running in zero-token offline mode (`< 2 ms`), `minici` estimates job runtime statically from workflow step signals (`+0.50m` VM boot, `+0.35m` checkout/artifact I/O, `+2.50m` test suites, `+3.50m` container/release builds, `+0.25m` standard steps), applies each provider's exact billing rounding (`ceil(mins)` per job on GitHub Actions and Bitbucket; fractional minutes on GitLab, CircleCI, and Cloud Build), and traverses `needs:` DAGs for critical-path wait time.
 
-- **Pinning Exact Job Duration:** Add `# est-minutes: 18` (or `est-minutes: 18`) to any job in YAML, or pass `--live` / `--billing-csv` to use measured run history.
+### Overriding Static Assumptions to Match Your Exact Invoice
+
+Because real-world repositories have custom test durations, negotiated enterprise runner discounts, or different PR frequencies, **every static assumption in `minici` can be overridden without recompiling**:
+
+| If Your Real Bill Differs On... | Exact Override Mechanism |
+| :--- | :--- |
+| **Job Runtime / Duration** | Annotate any job in YAML with `# est-minutes: 18` (or `est-minutes: 18`), or pass `--live` (`minici telemetry pull --repo owner/repo`) to replace static step heuristics with actual historical run durations. |
+| **Enterprise / Custom Runner Rates** | Run `minici catalog set <runner_label> <usd_per_min>` (persisted in `~/.minici/pricing_overrides.json`) to apply your exact negotiated enterprise discount or internal self-hosted runner rate. |
+| **Monthly Run Volume, Plan Quota & Dev Payroll** | Pass `--tier <free\|pro\|team\|enterprise\|paid>`, `--prs-per-week <N>`, `--pushes-per-pr <N>`, and `--dev-hourly-rate 0` (setting `0` disables engineering wait-time math to show pure vendor invoice compute only). |
+| **Exact Monthly Invoice Reconciliation** | Pass `--billing-csv ./billing-export.csv` (`FOCUS v1.1`, GitHub, GitLab, CircleCI, or Bitbucket export) to lock `minici` (`provenance_mode: invoice_reconciled`) directly to your billed vendor statement. |
+
+### Known Static-Analysis Boundaries
+
 - **Git Depth for `diff`:** Always configure `fetch-depth: 0` on `actions/checkout@v4` when running `minici diff --compare-to origin/main` in CI so the base ref is present locally.
 - **Static Analysis Scope:** Runtime-evaluated expressions (`strategy: matrix: ${{ fromJSON(...) }}`), YAML merge anchors (`<<: *base`), and cross-repository reusable workflows cannot be expanded statically without live execution telemetry and default to `1x` job cardinality. See [`docs/CAPABILITIES_AND_LIMITATIONS.md`](docs/CAPABILITIES_AND_LIMITATIONS.md) and [`docs/BENCHMARK_217_CASES_3ARM_RESULTS.md`](docs/BENCHMARK_217_CASES_3ARM_RESULTS.md) for full details.
 
