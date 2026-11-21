@@ -1,5 +1,5 @@
 name: "MiniCI — CI/CD Cost Breakdown, PR Diff & Quota Receipt"
-description: "Sub-millisecond Rust engine for CI/CD matrix cost breakdowns, PR diffs, free-tier quota burn, and wait-time cost."
+description: "See what each Pull Request adds to your CI bill & dev wait time before merge. Sticky PR diff + 1-click YAML fixes."
 author: "Aamir Raza <raza.aamir01@gmail.com>"
 branding:
   icon: "dollar-sign"
