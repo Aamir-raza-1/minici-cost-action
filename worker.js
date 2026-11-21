@@ -1,4 +1,4 @@
-const RATES_ETAG = "\"minici-rates-v0.8.0\"";
+const RATES_ETAG = "\"minici-rates-v0.9.0\"";
 
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
@@ -8,7 +8,7 @@ const CORS_HEADERS = {
 
 const OFFICIAL_RATES_FEED = {
   schema_version: "1.0",
-  catalog_version: "2026.11-v0.8.0",
+  catalog_version: "2026.11-v0.9.0",
   updated_at: "2026-11-20T00:00:00Z",
   github_actions: {
     "ubuntu-latest": 0.006,
@@ -188,7 +188,7 @@ async function fetchLiveGitHubRepoSummary(slug, ghToken, windowDays = 30) {
   const clampedDays = Math.max(1, Math.min(365, Number(windowDays) || 30));
   const headers = {
     accept: "application/vnd.github+json",
-    "user-agent": "minici-worker/0.8.0"
+    "user-agent": "minici-worker/0.9.0"
   };
   if (ghToken) headers.authorization = `Bearer ${ghToken}`;
 
@@ -784,7 +784,7 @@ export default {
         JSON.stringify({
           status: "ok",
           service: "minici-cost-action",
-          version: "0.8.0",
+          version: "0.9.0",
           engine: "Pure Rust std-only (<1ms)",
           cache_layers: [
             "L1:caches.default",
@@ -806,7 +806,7 @@ export default {
       const inmMatched = inm
         .split(",")
         .map((t) => t.trim().replace(/^W\//i, ""))
-        .some((t) => t === "*" || t === RATES_ETAG || t === "minici-rates-v0.8.0");
+        .some((t) => t === "*" || t === RATES_ETAG || t === "minici-rates-v0.9.0");
       if (inmMatched) {
         return new Response(null, {
           status: 304,

@@ -30,7 +30,7 @@ fn print_help() {
 }
 
 pub fn help_text() -> &'static str {
-    "minici 0.8.0 — MiniCI: Sub-Millisecond CI/CD Cost Breakdown, PR Diff & Quota Receipt Engine\n\
+    "minici 0.9.0 — MiniCI: Sub-Millisecond CI/CD Cost Breakdown, PR Diff & Quota Receipt Engine\n\
 Author: Aamir Raza <raza.aamir01@gmail.com>\n\n\
 USAGE:\n  \
   minici <COMMAND> [OPTIONS]\n\n\
@@ -164,7 +164,7 @@ pub fn handle_mcp_jsonrpc_line(line: &str, default_path: &Path) -> Option<String
 
     match method.as_str() {
         "initialize" => Some(format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"minici\",\"version\":\"0.8.0\"}}}}}}",
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{{\"tools\":{{}}}},\"serverInfo\":{{\"name\":\"minici\",\"version\":\"0.9.0\"}}}}}}",
             id
         )),
         "notifications/initialized" | "initialized" => None,
@@ -1250,7 +1250,7 @@ fn upsert_github_pr_comment(
                 "-H",
                 "Accept: application/vnd.github+json",
                 "-H",
-                "User-Agent: minici-cli/0.8.0",
+                "User-Agent: minici-cli/0.9.0",
                 "-H",
                 &auth_header,
                 &list_url,
@@ -1301,7 +1301,7 @@ fn upsert_github_pr_comment(
             "-H",
             "Content-Type: application/json",
             "-H",
-            "User-Agent: minici-cli/0.8.0",
+            "User-Agent: minici-cli/0.9.0",
             "-H",
             &auth_header,
             "--data-binary",
@@ -1438,7 +1438,7 @@ fn post_inline_github_pr_review_if_applicable(
                 "-H",
                 "Accept: application/vnd.github+json",
                 "-H",
-                "User-Agent: minici-cli/0.8.0",
+                "User-Agent: minici-cli/0.9.0",
                 "-H",
                 &auth_header,
                 &format!("{}?per_page=50", reviews_url),
@@ -1469,7 +1469,7 @@ fn post_inline_github_pr_review_if_applicable(
             "-H",
             "Content-Type: application/json",
             "-H",
-            "User-Agent: minici-cli/0.8.0",
+            "User-Agent: minici-cli/0.9.0",
             "-H",
             &auth_header,
             "--data-binary",
@@ -1723,7 +1723,7 @@ fn main() {
         return;
     }
     if args[0] == "--version" || args[0] == "-V" || args[0] == "version" {
-        println!("minici 0.8.0");
+        println!("minici 0.9.0");
         return;
     }
 
@@ -3155,7 +3155,7 @@ fn main() {
             if !quiet {
                 println!("⏳ [3/4] Verifying embedded self-hosted Cloud VM & Spot Instance SKU catalog...");
             }
-            let cloud_catalog_ver = format!("embedded-cloud-catalog-v0.8.0 ({} SKUs)", catalog::INFRACOST_CLOUD_CATALOG.len());
+            let cloud_catalog_ver = format!("embedded-cloud-catalog-v0.9.0 ({} SKUs)", catalog::INFRACOST_CLOUD_CATALOG.len());
 
             if !quiet {
                 println!("⏳ [4/4] Verifying binary installation target ({} — override with --install-dir <DIR>)...", install_dir.join("minici").display());

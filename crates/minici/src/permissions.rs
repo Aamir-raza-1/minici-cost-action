@@ -494,7 +494,7 @@ fn probe_github_status(url: &str, token: Option<&str>) -> (u16, String, String) 
         "-H",
         "Accept: application/vnd.github+json",
         "-H",
-        "User-Agent: minici-security-check/0.8.0",
+        "User-Agent: minici-security-check/0.9.0",
     ]);
     if let Some(tok) = token {
         cmd.arg("-H").arg(format!("Authorization: Bearer {}", tok));
