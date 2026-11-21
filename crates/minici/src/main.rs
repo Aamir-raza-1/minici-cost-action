@@ -1230,9 +1230,15 @@ fn upsert_github_pr_comment(
     body_markdown: &str,
     behavior: &str,
 ) -> Result<String, String> {
-    let token = env::var("GITHUB_TOKEN")
-        .or_else(|_| env::var("GH_TOKEN"))
-        .map_err(|_| "GITHUB_TOKEN or GH_TOKEN is required for --post".to_string())?;
+    let token = permissions::discover_provider_token_with_consent(
+        "github",
+        true,
+        "posting sticky PR comment",
+    )
+    .ok_or_else(|| {
+        "GITHUB_TOKEN / GH_TOKEN (or `gh auth login` with --consent) is required for --post"
+            .to_string()
+    })?;
     let auth_header = format!("Authorization: Bearer {}", token.trim());
     let list_url = format!(
         "https://api.github.com/repos/{}/issues/{}/comments?per_page=100",
@@ -1387,7 +1393,11 @@ fn post_inline_github_pr_review_if_applicable(
     repo_dir: &Path,
     compare_to: Option<&Path>,
 ) {
-    let Ok(token) = env::var("GITHUB_TOKEN").or_else(|_| env::var("GH_TOKEN")) else {
+    let Some(token) = permissions::discover_provider_token_with_consent(
+        "github",
+        true,
+        "posting inline PR review suggestions",
+    ) else {
         return;
     };
     let Some(cmp) = compare_to else {
@@ -1549,22 +1559,30 @@ fn print_subcommand_help(sub: &str) {
                --repo <OWNER/REPO>            GitHub repository slug for live PR comment posting\n\
                --compare-to <REF_OR_PATH>     Base Git ref (e.g. origin/main) for PR diff mode\n\
                --behavior <update|new>        Sticky comment upsert mode [default: update]\n\
-               --post                         Post or update live comment on GitHub PR\n\
+               --post                         Post or update live comment on GitHub PR / Slack\n\
                --pr <NUMBER>                  Pull request number\n\
                --event-path <FILE>            GitHub webhook event JSON path (routes @minici commands)\n\
                --webhook-url <URL>            Slack Incoming Webhook URL (for `comment slack`)\n\
+               --consent, --yes               Authorize ambient local provider token / Slack webhook\n\
                --suggest-fixes                Attach verified YAML optimization snippets & inline PR review suggestions\n\
                --no-suggest-fixes             Omit YAML optimization suggestions from PR comment\n\
                --out-file <FILE>              Save rendered Markdown or Slack Block Kit JSON to file\n\
                --quiet, -q                    Suppress stdout printing"
         ),
         "permissions" => println!(
-            "Usage: minici permissions [check|audit] [OPTIONS]\n\n\
-             Verify least-privilege zero-source-code token security & 108-attribute telemetry coverage.\n\n\
+            "Usage: minici permissions [check|audit|consent] [OPTIONS]\n\n\
+             Verify least-privilege zero-source-code token security, 108-attribute telemetry coverage,\n\
+             and manage explicit user consent (`~/.minici/consent.json`) for ambient host credentials.\n\n\
+             SUBCOMMANDS:\n\
+               check, audit                   Run least-privilege read-only token & coverage audit\n\
+               consent list                   List authorized ambient credential providers\n\
+               consent grant <PROVIDER|all>   Authorize github, gitlab, circleci, bitbucket, slack, or cloud-iac\n\
+               consent revoke <PROVIDER|all>  Revoke stored consent for a provider (or all)\n\n\
              OPTIONS:\n\
                --repo, --path <SLUG_OR_DIR>   Repository slug or local directory\n\
                --vendor, --provider <VENDOR>  github, gitlab, circleci, or bitbucket\n\
                --token <TOKEN>                Optional explicit read-only token to inspect\n\
+               --consent, --yes               Authorize ambient local CLI/keyring token for this run\n\
                --billing-csv <FILE>           Optional FOCUS v1.1 / vendor billing CSV path\n\
                --offline                      Audit local static posture without live API probes\n\
                --format <FMT>                 table, markdown (or md), or json [default: table]"
@@ -1717,7 +1735,15 @@ fn load_or_analyze_ext(path: &Path, cfg: Option<UsageConfig>, force_refresh: boo
 }
 
 fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
+    let raw_args: Vec<String> = env::args().skip(1).collect();
+    let mut args: Vec<String> = Vec::with_capacity(raw_args.len());
+    for a in raw_args {
+        if a == "--consent" || a == "--yes" {
+            permissions::set_session_consent(true);
+        } else {
+            args.push(a);
+        }
+    }
     if args.is_empty() || args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
         print_help();
         return;
@@ -2175,7 +2201,7 @@ fn main() {
             let mut pr_number: Option<u64> = None;
             let mut repo_slug_opt: Option<String> = None;
             let mut event_path: Option<PathBuf> = env::var("GITHUB_EVENT_PATH").ok().map(PathBuf::from);
-            let mut webhook_url: Option<String> = env::var("SLACK_WEBHOOK_URL").ok();
+            let mut explicit_webhook_url: Option<String> = None;
             let mut suggest_fixes = env::var("MINICI_SUGGEST_FIXES")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
@@ -2231,7 +2257,7 @@ fn main() {
                     }
                     "--webhook-url" => {
                         if i + 1 < rest.len() {
-                            webhook_url = Some(rest[i + 1].clone());
+                            explicit_webhook_url = Some(rest[i + 1].clone());
                             i += 1;
                         }
                     }
@@ -2333,7 +2359,18 @@ fn main() {
                 let _ = fs::write(&out, &output);
             }
             if platform.to_lowercase() == "slack" {
-                if let Some(ref url) = webhook_url {
+                let has_ambient_slack_env = env::var("SLACK_WEBHOOK_URL")
+                    .map(|v| !v.trim().is_empty())
+                    .unwrap_or(false)
+                    || env::var("MINICI_SLACK_WEBHOOK_URL")
+                        .map(|v| !v.trim().is_empty())
+                        .unwrap_or(false);
+                let resolved_webhook = if explicit_webhook_url.is_some() || post_live || has_ambient_slack_env {
+                    permissions::discover_slack_webhook_with_consent(explicit_webhook_url.as_deref())
+                } else {
+                    None
+                };
+                if let Some(ref url) = resolved_webhook {
                     if !url.trim().is_empty() {
                         let tmp_sl = env::temp_dir().join(format!("minici_slack_{}.json", std::process::id()));
                         let _ = fs::write(&tmp_sl, &output);
@@ -2388,6 +2425,65 @@ fn main() {
         }
 
         "permissions" => {
+            if rest.first().map(|s| s.as_str()) == Some("consent") {
+                let action = rest.get(1).map(|s| s.as_str()).unwrap_or("list");
+                let consent_path = permissions::default_consent_file_path();
+                match action {
+                    "grant" | "allow" => {
+                        let target = rest.get(2).map(|s| s.as_str()).unwrap_or("all");
+                        match permissions::set_provider_consent_in_file(&consent_path, target, true) {
+                            Ok(()) => println!(
+                                "✅ Granted MiniCI ambient credential consent for `{}` -> {}",
+                                target,
+                                consent_path.display()
+                            ),
+                            Err(e) => eprintln!("⚠️ Failed to save consent: {}", e),
+                        }
+                    }
+                    "revoke" | "deny" | "reset" => {
+                        let target = rest.get(2).map(|s| s.as_str()).unwrap_or("all");
+                        if target.eq_ignore_ascii_case("all") {
+                            let _ = fs::remove_file(&consent_path);
+                            println!("✅ Revoked all stored ambient credential consents ({})", consent_path.display());
+                        } else {
+                            match permissions::set_provider_consent_in_file(&consent_path, target, false) {
+                                Ok(()) => println!(
+                                    "✅ Revoked ambient credential consent for `{}` ({})",
+                                    target,
+                                    consent_path.display()
+                                ),
+                                Err(e) => eprintln!("⚠️ Failed to update consent: {}", e),
+                            }
+                        }
+                    }
+                    _ => {
+                        let want_json = rest.iter().any(|a| a == "json");
+                        let entries = permissions::list_consents_in_file(&consent_path);
+                        if want_json {
+                            let items: Vec<String> = entries
+                                .iter()
+                                .map(|(k, v)| format!("\"{}\":{}", engine::json_escape(k), v))
+                                .collect();
+                            println!(
+                                "{{\"consent_file\":\"{}\",\"consents\":{{{}}}}}",
+                                engine::json_escape(&consent_path.display().to_string()),
+                                items.join(",")
+                            );
+                        } else if entries.is_empty() {
+                            println!(
+                                "🔒 MiniCI Ambient Credential Consents ({}): none stored (default deny unless --consent / MINICI_CONSENT=1 / interactive TTY approval).",
+                                consent_path.display()
+                            );
+                        } else {
+                            println!("🔒 MiniCI Ambient Credential Consents ({}):", consent_path.display());
+                            for (prov, granted) in entries {
+                                println!("  • {}: {}", prov, if granted { "GRANTED" } else { "DENIED" });
+                            }
+                        }
+                    }
+                }
+                return;
+            }
             let mut repo_slug: Option<String> = None;
             let mut vendor_opt: Option<String> = None;
             let mut token_opt: Option<String> = None;
@@ -2896,15 +2992,23 @@ fn main() {
                     idx += 1;
                 }
                 if live_flag {
-                    let mut synced_live = 0usize;
-                    for cloud in catalog::INFRACOST_CLOUD_CATALOG {
-                        let r = providers::resolve_cloud_instance_price(cloud.instance_type, "us-east-1", true);
-                        if r.source == "live_cloud_graphql" {
-                            synced_live += 1;
+                    let mut synced_live = providers::batch_sync_cloud_catalog_via_iac_cli();
+                    if synced_live == 0 {
+                        for cloud in catalog::INFRACOST_CLOUD_CATALOG {
+                            let r = providers::resolve_cloud_instance_price(cloud.instance_type, "us-east-1", true);
+                            if r.source == "live_cloud_graphql" || r.source == "live_cloud_iac" {
+                                synced_live += 1;
+                            }
+                        }
+                    } else {
+                        for cloud in catalog::INFRACOST_CLOUD_CATALOG {
+                            if providers::load_cached_cloud_price(cloud.instance_type, "us-east-1").is_none() {
+                                let _ = providers::resolve_cloud_instance_price(cloud.instance_type, "us-east-1", false);
+                            }
                         }
                     }
                     println!(
-                        "✅ Synced {} Cloud VM & Spot SKUs -> ~/.minici/cloud_prices.json ({} live GraphQL, {} embedded seed)",
+                        "✅ Synced {} Cloud VM & Spot SKUs -> ~/.minici/cloud_prices.json ({} live cloud quotes, {} embedded seed)",
                         catalog::INFRACOST_CLOUD_CATALOG.len(),
                         synced_live,
                         catalog::INFRACOST_CLOUD_CATALOG.len().saturating_sub(synced_live)

@@ -561,29 +561,488 @@ pub fn cloud_prices_cache_path() -> PathBuf {
 }
 
 fn discover_upstream_cloud_api_key() -> Option<String> {
-    if let Ok(k) = env::var("MINICI_CLOUD_PRICING_API_KEY").or_else(|_| env::var("INFRACOST_API_KEY")) {
-        let trimmed = k.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
+    let mut saw_explicit_empty = false;
+    for var in ["MINICI_CLOUD_PRICING_API_KEY", "INFRACOST_API_KEY"] {
+        if let Ok(k) = env::var(var) {
+            let trimmed = k.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+            saw_explicit_empty = true;
         }
     }
+    if saw_explicit_empty {
+        return None;
+    }
     if let Ok(home) = env::var("HOME").or_else(|_| env::var("USERPROFILE")) {
-        let cred_path = Path::new(&home)
-            .join(".config")
-            .join("infracost")
-            .join("credentials.yml");
-        if let Ok(raw) = fs::read_to_string(cred_path) {
-            for line in raw.lines() {
-                if let Some(rest) = line.trim().strip_prefix("api_key:") {
-                    let key = rest.trim().trim_matches('"').trim_matches('\'');
-                    if !key.is_empty() {
-                        return Some(key.to_string());
+        let h = Path::new(&home);
+        for cred_path in [
+            h.join(".config").join("infracost").join("credentials.yml"),
+            h.join("Library")
+                .join("Application Support")
+                .join("infracost")
+                .join("credentials.yml"),
+        ] {
+            if let Ok(raw) = fs::read_to_string(cred_path) {
+                for line in raw.lines() {
+                    if let Some(rest) = line.trim().strip_prefix("api_key:") {
+                        let key = rest.trim().trim_matches('"').trim_matches('\'');
+                        if !key.is_empty() {
+                            if crate::permissions::check_or_prompt_provider_consent(
+                                "cloud-iac",
+                                "local cloud IaC credentials.yml",
+                                "live cloud VM pricing",
+                            ) {
+                                return Some(key.to_string());
+                            }
+                            return None;
+                        }
                     }
                 }
             }
         }
+        if let Some(secret_key) = crate::permissions::read_env_kv_from_file(
+            &h.join(".minici").join("test-secrets.env"),
+            &["MINICI_CLOUD_PRICING_API_KEY", "INFRACOST_API_KEY"],
+        ) {
+            if crate::permissions::check_or_prompt_provider_consent(
+                "cloud-iac",
+                "~/.minici/test-secrets.env",
+                "live cloud VM pricing",
+            ) {
+                return Some(secret_key);
+            }
+        }
     }
     None
+}
+
+fn discover_iac_scanner_bin() -> Option<(PathBuf, bool)> {
+    if let Ok(custom) = env::var("MINICI_IAC_SCANNER_BIN") {
+        let t = custom.trim();
+        if !t.is_empty() {
+            let p = PathBuf::from(t);
+            if p.exists() {
+                return Some((p, true));
+            }
+        }
+        return None;
+    }
+    for candidate in ["/opt/homebrew/bin/infracost", "/usr/local/bin/infracost"] {
+        let p = PathBuf::from(candidate);
+        if p.is_file() {
+            return Some((p, false));
+        }
+    }
+    if let Ok(path_var) = env::var("PATH") {
+        for dir in env::split_paths(&path_var) {
+            let p = dir.join("infracost");
+            if p.is_file() {
+                return Some((p, false));
+            }
+        }
+    }
+    None
+}
+
+/// Detects major CLI generation (`1` for legacy `v0.x` / `v1.x` `breakdown --format json`,
+/// `2` for `v2.x+` OAuth `scan --json`).
+pub fn detect_iac_scanner_major_version(bin: &Path) -> u32 {
+    if let Ok(out) = Command::new(bin).arg("--version").output() {
+        let combined = format!(
+            "{} {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+        .to_ascii_lowercase();
+        if combined.contains("v0.")
+            || combined.contains(" 0.")
+            || combined.contains("v1.")
+            || combined.contains(" 1.")
+        {
+            return 1;
+        }
+    }
+    2
+}
+
+fn run_iac_scanner_json(bin: &Path, tf_dir: &Path) -> Option<String> {
+    let major = detect_iac_scanner_major_version(bin);
+    if major >= 2 {
+        if let Ok(out) = Command::new(bin)
+            .args(["scan", "--json", "--no-color"])
+            .arg(tf_dir)
+            .output()
+        {
+            let s = String::from_utf8_lossy(&out.stdout).to_string();
+            if s.contains("\"resources\"") {
+                return Some(s);
+            }
+        }
+        if let Ok(out) = Command::new(bin)
+            .arg("breakdown")
+            .arg("--path")
+            .arg(tf_dir)
+            .args(["--format", "json", "--no-color"])
+            .output()
+        {
+            let s = String::from_utf8_lossy(&out.stdout).to_string();
+            if s.contains("\"resources\"") {
+                return Some(s);
+            }
+        }
+    } else {
+        if let Ok(out) = Command::new(bin)
+            .arg("breakdown")
+            .arg("--path")
+            .arg(tf_dir)
+            .args(["--format", "json", "--no-color"])
+            .output()
+        {
+            let s = String::from_utf8_lossy(&out.stdout).to_string();
+            if s.contains("\"resources\"") {
+                return Some(s);
+            }
+        }
+        if let Ok(out) = Command::new(bin)
+            .args(["scan", "--json", "--no-color"])
+            .arg(tf_dir)
+            .output()
+        {
+            let s = String::from_utf8_lossy(&out.stdout).to_string();
+            if s.contains("\"resources\"") {
+                return Some(s);
+            }
+        }
+    }
+    None
+}
+
+pub fn canonicalize_azure_vm_size(lower_inst: &str) -> String {
+    let parts: Vec<&str> = lower_inst.trim().split('_').collect();
+    if parts.len() >= 2 && parts[0].eq_ignore_ascii_case("standard") {
+        let mut out = Vec::with_capacity(parts.len());
+        out.push("Standard".to_string());
+        let fam = parts[1];
+        let mut fam_norm = String::with_capacity(fam.len());
+        let mut hit_digit = false;
+        for ch in fam.chars() {
+            if ch.is_ascii_digit() {
+                hit_digit = true;
+                fam_norm.push(ch);
+            } else if !hit_digit {
+                fam_norm.push(ch.to_ascii_uppercase());
+            } else {
+                fam_norm.push(ch.to_ascii_lowercase());
+            }
+        }
+        out.push(fam_norm);
+        for tail in &parts[2..] {
+            out.push(tail.to_ascii_lowercase());
+        }
+        return out.join("_");
+    }
+    lower_inst.trim().to_string()
+}
+
+fn normalize_region_for_vendor(vendor: &str, raw_region: &str) -> String {
+    let r = raw_region.trim().to_ascii_lowercase();
+    match vendor {
+        "gcp" => {
+            if r.is_empty() || r.starts_with("us-east-") || r.starts_with("eu-") || r.starts_with("ap-") || r == "eastus" {
+                "us-central1".to_string()
+            } else {
+                r
+            }
+        }
+        "azure" => {
+            if r.is_empty() || r.contains('-') {
+                "eastus".to_string()
+            } else {
+                r
+            }
+        }
+        _ => {
+            if r.is_empty() {
+                "us-east-1".to_string()
+            } else {
+                r
+            }
+        }
+    }
+}
+
+fn append_vm_hcl_resource(hcl: &mut String, vendor: &str, res_id: &str, lower_inst: &str, eff_reg: &str) {
+    match vendor {
+        "gcp" => {
+            hcl.push_str(&format!(
+                "resource \"google_compute_instance\" \"{}\" {{\n  name         = \"{}\"\n  machine_type = \"{}\"\n  zone         = \"{}-a\"\n\n  boot_disk {{\n    initialize_params {{\n      image = \"debian-cloud/debian-12\"\n    }}\n  }}\n\n  network_interface {{\n    network = \"default\"\n  }}\n}}\n\n",
+                res_id, res_id, lower_inst, eff_reg
+            ));
+        }
+        "azure" => {
+            let az_size = canonicalize_azure_vm_size(lower_inst);
+            hcl.push_str(&format!(
+                "resource \"azurerm_linux_virtual_machine\" \"{}\" {{\n  name                  = \"{}\"\n  resource_group_name   = \"ci-rg\"\n  location              = \"{}\"\n  size                  = \"{}\"\n  admin_username        = \"ci\"\n  network_interface_ids = [\"nic\"]\n\n  os_disk {{\n    caching              = \"ReadWrite\"\n    storage_account_type = \"Standard_LRS\"\n  }}\n}}\n\n",
+                res_id, res_id, eff_reg, az_size
+            ));
+        }
+        _ => {
+            hcl.push_str(&format!(
+                "resource \"aws_instance\" \"{}\" {{\n  ami           = \"ami-0c55b159cbfafe1f0\"\n  instance_type = \"{}\"\n}}\n\n",
+                res_id, lower_inst
+            ));
+        }
+    }
+}
+
+fn extract_bracketed_array_slice(s: &str) -> &str {
+    let open = match s.find('[') {
+        Some(o) => o,
+        None => return s,
+    };
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut esc = false;
+    for (idx, ch) in s[open..].char_indices() {
+        if in_str {
+            if esc {
+                esc = false;
+            } else if ch == '\\' {
+                esc = true;
+            } else if ch == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_str = true,
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &s[open..=open + idx];
+                }
+            }
+            _ => {}
+        }
+    }
+    &s[open..]
+}
+
+/// Parses both Infracost `v2.x` (`scan --json` -> `"cost_components"`) and `v0.10.x` / `v1.x`
+/// (`breakdown --format json` -> `"costComponents"`) outputs into `(resource_suffix_id, on_demand_hourly_usd)`
+/// pairs strictly from top-level VM `"unit": "hours"` compute components.
+pub fn parse_iac_scan_vm_hourly_prices(raw_stdout: &str) -> Vec<(String, f64)> {
+    let mut results = Vec::new();
+    let json_slice = match raw_stdout.find("\"resources\"") {
+        Some(idx) => &raw_stdout[idx..],
+        None => return results,
+    };
+    for prefix in [
+        "\"aws_instance.",
+        "\"google_compute_instance.",
+        "\"azurerm_linux_virtual_machine.",
+    ] {
+        let mut search_from = 0usize;
+        while let Some(rel_idx) = json_slice[search_from..].find(prefix) {
+            let start = search_from + rel_idx + prefix.len();
+            let rest = &json_slice[start..];
+            let end_q = match rest.find('"') {
+                Some(e) => e,
+                None => break,
+            };
+            let res_id = &rest[..end_q];
+            let after_name = &rest[end_q..];
+            let subres_bound = after_name.find("\"subresources\"").unwrap_or(after_name.len());
+            let before_subres = &after_name[..subres_bound];
+            let res_window = before_subres
+                .find("\"cost_components\"")
+                .or_else(|| before_subres.find("\"costComponents\""))
+                .map(|c_idx| extract_bracketed_array_slice(&before_subres[c_idx..]))
+                .unwrap_or(before_subres);
+            if let Some(u_idx) = res_window
+                .find("\"unit\": \"hours\"")
+                .or_else(|| res_window.find("\"unit\":\"hours\""))
+            {
+                let comp_tail = &res_window[u_idx..];
+                if let Some(p_idx) = comp_tail.find("\"price\":") {
+                    let after_p = comp_tail[p_idx + 8..].trim_start().trim_start_matches('"');
+                    let num_str: String = after_p
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit() || *c == '.')
+                        .collect();
+                    if let Ok(price_hr) = num_str.parse::<f64>() {
+                        if price_hr > 0.0 && price_hr < 500.0 && !results.iter().any(|(id, _)| id == res_id) {
+                            results.push((res_id.to_string(), (price_hr * 10000.0).round() / 10000.0));
+                        }
+                    }
+                }
+            }
+            search_from = start + end_q;
+        }
+    }
+    results
+}
+
+fn spot_ratio_for_instance(lower_inst: &str) -> f64 {
+    if let Some(seed) = lookup_infracost_cloud_spec(lower_inst) {
+        if seed.on_demand_per_min_usd > 0.0 {
+            return (seed.spot_per_min_usd / seed.on_demand_per_min_usd).clamp(0.15, 1.0);
+        }
+    }
+    if let Some(seed150) = crate::catalog::lookup_seeded_cloud_spec(lower_inst) {
+        if seed150.on_demand_per_min_usd > 0.0 {
+            return (seed150.spot_per_min_usd / seed150.on_demand_per_min_usd).clamp(0.15, 1.0);
+        }
+    }
+    0.33
+}
+
+fn query_cloud_vm_via_iac_cli(vendor: &str, lower_inst: &str, lower_reg: &str) -> Option<(f64, f64)> {
+    query_cloud_vm_via_iac_cli_with_bin(None, vendor, lower_inst, lower_reg)
+}
+
+fn query_cloud_vm_via_iac_cli_with_bin(
+    bin_override: Option<&Path>,
+    vendor: &str,
+    lower_inst: &str,
+    lower_reg: &str,
+) -> Option<(f64, f64)> {
+    let bin = match bin_override {
+        Some(b) => b.to_path_buf(),
+        None => {
+            let (discovered, explicit_bin) = discover_iac_scanner_bin()?;
+            if !explicit_bin
+                && !crate::permissions::check_or_prompt_provider_consent(
+                    "cloud-iac",
+                    "local cloud IaC CLI session",
+                    "live cloud VM pricing",
+                )
+            {
+                return None;
+            }
+            discovered
+        }
+    };
+    let eff_reg = normalize_region_for_vendor(vendor, lower_reg);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp_dir = env::temp_dir().join(format!("minici_iac_vm_{}_{}", std::process::id(), nanos));
+    fs::create_dir_all(&tmp_dir).ok()?;
+
+    let mut hcl = match vendor {
+        "gcp" => format!(
+            "provider \"google\" {{\n  project = \"ci-quote\"\n  region  = \"{}\"\n  zone    = \"{}-a\"\n}}\n\n",
+            eff_reg, eff_reg
+        ),
+        "azure" => "provider \"azurerm\" {\n  features {}\n}\n\n".to_string(),
+        _ => format!("provider \"aws\" {{\n  region = \"{}\"\n}}\n\n", eff_reg),
+    };
+    append_vm_hcl_resource(&mut hcl, vendor, "vm_target", lower_inst, &eff_reg);
+
+    let tf_path = tmp_dir.join("main.tf");
+    if fs::write(&tf_path, hcl).is_err() {
+        let _ = fs::remove_dir_all(&tmp_dir);
+        return None;
+    }
+
+    let stdout_opt = run_iac_scanner_json(&bin, &tmp_dir);
+    let _ = fs::remove_dir_all(&tmp_dir);
+
+    let stdout = stdout_opt?;
+    let parsed = parse_iac_scan_vm_hourly_prices(&stdout);
+    let (_, od_hr) = parsed.into_iter().find(|(id, _)| id == "vm_target")?;
+    let sp_hr = ((od_hr * spot_ratio_for_instance(lower_inst)) * 10000.0).round() / 10000.0;
+    Some((od_hr, sp_hr))
+}
+
+/// Batch-syncs all `INFRACOST_CLOUD_CATALOG` AWS, GCP, and Azure VMs in a single CLI invocation
+/// (`scan --json` on v2.x OAuth or `breakdown --format json` on v0.10/v1.x, ~5s total instead of 76 spawns).
+pub fn batch_sync_cloud_catalog_via_iac_cli() -> usize {
+    if discover_upstream_cloud_api_key().is_some() {
+        return 0;
+    }
+    let (bin, explicit_bin) = match discover_iac_scanner_bin() {
+        Some(pair) => pair,
+        None => return 0,
+    };
+    if !explicit_bin
+        && !crate::permissions::check_or_prompt_provider_consent(
+            "cloud-iac",
+            "local cloud IaC CLI session",
+            "batch cloud VM catalog sync",
+        )
+    {
+        return 0;
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp_dir = env::temp_dir().join(format!("minici_iac_batch_{}_{}", std::process::id(), nanos));
+    if fs::create_dir_all(&tmp_dir).is_err() {
+        return 0;
+    }
+
+    let mut hcl = String::from(
+        "provider \"aws\" {\n  region = \"us-east-1\"\n}\n\nprovider \"google\" {\n  project = \"ci-quote\"\n  region  = \"us-central1\"\n  zone    = \"us-central1-a\"\n}\n\nprovider \"azurerm\" {\n  features {}\n}\n\n",
+    );
+    for (idx, spec) in crate::catalog::INFRACOST_CLOUD_CATALOG.iter().enumerate() {
+        let vendor = if spec.provider.contains("gcp") {
+            "gcp"
+        } else if spec.provider.contains("azure") {
+            "azure"
+        } else {
+            "aws"
+        };
+        let eff_reg = normalize_region_for_vendor(vendor, "us-east-1");
+        let res_id = format!("vm_{}", idx);
+        append_vm_hcl_resource(&mut hcl, vendor, &res_id, spec.instance_type, &eff_reg);
+    }
+
+    if fs::write(tmp_dir.join("main.tf"), hcl).is_err() {
+        let _ = fs::remove_dir_all(&tmp_dir);
+        return 0;
+    }
+
+    let stdout_opt = run_iac_scanner_json(&bin, &tmp_dir);
+    let _ = fs::remove_dir_all(&tmp_dir);
+
+    let stdout = match stdout_opt {
+        Some(s) => s,
+        None => return 0,
+    };
+    let parsed = parse_iac_scan_vm_hourly_prices(&stdout);
+    let cache_path = cloud_prices_cache_path();
+    let mut synced = 0usize;
+    for (res_id, od_hr) in parsed {
+        if let Some(idx_str) = res_id.strip_prefix("vm_") {
+            if let Ok(idx) = idx_str.parse::<usize>() {
+                if let Some(spec) = crate::catalog::INFRACOST_CLOUD_CATALOG.get(idx) {
+                    let vendor = if spec.provider.contains("gcp") {
+                        "gcp"
+                    } else if spec.provider.contains("azure") {
+                        "azure"
+                    } else {
+                        "aws"
+                    };
+                    let eff_reg = normalize_region_for_vendor(vendor, "us-east-1");
+                    let cache_key = format!("{}@{}", spec.instance_type, eff_reg);
+                    let sp_hr = ((od_hr * spot_ratio_for_instance(spec.instance_type)) * 10000.0).round() / 10000.0;
+                    persist_cloud_price_entry(&cache_path, &cache_key, od_hr, sp_hr, spec.vcpus, spec.ram_gb);
+                    if eff_reg != "us-east-1" {
+                        let alias_key = format!("{}@us-east-1", spec.instance_type);
+                        persist_cloud_price_entry(&cache_path, &alias_key, od_hr, sp_hr, spec.vcpus, spec.ram_gb);
+                    }
+                    synced += 1;
+                }
+            }
+        }
+    }
+    synced
 }
 
 pub fn regional_cloud_multiplier(region: &str) -> f64 {
@@ -763,6 +1222,32 @@ pub fn resolve_cloud_instance_price(
                     }
                 }
             }
+        } else if let Some((usd_hr, spot_hr)) =
+            query_cloud_vm_via_iac_cli(detected_vendor, &lower_inst, &lower_reg)
+        {
+            let seed = lookup_infracost_cloud_spec(&lower_inst);
+            let vcpus = seed
+                .map(|s| s.vcpus)
+                .unwrap_or_else(|| resolve_runner_sku(&lower_inst).vcpus);
+            let ram_gb = seed
+                .map(|s| s.ram_gb)
+                .unwrap_or_else(|| resolve_runner_sku(&lower_inst).ram_gb);
+            let eff_reg = normalize_region_for_vendor(detected_vendor, &lower_reg);
+            let eff_key = format!("{}@{}", lower_inst, eff_reg);
+            persist_cloud_price_entry(&cache_path, &eff_key, usd_hr, spot_hr, vcpus, ram_gb);
+            if eff_key != cache_key {
+                persist_cloud_price_entry(&cache_path, &cache_key, usd_hr, spot_hr, vcpus, ram_gb);
+            }
+            return CloudInstanceQuote {
+                vendor: detected_vendor.to_string(),
+                instance_type: lower_inst,
+                region: eff_reg,
+                vcpus,
+                ram_gb,
+                on_demand_hourly_usd: usd_hr,
+                spot_hourly_usd: spot_hr,
+                source: "live_cloud_iac".to_string(),
+            };
         }
         // Persist regional embedded quote into hot-cache so `cloud_prices.json` is populated, while honestly reporting `embedded_seed`
         let reg_mult = crate::catalog::regional_seed_multiplier(&lower_reg);
@@ -1057,5 +1542,172 @@ pub fn compute_5layer_platform_switching_tco(
         three_year_net_benefit_usd: three_yr_net,
         meets_2x_annual_rule: worth_2x,
         verdict,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_azure_sku_canonicalization_and_iac_v2_json_parser() {
+        assert_eq!(canonicalize_azure_vm_size("standard_d4s_v5"), "Standard_D4s_v5");
+        assert_eq!(canonicalize_azure_vm_size("standard_d16ads_v5"), "Standard_D16ads_v5");
+        assert_eq!(canonicalize_azure_vm_size("standard_f8s_v2"), "Standard_F8s_v2");
+        assert_eq!(canonicalize_azure_vm_size("Standard_DC4s_v3"), "Standard_DC4s_v3");
+
+        let sample_v2_json = r#"
+  ✔  Plugins up to date
+  ✔  Scan complete
+{
+  "currency": "USD",
+  "projects": [
+    {
+      "resources": [
+        {
+          "name": "aws_instance.vm_target",
+          "type": "aws_instance",
+          "cost_components": [
+            {
+              "name": "Instance usage (Linux/UNIX, on-demand, c7g.2xlarge)",
+              "unit": "hours",
+              "price": "0.29"
+            }
+          ],
+          "subresources": [
+            {
+              "name": "root_block_device",
+              "cost_components": [
+                {
+                  "name": "Storage (gp2)",
+                  "unit": "GB",
+                  "price": "0.1"
+                }
+              ]
+            }
+          ],
+          "metadata": {}
+        },
+        {
+          "name": "azurerm_linux_virtual_machine.vm_1",
+          "type": "azurerm_linux_virtual_machine",
+          "cost_components": [
+            {
+              "name": "Instance usage (Linux, pay as you go, Standard_D4s_v5)",
+              "unit": "hours",
+              "price": "0.192"
+            }
+          ],
+          "metadata": {}
+        },
+        {
+          "name": "google_compute_instance.vm_2",
+          "type": "google_compute_instance",
+          "cost_components": [
+            {
+              "name": "Instance usage (Linux/UNIX, on-demand, e2-standard-4)",
+              "unit": "hours",
+              "price": "0.13402284"
+            },
+            {
+              "name": "Standard provisioned storage",
+              "unit": "GB",
+              "price": "0.04"
+            }
+          ],
+          "metadata": {}
+        }
+      ]
+    }
+  ]
+}
+Update: A new version of Infracost is available: v2.19.0 -> v2.20.0
+"#;
+        let parsed = parse_iac_scan_vm_hourly_prices(sample_v2_json);
+        assert!(parsed.contains(&("vm_target".to_string(), 0.29)));
+        assert!(parsed.contains(&("vm_1".to_string(), 0.192)));
+        assert!(parsed.contains(&("vm_2".to_string(), 0.134)));
+
+        // Also verify legacy v0.10.x / v1.x `breakdown --format json` schema where `"metadata"` precedes `"costComponents"`!
+        let sample_v010_json = r#"{
+  "version": "0.2",
+  "currency": "USD",
+  "projects": [
+    {
+      "breakdown": {
+        "resources": [
+          {
+            "name": "aws_instance.vm_target",
+            "metadata": {"calls": []},
+            "hourlyCost": "0.34",
+            "costComponents": [
+              {
+                "name": "Instance usage (Linux/UNIX, on-demand, m6i.2xlarge)",
+                "unit": "hours",
+                "hourlyQuantity": "1",
+                "price": "0.384"
+              }
+            ],
+            "subresources": [
+              {
+                "name": "root_block_device",
+                "costComponents": [{"unit": "GB", "price": "0.10"}]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}"#;
+        let parsed_v1 = parse_iac_scan_vm_hourly_prices(sample_v010_json);
+        assert_eq!(parsed_v1, vec![("vm_target".to_string(), 0.384)]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_live_cloud_iac_cli_bridge_with_mock_scanner() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = env::temp_dir().join(format!("minici_mock_iac_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        // 1. Mock v2.x scanner (`scan --json`)
+        let mock_v2 = tmp.join("mock_iac_v2.sh");
+        fs::write(
+            &mock_v2,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"Infracost v2.19.0\"; exit 0; fi\ncat <<'EOF'\n{\"projects\":[{\"resources\":[{\"name\":\"aws_instance.vm_target\",\"cost_components\":[{\"unit\":\"hours\",\"price\":\"0.58\"}],\"metadata\":{}}]}]}\nEOF\n",
+        )
+        .unwrap();
+        let mut perms = fs::metadata(&mock_v2).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&mock_v2, perms).unwrap();
+        assert_eq!(detect_iac_scanner_major_version(&mock_v2), 2);
+
+        let (od_hr, spot_hr) =
+            query_cloud_vm_via_iac_cli_with_bin(Some(&mock_v2), "aws", "c7g.4xlarge", "us-east-1")
+                .expect("mock v2 IaC scanner should return live quote");
+        assert!((od_hr - 0.58).abs() < 0.0001);
+        assert!(spot_hr > 0.0 && spot_hr < od_hr);
+
+        // 2. Mock v0.10.39 scanner (`breakdown --path <dir> --format json`)
+        let mock_v1 = tmp.join("mock_iac_v1.sh");
+        fs::write(
+            &mock_v1,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"Infracost v0.10.39\"; exit 0; fi\nif [ \"$1\" = \"breakdown\" ]; then\ncat <<'EOF'\n{\"version\":\"0.2\",\"projects\":[{\"breakdown\":{\"resources\":[{\"name\":\"aws_instance.vm_target\",\"metadata\":{},\"costComponents\":[{\"unit\":\"hours\",\"price\":\"0.384\"}]}]}}]}\nEOF\nexit 0\nfi\nexit 1\n",
+        )
+        .unwrap();
+        let mut perms1 = fs::metadata(&mock_v1).unwrap().permissions();
+        perms1.set_mode(0o755);
+        fs::set_permissions(&mock_v1, perms1).unwrap();
+        assert_eq!(detect_iac_scanner_major_version(&mock_v1), 1);
+
+        let (od_v1, sp_v1) =
+            query_cloud_vm_via_iac_cli_with_bin(Some(&mock_v1), "aws", "m6i.2xlarge", "us-east-1")
+                .expect("mock v0.10 IaC scanner should invoke breakdown --format json");
+        assert!((od_v1 - 0.384).abs() < 0.0001);
+        assert!(sp_v1 > 0.0 && sp_v1 < od_v1);
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 }
