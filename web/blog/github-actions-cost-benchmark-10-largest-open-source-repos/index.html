@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitHub Actions Cost Benchmark: 10 World-Scale Repos Audited | MiniCI Engineering</title>
+  <meta name="description" content="Live CI/CD cost benchmark of VS Code, Pydantic, Next.js, Ollama, Supabase &amp; 5 more huge GitHub repos in 41 ms (&lt;7 MiB RAM) using MiniCI, an open-source Rust CLI." />
+  <meta name="keywords" content="GitHub Actions cost calculator, GitHub Actions pricing per minute 2026, CI/CD FinOps, GitHub Actions matrix cost, reduce GitHub Actions bill, GitHub Larger Runners pricing, MiniCI" />
+  <link rel="canonical" href="https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-cost-benchmark-10-largest-open-source-repos/" />
+  <link rel="icon" type="image/svg+xml" href="/minici-icon.svg" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="GitHub Actions Cost Benchmark: 10 World-Scale Repos Audited" />
+  <meta property="og:description" content="Live CI/CD cost benchmark of VS Code, Pydantic, Next.js, Ollama, Supabase &amp; 5 more huge GitHub repos in 41 ms (&lt;7 MiB RAM) using MiniCI, an open-source Rust CLI." />
+  <meta property="og:url" content="https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-cost-benchmark-10-largest-open-source-repos/" />
+  <meta property="og:image" content="https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/social-preview-1280x640.png" />
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "GitHub Actions Cost Benchmark: 10 World-Scale Repos Audited", "description": "Live CI/CD cost benchmark of VS Code, Pydantic, Next.js, Ollama, Supabase & 5 more huge GitHub repos in 41 ms (<7 MiB RAM) using MiniCI, an open-source Rust CLI.", "datePublished": "2026-11-21", "author": {"@type": "Person", "name": "Aamir Raza", "url": "https://github.com/Aamir-raza-1"}, "publisher": {"@type": "Organization", "name": "MiniCI", "url": "https://minici-cost-action.raza-aamir01.workers.dev"}, "url": "https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-cost-benchmark-10-largest-open-source-repos/", "keywords": "GitHub Actions cost calculator, GitHub Actions pricing per minute 2026, CI/CD FinOps, GitHub Actions matrix cost, reduce GitHub Actions bill, GitHub Larger Runners pricing, MiniCI"}</script>
+  <style>
+:root {
+  --bg: #07090e; --card: #0d121b; --card-alt: #121926; --border: #1e293b;
+  --text: #f8fafc; --muted: #94a3b8; --emerald: #10b981; --sky: #38bdf8;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.68; -webkit-font-smoothing: antialiased; }
+.container { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+header { position: sticky; top: 0; z-index: 50; background: rgba(7,9,14,0.9); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.nav { display: flex; justify-content: space-between; align-items: center; height: 60px; max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); text-decoration: none; }
+.pill { display: inline-block; font-size: 0.75rem; font-family: var(--mono); color: var(--emerald); background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); padding: 3px 10px; border-radius: 999px; }
+.links a { color: var(--muted); text-decoration: none; margin-left: 18px; font-size: 0.9rem; }
+.links a:hover { color: var(--text); }
+article { padding: 48px 0 64px; }
+h1 { font-size: 2.1rem; line-height: 1.22; letter-spacing: -0.025em; margin: 14px 0 18px; }
+h2 { font-size: 1.45rem; margin: 38px 0 14px; color: #f1f5f9; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+h3 { font-size: 1.15rem; margin: 26px 0 10px; color: var(--sky); }
+h4 { font-size: 1.02rem; margin: 20px 0 8px; }
+p, ul, ol { margin-bottom: 16px; color: #cbd5e1; }
+ul, ol { padding-left: 24px; }
+li { margin-bottom: 8px; }
+a { color: var(--sky); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--card-alt); border: 1px solid var(--border); padding: 2px 6px; border-radius: 5px; color: #e2e8f0; }
+pre { background: #05070b; border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; margin: 18px 0 24px; }
+pre code { background: none; border: 0; padding: 0; font-size: 0.82rem; line-height: 1.5; color: #e2e8f0; }
+.table-wrap { overflow-x: auto; margin: 20px 0 26px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 10px 13px; border-bottom: 1px solid var(--border); }
+th { background: var(--card-alt); color: var(--muted); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em; }
+blockquote { background: var(--card); border-left: 3px solid var(--emerald); padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 18px 0; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 34px 0; }
+.cta-box { background: linear-gradient(135deg, #0d1b18 0%, #0d121b 100%); border: 1px solid rgba(16,185,129,0.4); border-radius: 12px; padding: 24px; margin-top: 42px; display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap; }
+.btn { background: var(--emerald); color: #04130d; font-weight: 700; padding: 10px 18px; border-radius: 8px; text-decoration: none; display: inline-block; }
+.card-post { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; display: block; text-decoration: none; transition: border-color 0.15s; }
+.card-post:hover { border-color: var(--emerald); text-decoration: none; }
+.card-post h2 { border: 0; margin: 10px 0 8px; padding: 0; font-size: 1.32rem; color: var(--text); }
+footer { border-top: 1px solid var(--border); padding: 32px 0; font-size: 0.84rem; color: var(--muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <a href="/" class="brand">
+        <img src="/minici-icon.svg" width="28" height="28" alt="MiniCI" />
+        <span>MiniCI</span>
+        <span class="pill">Engineering &amp; FinOps Benchmarks</span>
+      </a>
+      <nav class="links">
+        <a href="/">Calculator</a>
+        <a href="/blog/">All Benchmarks</a>
+        <a href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Marketplace</a>
+        <a href="https://polar.sh/minici" style="color:var(--emerald);font-weight:600;">♥ Sponsor</a>
+        <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    
+    <article>
+      <div style="margin-bottom:8px;">
+        <a href="/blog/" style="font-size:0.86rem;">← Back to Engineering Benchmarks</a>
+      </div>
+      <span class="pill">Empirical Benchmark • 10 World-Scale Repos • 2026-11-21 • 6 min read</span>
+      <h1>Benchmarking GitHub Actions Costs Across 10 of the World&#x27;s Largest Repositories with MiniCI</h1>
+      <h2>Why CI/CD Cost Remains Invisible Until the End-of-Month Invoice</h2>
+<p>Most CI/CD platforms—including GitHub Actions, GitLab CI, and CircleCI—report runner charges in monthly billing dashboards rather than inside Pull Requests. When an engineer modifies <code>.github/workflows/*.yml</code> to expand a test <code>strategy.matrix</code>, switch a build job to an <code>8-core</code> or <code>macOS</code> runner, or upload build artifacts without a retention policy, code reviewers see the YAML diff—but <strong>zero dollar or quota impact</strong> before clicking <em>Merge</em>.</p>
+<p><strong><a href="https://github.com/Aamir-raza-1/minici-cost-action">MiniCI</a></strong> (<code>minici v0.9.0</code>) solves this locally and in CI. Written in <code>100%</code> pure Rust (<code>std</code> only, <code>0</code> external crates, <code>1.6 MiB</code> static binary), MiniCI expands workflow matrices, applies vendor billing rules (<code>1x</code> Linux, <code>2x</code> Windows, <code>10x</code> macOS quota multipliers, whole-minute ceiling rounding, and <code>227+</code> runner &amp; cloud VM rates across <code>7</code> CI platforms), and posts a non-blocking (<code>exit 0</code>) cost receipt on every Pull Request—requiring <strong>zero API keys and zero source-code read permissions (<code>Contents: None</code> default)</strong>.</p>
+<p>To test MiniCI at real engineering scale, we benchmarked it offline against <strong>10 of the world&#x27;s most active open-source GitHub repositories</strong>.</p>
+<hr />
+<h2>Benchmark Methodology &amp; Exact Hardware Disclosure</h2>
+<p>Performance numbers are meaningless without disclosing the exact machine, threading model, and memory footprint used to measure them:</p>
+<div class="table-wrap"><table><thead><tr><th style="text-align:left">Benchmark Parameter</th><th style="text-align:left">Measured Value</th></tr></thead><tbody><tr><td style="text-align:left"><strong>MiniCI Version &amp; Binary</strong></td><td style="text-align:left"><code>minici 0.9.0</code> (<code>1.6 MiB</code> static ARM64 binary, <code>0</code> external crates, <code>Apache-2.0</code>)</td></tr><tr><td style="text-align:left"><strong>Host CPU &amp; Architecture</strong></td><td style="text-align:left">Apple M4 Pro (<code>14</code> logical cores: <code>10</code> performance + <code>4</code> efficiency, <code>arm64</code>) — <strong>single-threaded (<code>1</code> CPU thread per <code>minici</code> process)</strong></td></tr><tr><td style="text-align:left"><strong>Host Memory &amp; OS</strong></td><td style="text-align:left"><code>48 GiB</code> unified RAM • macOS <code>15.1</code> (<code>Build 24B2083</code>)</td></tr><tr><td style="text-align:left"><strong>Peak Process Memory (<code>maxrss</code>)</strong></td><td style="text-align:left"><strong><code>2.59 MiB – 7.00 MiB</code> Peak RSS</strong> (<code>1.39 MiB – 5.91 MiB</code> peak memory footprint via <code>/usr/bin/time -l</code>)</td></tr><tr><td style="text-align:left"><strong>CPU Time per Invocation</strong></td><td style="text-align:left"><code>~0.01s user + ~0.01s sys</code> (<code>100%</code> local disk YAML parse, <code>0</code> network calls)</td></tr><tr><td style="text-align:left"><strong>Normalized Volume Baseline</strong></td><td style="text-align:left">Default <code>minici</code> baseline: <code>25 PRs/week × 4 pushes/PR = 433 runs/month</code> (<code>paid</code> rate comparison; <code>$65/hr</code> developer rate at <code>40%</code> DORA context-switch weight)</td></tr></tbody></table></div>
+<blockquote><p><strong>Note:</strong> Open-source public repositories receive generous hosted runner grants from GitHub. The dollar figures below answer the practical FinOps question every private engineering organization faces: <em>&quot;What does this exact workflow architecture cost per Pull Request and per month on standard metered billing?&quot;</em></p></blockquote>
+<hr />
+<h2>Live Results: 10 World-Scale Repositories (<code>109</code> Workflows, <code>566</code> Expanded Jobs)</h2>
+<p>Across all <code>10</code> repositories combined (<code>109</code> workflow files expanding to <code>566</code> matrix jobs per run), <code>minici</code> audited every workflow in <strong><code>40.67 ms</code> total</strong> (<code>100</code>-run warm average via <code>minici breakdown --benchmark</code>; <code>54.93 ms</code> cold single-run sum) while never exceeding <strong><code>7.00 MiB</code> of RAM</strong>:</p>
+<div class="table-wrap"><table><thead><tr><th style="text-align:left">Repository</th><th style="text-align:center">WF / Expanded Jobs</th><th style="text-align:center">Billed Mins / Run</th><th style="text-align:center">Gross Monthly Compute</th><th style="text-align:center"><code>ceil(60s)</code> Rounding Overhead</th><th style="text-align:center">Critical-Path Dev Wait</th><th style="text-align:center"><code>100</code>-Run Avg (<code>Cold</code>)</th><th style="text-align:center">Peak RSS RAM</th></tr></thead><tbody><tr><td style="text-align:left"><strong><code>pydantic/pydantic</code></strong></td><td style="text-align:center"><code>12</code> / <code>175</code></td><td style="text-align:center"><code>933.70m</code></td><td style="text-align:center"><strong><code>$5,395.87/mo</code></strong></td><td style="text-align:center"><code>$423.60/mo</code></td><td style="text-align:center"><code>$3,217.19/mo</code> (<code>21.9m</code>)</td><td style="text-align:center"><code>5.10 ms</code> (<code>6.40 ms</code>)</td><td style="text-align:center"><code>3.44 MiB</code></td></tr><tr><td style="text-align:left"><strong><code>microsoft/vscode</code></strong></td><td style="text-align:center"><code>5</code> / <code>36</code></td><td style="text-align:center"><code>242.00m</code></td><td style="text-align:center"><strong><code>$4,316.14/mo</code></strong></td><td style="text-align:center"><code>$346.00/mo</code></td><td style="text-align:center"><code>$2,082.73/mo</code> (<code>11.1m</code>)</td><td style="text-align:center"><code>1.93 ms</code> (<code>3.25 ms</code>)</td><td style="text-align:center"><code>3.11 MiB</code></td></tr><tr><td style="text-align:left"><strong><code>ollama/ollama</code></strong></td><td style="text-align:center"><code>4</code> / <code>47</code></td><td style="text-align:center"><code>413.00m</code></td><td style="text-align:center"><strong><code>$2,606.66/mo</code></strong></td><td style="text-align:center"><code>$100.98/mo</code></td><td style="text-align:center"><code>$3,178.22/mo</code> (<code>17.0m</code>)</td><td style="text-align:center"><code>0.77 ms</code> (<code>2.04 ms</code>)</td><td style="text-align:center"><code>3.03 MiB</code></td></tr><tr><td style="text-align:left"><strong><code>home-assistant/core</code></strong></td><td style="text-align:center"><code>19</code> / <code>83</code></td><td style="text-align:center"><code>558.00m</code></td><td style="text-align:center"><strong><code>$1,394.26/mo</code></strong></td><td style="text-align:center"><code>$105.82/mo</code></td><td style="text-align:center"><code>$17,449.90/mo</code> (<code>93.0m</code>)</td><td style="text-align:center"><code>17.52 ms</code> (<code>19.38 ms</code>)</td><td style="text-align:center"><code>7.00 MiB</code></td></tr><tr><td style="text-align:left"><strong><code>vercel/next.js</code></strong></td><td style="text-align:center"><code>5</code> / <code>45</code></td><td style="text-align:center"><code>144.00m</code></td><td style="text-align:center"><strong><code>$1,137.92/mo</code></strong></td><td style="text-align:center"><code>$120.51/mo</code></td><td style="text-align:center"><code>$1,190.75/mo</code> (<code>6.4m</code>)</td><td style="text-align:center"><code>1.48 ms</code> (<code>2.71 ms</code>)</td><td style="text-align:center"><code>2.94 MiB</code></td></tr><tr><td style="text-align:left"><strong><code>n8n-io/n8n</code></strong></td><td style="text-align:center"><code>12</code> / <code>44</code></td><td style="text-align:center"><code>258.35m</code></td><td style="text-align:center"><strong><code>$866.61/mo</code></strong></td><td style="text-align:center"><code>$24.15/mo</code></td><td style="text-align:center"><code>$2,598.00/mo</code> (<code>13.8m</code>)</td><td style="text-align:center"><code>1.86 ms</code> (<code>3.03 ms</code>)</td><td style="text-align:center"><code>2.67 MiB</code></td></tr><tr><td style="text-align:left"><strong><code>huggingface/transformers</code></strong></td><td style="text-align:center"><code>7</code> / <code>57</code></td><td style="text-align:center"><code>223.00m</code></td><td style="text-align:center"><strong><code>$579.35/mo</code></strong></td><td style="text-align:center"><code>$63.52/mo</code></td><td style="text-align:center"><code>$1,424.57/mo</code> (<code>7.6m</code>)</td><td style="text-align:center"><code>1.73 ms</code> (<code>3.34 ms</code>)</td><td style="text-align:center"><code>3.58 MiB</code></td></tr><tr><td style="text-align:left"><strong><code>langchain-ai/langchain</code></strong></td><td style="text-align:center"><code>27</code> / <code>43</code></td><td style="text-align:center"><code>113.00m</code></td><td style="text-align:center"><strong><code>$293.57/mo</code></strong></td><td style="text-align:center"><code>$52.87/mo</code></td><td style="text-align:center"><code>$1,238.38/mo</code> (<code>16.4m</code>)</td><td style="text-align:center"><code>8.68 ms</code> (<code>10.60 ms</code>)</td><td style="text-align:center"><code>4.48 MiB</code></td></tr><tr><td style="text-align:left"><strong><code>supabase/supabase</code></strong></td><td style="text-align:center"><code>12</code> / <code>25</code></td><td style="text-align:center"><code>73.35m</code></td><td style="text-align:center"><strong><code>$284.05/mo</code></strong></td><td style="text-align:center"><code>$6.39/mo</code></td><td style="text-align:center"><code>$1,446.22/mo</code> (<code>7.7m</code>)</td><td style="text-align:center"><code>1.19 ms</code> (<code>2.43 ms</code>)</td><td style="text-align:center"><code>2.77 MiB</code></td></tr><tr><td style="text-align:left"><strong><code>flutter/flutter</code></strong></td><td style="text-align:center"><code>6</code> / <code>11</code></td><td style="text-align:center"><code>27.00m</code></td><td style="text-align:center"><strong><code>$94.39/mo</code></strong></td><td style="text-align:center"><code>$12.76/mo</code></td><td style="text-align:center"><code>$1,848.91/mo</code> (<code>9.9m</code>)</td><td style="text-align:center"><code>0.41 ms</code> (<code>1.75 ms</code>)</td><td style="text-align:center"><code>2.59 MiB</code></td></tr><tr><td style="text-align:left"><strong>TOTAL (10 Repos)</strong></td><td style="text-align:center"><strong><code>109</code> / <code>566</code></strong></td><td style="text-align:center"><strong><code>2,985.40m</code></strong></td><td style="text-align:center"><strong><code>$16,968.82/mo</code></strong></td><td style="text-align:center"><strong><code>$1,256.60/mo</code></strong></td><td style="text-align:center"><strong><code>$35,674.87/mo</code></strong></td><td style="text-align:center"><strong><code>40.67 ms</code></strong> (<code>54.93 ms</code>)</td><td style="text-align:center"><strong><code>&lt;= 7.00 MiB</code></strong></td></tr></tbody></table></div>
+<hr />
+<h2>How MiniCI Displays This in Your Terminal (<code>microsoft/vscode</code> Live Output)</h2>
+<p>Running <code>minici breakdown</code> prints a unified job-by-job invoice, quota burn, pipeline hygiene audit, and contextual recommendation in a single screen:</p>
+<pre><code class="lang-text">$ minici breakdown --path ./01-microsoft-vscode
+
+Project: ./01-microsoft-vscode (5 workflow(s), 36 expanded jobs • 3.25 ms)
+
+ WORKFLOW / JOB                              MATRIX × RUNNER           BILLED MINS    RATE/MIN    COST/RUN   MONTHLY COST
+ ──────────────────────────────────────────  ────────────────────────  ───────────  ──────────  ──────────  ─────────────
+ code-oss.yml • detect-changes               1x vscode-large-runne...         8.0m   $0.0220/m      $0.176      $76.21/mo
+ code-oss.yml • linux-electron-smoke         3x vscode-large-runne...        21.0m   $0.0220/m      $0.462     $200.05/mo
+ code-oss.yml • windows-electron-smoke       3x vscode-large-runne...        27.0m   $0.0420/m      $1.134     $491.02/mo
+ code-oss.yml • macos-electron-smoke         2x macos-26-xlarge              14.0m   $0.1020/m      $1.428     $618.32/mo
+ ... (20 additional expanded jobs) ...
+ monaco-editor-checks.yml • monaco-edito...  1x ubuntu-latest                 3.0m   $0.0060/m      $0.018       $7.79/mo
+ telemetry.yml • check-metadata              1x ubuntu-latest                 3.0m   $0.0060/m      $0.018       $7.79/mo
+ ──────────────────────────────────────────  ────────────────────────  ───────────  ──────────  ──────────  ─────────────
+ OVERALL TOTAL (433 runs/mo • paid tier)     36 expanded job(s)             242.0m           —      $9.968    $4316.14/mo
+
+ • Free-Tier Quota  : 104786 / 2000 mins (129.9% of monthly quota) • Net Billed: $4304.14/mo • Rounding Overhead: 19.4m/run ($346.00/mo)
+ • Dev Wait-Time    : 11.1m critical path ($4.81/run • $2082.73/mo at 40% DORA context-switch loss) • Concurrency: 36 peak jobs (36 hosted &gt; 20 cap, +$510.00/mo tier upgrade)
+ • Pipeline Hygiene : Cache 0/36 jobs (caching 36 uncached saves ~$971.13/mo) • Cancel-in-progress missing on 5 wf (~$647.42/mo superseded waste) • Path filters missing on 4 wf (~$120.55/mo selective savings) • 34 larger runner job(s) ($4300.56/mo metered from 1st sec; never draw free mins) • PR matrix (18 unconditional cells; 1-cell PR + full main/nightly saves ~$900.64/mo) • 26 job(s) missing timeout-minutes ($511.20 6h hung-run exposure)
+ • Unit Economics   : $39.87/merged PR • $65.40/active dev/mo
+ • Recommendation   : Right-size heavy jobs to ARM64 / High-Speed Runners ($1990.89/mo, saves $2325.25/mo) or Cloud Spot ($928.09/mo, saves $3388.05/mo)</code></pre>
+<hr />
+<h2>Four Engineering Insights From the 10-Repo Benchmark</h2>
+<h3>1. Heavy Builds Legitimately Need Larger Runners—Which Makes Trigger Hygiene Essential</h3>
+<p>Repositories like <code>microsoft/vscode</code> (<code>34/36</code> jobs on <code>8-core</code> Linux/Windows and <code>12-core</code> <code>macos-26-xlarge</code>) and <code>ollama/ollama</code> compile C++, Electron, and native cross-OS binaries. They <strong>genuinely require</strong> high-core runners to keep developer feedback loops fast (<code>11.1m</code> critical path on <code>vscode</code>, <code>17.0m</code> on <code>ollama</code>).</p>
+<p>Because GitHub Larger Runners never draw from included plan minutes (<code>$4,300.56/mo</code> of <code>vscode</code>&#x27;s <code>$4,316.14/mo</code> is metered from the first second, or <strong><code>$39.87</code> per merged PR</strong>), the right FinOps lever is <strong>not</strong> starving compilers of CPU/RAM—it is eliminating wasted runs:</p>
+<ul><li>Adding <code>concurrency: { cancel-in-progress: true }</code> across <code>vscode</code>&#x27;s <code>5</code> workflows reclaims <strong><code>~$647.42/mo</code></strong> from obsolete PR pushes without slowing down a single build.</li><li>Adding <code>paths:</code> filters and running <code>1</code> representative matrix cell on draft PRs (keeping the full <code>18</code>-cell matrix on <code>main</code>/merge queue) reclaims <strong><code>~$900.64/mo</code></strong>.</li></ul>
+<h3>2. High-Shard Matrices Amplify GitHub&#x27;s Whole-Minute Rounding (<code>$1,256.60/mo</code> Total)</h3>
+<p>GitHub Actions bills each expanded job in whole-minute increments (<code>ceil(raw_mins)</code>). On a <code>2</code>-job workflow, a <code>25-second</code> remainder costs fractions of a cent. On <strong><code>pydantic/pydantic</code></strong> (<code>175</code> expanded jobs per run across OS and Python/third-party compatibility matrices), sub-minute remainders add up to <strong><code>73.3m/run</code> (<code>$423.60/mo</code>)</strong> of unexecuted billed time. By contrast, <code>supabase/supabase</code> and <code>n8n-io/n8n</code>—which run most jobs on fractional-minute runners—pay just <strong><code>$6.39/mo</code></strong> and <strong><code>$24.15/mo</code></strong> in rounding overhead.</p>
+<h3>3. Low Compute Cost Can Mask Severe Critical-Path Bottlenecks</h3>
+<p><strong><code>home-assistant/core</code></strong> spends a relatively modest <strong><code>$1,394.26/mo</code></strong> on CI runner compute across <code>83</code> Linux jobs (<code>ubuntu-latest</code>, <code>ubuntu-24.04-arm</code>, and <code>ubuntu-slim</code> at <code>$0.0020/m</code>). However, <code>minici</code>&#x27;s <code>needs:</code> DAG analysis reveals a <strong><code>93.0-minute</code> sequential critical path</strong>, translating to <strong><code>$17,449.90/mo</code></strong> in blocked engineering review flow—showing why compute dollars and critical-path duration must be tracked together.</p>
+<h3>4. Artifact Storage &amp; Hung-Job Timeouts Are Zero-Risk Quick Wins</h3>
+<p>In <strong><code>supabase/supabase</code></strong>, compute is already lean (<code>$284.05/mo</code>), so <code>minici</code> automatically shifts its recommendation to storage hygiene: lowering <code>upload-artifact</code> retention from GitHub&#x27;s <code>90-day</code> default (<code>$162.38/mo</code> for <code>649.50 GB</code> steady-state) to <code>14 days</code> cuts artifact spend by <strong><code>84.4%</code> (<code>$25.26/mo</code>)</strong>—and <code>minici shrink --path . --apply</code> applies <code>retention-days</code>, <code>cancel-in-progress</code>, shallow clones, and <code>timeout-minutes</code> automatically while preserving YAML comments.</p>
+<hr />
+<h2>Reproduce This Benchmark Locally in <code>&lt; 1 Second</code></h2>
+<pre><code class="lang-bash"># 1. Install MiniCI (Linux &amp; macOS static binary, 0 dependencies)
+curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+
+# 2. Audit any public GitHub repository remotely without cloning:
+minici breakdown --repo pydantic/pydantic
+minici breakdown --repo microsoft/vscode
+minici breakdown --repo supabase/supabase
+
+# 3. Run the 100-iteration microsecond/millisecond benchmark on a local checkout:
+minici breakdown --path . --benchmark</code></pre>
+<hr />
+<h2>Frequently Asked Questions (FAQ)</h2>
+<h3>How is GitHub Actions cost per Pull Request calculated?</h3>
+<p>GitHub Actions bills per expanded job by rounding each job&#x27;s runtime up to the next whole minute (<code>ceil(duration_minutes)</code>), multiplied by the runner&#x27;s per-minute SKU rate (for example, <code>$0.006/min</code> for <code>ubuntu-latest</code> <code>2-core</code>, <code>$0.022/min</code> for <code>ubuntu-8core</code>, <code>$0.062/min</code> for <code>macos-latest</code>, and <code>$0.102/min</code> for <code>macos-xlarge</code> in 2026 pricing). MiniCI expands <code>strategy.matrix</code> combinations statically and multiplies per-run cost by monthly PR push cadence.</p>
+<h3>Does MiniCI require GitHub tokens or send source code externally?</h3>
+<p>No. <code>minici</code> is a standalone Rust binary (<code>0</code> third-party crates) that parses workflow YAML files locally with <code>Contents: None</code> source-code access by default and zero external network calls during <code>breakdown</code>, <code>diff</code>, <code>shrink</code>, or <code>comment</code>.</p>
+<h3>Can MiniCI run inside GitHub Actions on every Pull Request?</h3>
+<p>Yes. Adding <code>uses: Aamir-raza-1/minici-cost-action@v1</code> with <code>compare-to: &quot;origin/${{ github.base_ref }}&quot;</code> and <code>post-pr-comment: &quot;true&quot;</code> posts a single auto-updating sticky Pull Request cost diff comment and always exits <code>0</code> so developer builds are never blocked.</p>
+      <div class="cta-box">
+        <div>
+          <strong style="font-size:1.1rem;display:block;margin-bottom:4px;">See What Every Pull Request Costs in &lt; 2 ms</strong>
+          <span style="color:var(--muted);font-size:0.9rem;">Zero external Rust crates • Zero API keys • Sticky GitHub PR Cost Diff + 1-click YAML fixes.</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <a class="btn" href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Install GitHub Action</a>
+          <a class="btn" style="background:#1e293b;color:#f8fafc;" href="https://polar.sh/minici">Sponsor on Polar.sh</a>
+        </div>
+      </div>
+    </article>
+
+  </main>
+  <footer class="container">
+    <span>Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a> • Apache-2.0</span>
+    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a></span>
+  </footer>
+</body>
+</html>

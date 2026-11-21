@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://minici-cost-action.raza-aamir01.workers.dev/sitemap.xml

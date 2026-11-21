@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CI/CD FinOps Engineering Benchmarks &amp; Guides | MiniCI Engineering</title>
+  <meta name="description" content="Empirical CI/CD cost benchmarks across 10 world-scale GitHub repositories, Cloud IaC + MiniCI workflows, and 6 runner providers." />
+  <meta name="keywords" content="CI/CD FinOps, GitHub Actions cost benchmark, MiniCI, reduce GitHub Actions bill" />
+  <link rel="canonical" href="https://minici-cost-action.raza-aamir01.workers.dev/blog/" />
+  <link rel="icon" type="image/svg+xml" href="/minici-icon.svg" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="CI/CD FinOps Engineering Benchmarks &amp; Guides" />
+  <meta property="og:description" content="Empirical CI/CD cost benchmarks across 10 world-scale GitHub repositories, Cloud IaC + MiniCI workflows, and 6 runner providers." />
+  <meta property="og:url" content="https://minici-cost-action.raza-aamir01.workers.dev/blog/" />
+  <meta property="og:image" content="https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/social-preview-1280x640.png" />
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "Blog", "headline": "CI/CD FinOps Engineering Benchmarks & Guides", "description": "Empirical CI/CD cost benchmarks across 10 world-scale GitHub repositories, Cloud IaC + MiniCI workflows, and 6 runner providers.", "datePublished": "2026-11-21", "author": {"@type": "Person", "name": "Aamir Raza", "url": "https://github.com/Aamir-raza-1"}, "publisher": {"@type": "Organization", "name": "MiniCI", "url": "https://minici-cost-action.raza-aamir01.workers.dev"}, "url": "https://minici-cost-action.raza-aamir01.workers.dev/blog/", "keywords": "CI/CD FinOps, GitHub Actions cost benchmark, MiniCI, reduce GitHub Actions bill"}</script>
+  <style>
+:root {
+  --bg: #07090e; --card: #0d121b; --card-alt: #121926; --border: #1e293b;
+  --text: #f8fafc; --muted: #94a3b8; --emerald: #10b981; --sky: #38bdf8;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.68; -webkit-font-smoothing: antialiased; }
+.container { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+header { position: sticky; top: 0; z-index: 50; background: rgba(7,9,14,0.9); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.nav { display: flex; justify-content: space-between; align-items: center; height: 60px; max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); text-decoration: none; }
+.pill { display: inline-block; font-size: 0.75rem; font-family: var(--mono); color: var(--emerald); background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); padding: 3px 10px; border-radius: 999px; }
+.links a { color: var(--muted); text-decoration: none; margin-left: 18px; font-size: 0.9rem; }
+.links a:hover { color: var(--text); }
+article { padding: 48px 0 64px; }
+h1 { font-size: 2.1rem; line-height: 1.22; letter-spacing: -0.025em; margin: 14px 0 18px; }
+h2 { font-size: 1.45rem; margin: 38px 0 14px; color: #f1f5f9; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+h3 { font-size: 1.15rem; margin: 26px 0 10px; color: var(--sky); }
+h4 { font-size: 1.02rem; margin: 20px 0 8px; }
+p, ul, ol { margin-bottom: 16px; color: #cbd5e1; }
+ul, ol { padding-left: 24px; }
+li { margin-bottom: 8px; }
+a { color: var(--sky); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--card-alt); border: 1px solid var(--border); padding: 2px 6px; border-radius: 5px; color: #e2e8f0; }
+pre { background: #05070b; border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; margin: 18px 0 24px; }
+pre code { background: none; border: 0; padding: 0; font-size: 0.82rem; line-height: 1.5; color: #e2e8f0; }
+.table-wrap { overflow-x: auto; margin: 20px 0 26px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 10px 13px; border-bottom: 1px solid var(--border); }
+th { background: var(--card-alt); color: var(--muted); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em; }
+blockquote { background: var(--card); border-left: 3px solid var(--emerald); padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 18px 0; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 34px 0; }
+.cta-box { background: linear-gradient(135deg, #0d1b18 0%, #0d121b 100%); border: 1px solid rgba(16,185,129,0.4); border-radius: 12px; padding: 24px; margin-top: 42px; display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap; }
+.btn { background: var(--emerald); color: #04130d; font-weight: 700; padding: 10px 18px; border-radius: 8px; text-decoration: none; display: inline-block; }
+.card-post { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; display: block; text-decoration: none; transition: border-color 0.15s; }
+.card-post:hover { border-color: var(--emerald); text-decoration: none; }
+.card-post h2 { border: 0; margin: 10px 0 8px; padding: 0; font-size: 1.32rem; color: var(--text); }
+footer { border-top: 1px solid var(--border); padding: 32px 0; font-size: 0.84rem; color: var(--muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <a href="/" class="brand">
+        <img src="/minici-icon.svg" width="28" height="28" alt="MiniCI" />
+        <span>MiniCI</span>
+        <span class="pill">Engineering &amp; FinOps Benchmarks</span>
+      </a>
+      <nav class="links">
+        <a href="/">Calculator</a>
+        <a href="/blog/">All Benchmarks</a>
+        <a href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Marketplace</a>
+        <a href="https://polar.sh/minici" style="color:var(--emerald);font-weight:600;">♥ Sponsor</a>
+        <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    
+    <article>
+      <span class="pill">Empirical FinOps Research • Verified Live via MiniCI</span>
+      <h1>MiniCI Engineering &amp; CI/CD FinOps Benchmarks</h1>
+      <p style="font-size:1.05rem;">Reproducible CI/CD cost benchmarks across world-scale open-source repositories, Cloud IaC + CI/CD shift-left workflows, and hardware-matched runner ecosystems.</p>
+      <div style="margin-top:32px;">
+        <a class="card-post" href="/blog/github-actions-cost-benchmark-10-largest-open-source-repos/">
+  <span class="pill">Empirical Benchmark • 10 World-Scale Repos • 6 min read</span>
+  <h2>Benchmarking GitHub Actions Costs Across 10 of the World&#x27;s Largest Repositories with MiniCI</h2>
+  <p style="margin:0;color:var(--muted);font-size:0.94rem;">Live CI/CD cost benchmark of VS Code, Pydantic, Next.js, Ollama, Supabase &amp; 5 more huge GitHub repos in 41 ms (&lt;7 MiB RAM) using MiniCI, an open-source Rust CLI.</p>
+</a><a class="card-post" href="/blog/infracost-and-minici-full-stack-finops-pull-request-costs/">
+  <span class="pill">Full-Stack FinOps • Cloud IaC + CI/CD • 7 min read</span>
+  <h2>Infracost + MiniCI: Complete Cloud Infrastructure &amp; CI/CD Pipeline Cost Visibility in Every Pull Request</h2>
+  <p style="margin:0;color:var(--muted);font-size:0.94rem;">Compare what Infracost (Terraform/IaC cloud costs) and MiniCI (CI/CD workflow &amp; matrix costs) measure, and run both in one Pull Request for 100% FinOps visibility.</p>
+</a><a class="card-post" href="/blog/github-actions-runners-benchmark-blacksmith-depot-namespace-warpbuild-buildjet-runson/">
+  <span class="pill">Runner Economics • 6-Provider vCPU+RAM Parity • 8 min read</span>
+  <h2>GitHub Actions Alternative Runners Benchmarked (<code>Blacksmith</code>, <code>Depot</code>, <code>Namespace</code>, <code>WarpBuild</code>, <code>BuildJet</code> &amp; <code>RunsOn</code>) — Verified <code>vCPU + RAM</code> Pricing &amp; Live OSS Case Studies with MiniCI</h2>
+  <p style="margin:0;color:var(--muted);font-size:0.94rem;">Hardware-matched (vCPU + RAM) GitHub Actions runner pricing benchmark across Blacksmith, Depot, Namespace, WarpBuild, BuildJet &amp; RunsOn on real OSS repos with MiniCI.</p>
+</a>
+      </div>
+    </article>
+
+  </main>
+  <footer class="container">
+    <span>Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a> • Apache-2.0</span>
+    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a></span>
+  </footer>
+</body>
+</html>

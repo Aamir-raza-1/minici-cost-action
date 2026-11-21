@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blacksmith vs Depot vs Namespace vs WarpBuild vs GitHub Runners | MiniCI Engineering</title>
+  <meta name="description" content="Hardware-matched (vCPU + RAM) GitHub Actions runner pricing benchmark across Blacksmith, Depot, Namespace, WarpBuild, BuildJet &amp; RunsOn on real OSS repos with MiniCI." />
+  <meta name="keywords" content="GitHub Actions alternative runners, Blacksmith vs Depot vs Namespace, WarpBuild vs BuildJet pricing, RunsOn GitHub Actions cost, GitHub Larger Runners pricing per minute, reduce GitHub Actions runner cost, MiniCI" />
+  <link rel="canonical" href="https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-runners-benchmark-blacksmith-depot-namespace-warpbuild-buildjet-runson/" />
+  <link rel="icon" type="image/svg+xml" href="/minici-icon.svg" />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Blacksmith vs Depot vs Namespace vs WarpBuild vs GitHub Runners" />
+  <meta property="og:description" content="Hardware-matched (vCPU + RAM) GitHub Actions runner pricing benchmark across Blacksmith, Depot, Namespace, WarpBuild, BuildJet &amp; RunsOn on real OSS repos with MiniCI." />
+  <meta property="og:url" content="https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-runners-benchmark-blacksmith-depot-namespace-warpbuild-buildjet-runson/" />
+  <meta property="og:image" content="https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/social-preview-1280x640.png" />
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Blacksmith vs Depot vs Namespace vs WarpBuild vs GitHub Runners", "description": "Hardware-matched (vCPU + RAM) GitHub Actions runner pricing benchmark across Blacksmith, Depot, Namespace, WarpBuild, BuildJet & RunsOn on real OSS repos with MiniCI.", "datePublished": "2026-11-21", "author": {"@type": "Person", "name": "Aamir Raza", "url": "https://github.com/Aamir-raza-1"}, "publisher": {"@type": "Organization", "name": "MiniCI", "url": "https://minici-cost-action.raza-aamir01.workers.dev"}, "url": "https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-runners-benchmark-blacksmith-depot-namespace-warpbuild-buildjet-runson/", "keywords": "GitHub Actions alternative runners, Blacksmith vs Depot vs Namespace, WarpBuild vs BuildJet pricing, RunsOn GitHub Actions cost, GitHub Larger Runners pricing per minute, reduce GitHub Actions runner cost, MiniCI"}</script>
+  <style>
+:root {
+  --bg: #07090e; --card: #0d121b; --card-alt: #121926; --border: #1e293b;
+  --text: #f8fafc; --muted: #94a3b8; --emerald: #10b981; --sky: #38bdf8;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.68; -webkit-font-smoothing: antialiased; }
+.container { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+header { position: sticky; top: 0; z-index: 50; background: rgba(7,9,14,0.9); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.nav { display: flex; justify-content: space-between; align-items: center; height: 60px; max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); text-decoration: none; }
+.pill { display: inline-block; font-size: 0.75rem; font-family: var(--mono); color: var(--emerald); background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); padding: 3px 10px; border-radius: 999px; }
+.links a { color: var(--muted); text-decoration: none; margin-left: 18px; font-size: 0.9rem; }
+.links a:hover { color: var(--text); }
+article { padding: 48px 0 64px; }
+h1 { font-size: 2.1rem; line-height: 1.22; letter-spacing: -0.025em; margin: 14px 0 18px; }
+h2 { font-size: 1.45rem; margin: 38px 0 14px; color: #f1f5f9; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+h3 { font-size: 1.15rem; margin: 26px 0 10px; color: var(--sky); }
+h4 { font-size: 1.02rem; margin: 20px 0 8px; }
+p, ul, ol { margin-bottom: 16px; color: #cbd5e1; }
+ul, ol { padding-left: 24px; }
+li { margin-bottom: 8px; }
+a { color: var(--sky); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--card-alt); border: 1px solid var(--border); padding: 2px 6px; border-radius: 5px; color: #e2e8f0; }
+pre { background: #05070b; border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; margin: 18px 0 24px; }
+pre code { background: none; border: 0; padding: 0; font-size: 0.82rem; line-height: 1.5; color: #e2e8f0; }
+.table-wrap { overflow-x: auto; margin: 20px 0 26px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 10px 13px; border-bottom: 1px solid var(--border); }
+th { background: var(--card-alt); color: var(--muted); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em; }
+blockquote { background: var(--card); border-left: 3px solid var(--emerald); padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 18px 0; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 34px 0; }
+.cta-box { background: linear-gradient(135deg, #0d1b18 0%, #0d121b 100%); border: 1px solid rgba(16,185,129,0.4); border-radius: 12px; padding: 24px; margin-top: 42px; display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap; }
+.btn { background: var(--emerald); color: #04130d; font-weight: 700; padding: 10px 18px; border-radius: 8px; text-decoration: none; display: inline-block; }
+.card-post { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; display: block; text-decoration: none; transition: border-color 0.15s; }
+.card-post:hover { border-color: var(--emerald); text-decoration: none; }
+.card-post h2 { border: 0; margin: 10px 0 8px; padding: 0; font-size: 1.32rem; color: var(--text); }
+footer { border-top: 1px solid var(--border); padding: 32px 0; font-size: 0.84rem; color: var(--muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <a href="/" class="brand">
+        <img src="/minici-icon.svg" width="28" height="28" alt="MiniCI" />
+        <span>MiniCI</span>
+        <span class="pill">Engineering &amp; FinOps Benchmarks</span>
+      </a>
+      <nav class="links">
+        <a href="/">Calculator</a>
+        <a href="/blog/">All Benchmarks</a>
+        <a href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Marketplace</a>
+        <a href="https://polar.sh/minici" style="color:var(--emerald);font-weight:600;">♥ Sponsor</a>
+        <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    
+    <article>
+      <div style="margin-bottom:8px;">
+        <a href="/blog/" style="font-size:0.86rem;">← Back to Engineering Benchmarks</a>
+      </div>
+      <span class="pill">Runner Economics • 6-Provider vCPU+RAM Parity • 2026-11-21 • 8 min read</span>
+      <h1>GitHub Actions Alternative Runners Benchmarked (<code>Blacksmith</code>, <code>Depot</code>, <code>Namespace</code>, <code>WarpBuild</code>, <code>BuildJet</code> &amp; <code>RunsOn</code>) — Verified <code>vCPU + RAM</code> Pricing &amp; Live OSS Case Studies with MiniCI</h1>
+      <h2>Why Runner Comparisons Fail Without <code>vCPU + RAM</code> Parity and Billing-Unit Math</h2>
+<p>Comparing GitHub Actions runner providers by headline percentage claims is often misleading unless two variables are held strictly constant:</p>
+<ol><li><strong>Matched <code>vCPU + RAM</code> Hardware Tiers:</strong> Comparing a <code>2 vCPU</code> runner against an <code>8 vCPU</code> runner—or ignoring RAM differences (<code>7 GB</code> vs. <code>16 GB</code> vs. <code>32 GB</code>)—distorts unit economics.</li><li><strong>Billing Granularity (<code>Whole-Minute Ceiling</code> vs. <code>Fractional/Per-Second Billing</code>):</strong> Standard and Larger GitHub-hosted runners round every expanded matrix job up to the next whole minute (<code>ceil(duration_minutes)</code>). High-speed third-party MicroVM providers (<strong>Blacksmith</strong>, <strong>Depot</strong>, <strong>Namespace</strong>, <strong>WarpBuild</strong>, <strong>BuildJet</strong>) and BYO-cloud orchestrators (<strong>RunsOn</strong>) bill fractional minutes—meaning a <code>2.1-minute</code> shard bills <code>2.1m</code>, not <code>3.0m</code>.</li></ol>
+<p><strong><a href="https://github.com/Aamir-raza-1/minici-cost-action">MiniCI</a></strong> (<code>minici v0.9.0</code>) compiles all <code>7</code> runner ecosystems—including exact <code>vCPU</code>, <code>RAM (GB)</code>, <code>OS/Arch</code>, per-minute rates, and <code>ceil_to_whole_minute</code> billing rules—into a <code>1.6 MiB</code> zero-dependency Rust binary. Below is the hardware-matched verification matrix and live results from <strong>6 major open-source repositories already running these providers in production</strong>.</p>
+<hr />
+<h2>Hardware-Matched (<code>vCPU + RAM</code>) Pricing &amp; Billing Matrix (<code>2026</code> Verified in MiniCI)</h2>
+<p>Every <code>runs-on</code> label below was verified directly through <code>minici breakdown</code> and <code>minici catalog</code>:</p>
+<div class="table-wrap"><table><thead><tr><th style="text-align:left">Hardware Tier (<code>OS • Arch</code>)</th><th style="text-align:left">Provider &amp; <code>runs-on</code> Label</th><th style="text-align:center"><code>vCPU</code></th><th style="text-align:center"><code>RAM</code></th><th style="text-align:center">Billing Unit</th><th style="text-align:center">Rate / Min (<code>USD</code>)</th><th style="text-align:left">vs. Matched GitHub Hosted</th></tr></thead><tbody><tr><td style="text-align:left"><strong>Linux Small</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>GitHub Hosted</strong> (<code>ubuntu-latest</code>)</td><td style="text-align:center"><code>2</code></td><td style="text-align:center"><code>7 GB</code></td><td style="text-align:center"><code>1-min ceiling</code></td><td style="text-align:center"><code>$0.0060/m</code></td><td style="text-align:left">Baseline</td></tr><tr><td style="text-align:left"><strong>Linux Small</strong> (<code>arm64</code>)</td><td style="text-align:left"><strong>GitHub Hosted ARM</strong> (<code>ubuntu-24.04-arm</code>)</td><td style="text-align:center"><code>2</code></td><td style="text-align:center"><code>7 GB</code></td><td style="text-align:center"><code>1-min ceiling</code></td><td style="text-align:center"><code>$0.0050/m</code></td><td style="text-align:left"><code>-16.7%</code> (still <code>1-min</code> ceil)</td></tr><tr><td style="text-align:left"><strong>Linux Small</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>Blacksmith / Depot / WarpBuild / BuildJet</strong> (<code>*-2vcpu-*</code> / <code>depot-ubuntu-24.04</code>)</td><td style="text-align:center"><code>2</code></td><td style="text-align:center"><code>8 GB</code></td><td style="text-align:center"><strong>Fractional</strong></td><td style="text-align:center"><strong><code>$0.0040/m</code></strong></td><td style="text-align:left"><strong><code>-33.3%</code> rate + <code>0</code> rounding</strong></td></tr><tr><td style="text-align:left"><strong>Linux Small</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>RunsOn BYO AWS EC2</strong> (<code>runs-on-2vcpu-linux-x64</code>)</td><td style="text-align:center"><code>2</code></td><td style="text-align:center"><code>8 GB</code></td><td style="text-align:center"><strong>Fractional</strong></td><td style="text-align:center"><strong><code>$0.0012/m</code></strong></td><td style="text-align:left"><strong><code>-80.0%</code> (in your AWS acct)</strong></td></tr><tr><td style="text-align:left"><strong>Linux Medium</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>GitHub Larger Runner</strong> (<code>ubuntu-4core</code>)</td><td style="text-align:center"><code>4</code></td><td style="text-align:center"><code>16 GB</code></td><td style="text-align:center"><code>1-min ceiling</code></td><td style="text-align:center"><code>$0.0120/m</code></td><td style="text-align:left">Baseline (<code>0</code> free mins)</td></tr><tr><td style="text-align:left"><strong>Linux Medium</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>Blacksmith / Depot / Namespace / WarpBuild / BuildJet</strong> (<code>4vcpu</code> tier)</td><td style="text-align:center"><code>4</code></td><td style="text-align:center"><code>16 GB</code></td><td style="text-align:center"><strong>Fractional</strong></td><td style="text-align:center"><strong><code>$0.0080/m</code></strong></td><td style="text-align:left"><strong><code>-33.3%</code> rate + <code>0</code> rounding</strong></td></tr><tr><td style="text-align:left"><strong>Linux Medium</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>RunsOn BYO AWS EC2</strong> (<code>runs-on-4vcpu-linux-x64</code> / <code>aws-ec2-runs-on</code>)</td><td style="text-align:center"><code>4</code></td><td style="text-align:center"><code>16 GB</code></td><td style="text-align:center"><strong>Fractional</strong></td><td style="text-align:center"><strong><code>$0.0024/m</code></strong></td><td style="text-align:left"><strong><code>-80.0%</code> (in your AWS acct)</strong></td></tr><tr><td style="text-align:left"><strong>Linux Large</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>GitHub Larger Runner</strong> (<code>ubuntu-8core</code>)</td><td style="text-align:center"><code>8</code></td><td style="text-align:center"><code>32 GB</code></td><td style="text-align:center"><code>1-min ceiling</code></td><td style="text-align:center"><code>$0.0220/m</code></td><td style="text-align:left">Baseline (<code>0</code> free mins)</td></tr><tr><td style="text-align:left"><strong>Linux Large</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>Blacksmith / Depot / Namespace / WarpBuild / BuildJet</strong> (<code>8vcpu</code> tier)</td><td style="text-align:center"><code>8</code></td><td style="text-align:center"><code>32 GB</code></td><td style="text-align:center"><strong>Fractional</strong></td><td style="text-align:center"><strong><code>$0.0160/m</code></strong></td><td style="text-align:left"><strong><code>-27.3%</code> rate + <code>0</code> rounding</strong></td></tr><tr><td style="text-align:left"><strong>Linux Large</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>RunsOn BYO AWS EC2</strong> (<code>runs-on-8vcpu-linux-x64</code>)</td><td style="text-align:center"><code>8</code></td><td style="text-align:center"><code>32 GB</code></td><td style="text-align:center"><strong>Fractional</strong></td><td style="text-align:center"><strong><code>$0.0048/m</code></strong></td><td style="text-align:left"><strong><code>-78.2%</code> (in your AWS acct)</strong></td></tr><tr><td style="text-align:left"><strong>Linux XLarge</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>GitHub Larger Runner</strong> (<code>ubuntu-16core</code>)</td><td style="text-align:center"><code>16</code></td><td style="text-align:center"><code>64 GB</code></td><td style="text-align:center"><code>1-min ceiling</code></td><td style="text-align:center"><code>$0.0420/m</code></td><td style="text-align:left">Baseline (<code>0</code> free mins)</td></tr><tr><td style="text-align:left"><strong>Linux XLarge</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>Blacksmith / Depot / WarpBuild / BuildJet</strong> (<code>16vcpu</code> tier)</td><td style="text-align:center"><code>16</code></td><td style="text-align:center"><code>64 GB</code></td><td style="text-align:center"><strong>Fractional</strong></td><td style="text-align:center"><strong><code>$0.0320/m</code></strong></td><td style="text-align:left"><strong><code>-23.8%</code> rate + <code>0</code> rounding</strong></td></tr><tr><td style="text-align:left"><strong>Linux XLarge</strong> (<code>x86_64</code>)</td><td style="text-align:left"><strong>RunsOn BYO AWS EC2</strong> (<code>runs-on-16vcpu-linux-x64</code>)</td><td style="text-align:center"><code>16</code></td><td style="text-align:center"><code>64 GB</code></td><td style="text-align:center"><strong>Fractional</strong></td><td style="text-align:center"><strong><code>$0.0096/m</code></strong></td><td style="text-align:left"><strong><code>-77.1%</code> (in your AWS acct)</strong></td></tr><tr><td style="text-align:left"><strong>macOS Silicon</strong> (<code>arm64</code>)</td><td style="text-align:left"><strong>GitHub Hosted</strong> (<code>macos-latest</code> M1/M2)</td><td style="text-align:center"><code>3</code></td><td style="text-align:center"><code>7 GB</code></td><td style="text-align:center"><code>1-min ceiling</code></td><td style="text-align:center"><code>$0.0620/m</code></td><td style="text-align:left">Baseline (<code>10x</code> quota burn)</td></tr><tr><td style="text-align:left"><strong>macOS Silicon</strong> (<code>arm64</code>)</td><td style="text-align:left"><strong>Namespace / Blacksmith / WarpBuild</strong> (<code>namespace-profile-macos-15</code> / <code>*-macos-*</code>)</td><td style="text-align:center"><code>4</code></td><td style="text-align:center"><code>14 GB</code></td><td style="text-align:center"><strong>Fractional</strong></td><td style="text-align:center"><strong><code>$0.0320/m</code></strong></td><td style="text-align:left"><strong><code>-48.4%</code> + <code>2x</code> RAM (<code>14 GB</code>)</strong></td></tr></tbody></table></div>
+<blockquote><p><strong>Tip:</strong> Have an enterprise committed-spend discount with Blacksmith, Depot, Namespace, WarpBuild, BuildJet, or AWS? Pin your exact contracted rate in <code>&lt; 1 ms</code> via <code>minici catalog set &lt;runner_label&gt; &lt;usd_per_min&gt;</code> (stored locally in <code>~/.minici/pricing_overrides.json</code>).</p></blockquote>
+<hr />
+<h2>How MiniCI Renders All 6 Providers Side-by-Side (<code>2.51 ms</code> Live Run)</h2>
+<p>Running <code>minici breakdown</code> on a multi-provider verification workflow (<code>test.yml</code>, where every job executes an identical <code>3.35m</code> raw <code>checkout + pytest</code> workload) shows exact SKU resolution and fractional billing across all <code>6</code> ecosystems:</p>
+<pre><code class="lang-text">$ minici breakdown --path ./verify_labels
+
+Project: ./verify_labels (1 workflow(s), 26 expanded jobs • 2.51 ms)
+
+ WORKFLOW / JOB                              MATRIX × RUNNER           BILLED MINS    RATE/MIN    COST/RUN   MONTHLY COST
+ ──────────────────────────────────────────  ────────────────────────  ───────────  ──────────  ──────────  ─────────────
+ test.yml • bs4                              1x blacksmith-4vcpu-u...         3.4m   $0.0080/m      $0.027      $11.60/mo
+ test.yml • bs8                              1x blacksmith-8vcpu-u...         3.4m   $0.0160/m      $0.054      $23.21/mo
+ test.yml • dp4                              1x depot-ubuntu-24.04-4          3.4m   $0.0080/m      $0.027      $11.60/mo
+ test.yml • dp8                              1x depot-ubuntu-24.04-8          3.4m   $0.0160/m      $0.054      $23.21/mo
+ test.yml • ns4                              1x namespace-profile-...         3.4m   $0.0080/m      $0.027      $11.60/mo
+ test.yml • nsmac                            1x namespace-profile-...         3.4m   $0.0320/m      $0.107      $46.42/mo
+ test.yml • wb4                              1x warpbuild-ubuntu-2...         3.4m   $0.0080/m      $0.027      $11.60/mo
+ test.yml • bj4                              1x buildjet-4vcpu-ubu...         3.4m   $0.0080/m      $0.027      $11.60/mo
+ test.yml • ro4                              1x runs-on-4vcpu-linu...         3.4m   $0.0024/m      $0.008       $3.46/mo
+ test.yml • ro8                              1x runs-on-8vcpu-linu...         3.4m   $0.0048/m      $0.016       $6.97/mo</code></pre>
+<p>Notice that an identical <code>3.35m</code> job on GitHub&#x27;s <code>ubuntu-4core</code> (<code>$0.0120/m</code>) rounds up to <code>4.0m</code> (<code>$0.048/run</code> = <strong><code>$20.78/mo</code></strong>), whereas <code>blacksmith-4vcpu</code>, <code>depot-ubuntu-24.04-4</code>, <code>namespace-profile-linux-x86-64-4</code>, <code>warpbuild-ubuntu-2404-4vcpu</code>, and <code>buildjet-4vcpu</code> bill exact fractional runtime (<code>3.35m × $0.0080/m</code> = <strong><code>$11.60/mo</code>, <code>-44.2%</code> combined savings</strong>), and <code>runs-on-4vcpu</code> bills <strong><code>$3.46/mo</code></strong> in BYO AWS EC2 compute.</p>
+<hr />
+<h2>Live Production Case Studies: 6 Real Open-Source Repos Audited with MiniCI</h2>
+<p>Several of the world&#x27;s fastest-growing open-source teams already mix GitHub-hosted runners with Blacksmith, Depot, Namespace, and RunsOn. Running <code>minici breakdown</code> (normalized at <code>433 runs/mo</code> on Apple M4 Pro, <code>&lt; 7 MiB</code> RSS RAM) quantifies the exact savings those specific jobs realize vs. hardware-matched (<code>same vCPU, OS &amp; Arch</code>) GitHub-hosted runners:</p>
+<div class="table-wrap"><table><thead><tr><th style="text-align:left">Repository</th><th style="text-align:left">Active Runner Provider(s)</th><th style="text-align:center">Jobs on Custom Runners</th><th style="text-align:left">Detected Production <code>runs-on</code> SKUs</th><th style="text-align:center">Billed Mins (<code>Fractional</code> vs. <code>GH Ceil</code>)</th><th style="text-align:center">Current Provider Cost</th><th style="text-align:center">Same-Spec GitHub Hosted</th><th style="text-align:center">Verified Monthly Savings</th></tr></thead><tbody><tr><td style="text-align:left"><strong><code>astral-sh/uv</code></strong></td><td style="text-align:left"><strong>Depot + Namespace</strong></td><td style="text-align:center"><code>30 / 243</code></td><td style="text-align:left"><code>depot-ubuntu-24.04-{4,8,16}</code>, <code>namespace-profile-macos-15</code>, <code>namespace-profile-windows-2022-x86-64-{4,16x32}</code></td><td style="text-align:center"><code>143.00m</code> vs. <code>160.00m</code></td><td style="text-align:center"><strong><code>$1,273.02/mo</code></strong></td><td style="text-align:center"><code>$2,776.40/mo</code></td><td style="text-align:center"><strong><code>$1,503.38/mo</code> (<code>-54.1%</code>)</strong></td></tr><tr><td style="text-align:left"><strong><code>mendableai/firecrawl</code></strong></td><td style="text-align:left"><strong>Blacksmith</strong></td><td style="text-align:center"><code>50 / 82</code></td><td style="text-align:left"><code>blacksmith-{2,4}vcpu-ubuntu-2404</code>, <code>blacksmith-4vcpu-ubuntu-2404-arm</code></td><td style="text-align:center"><code>602.15m</code> vs. <code>626.00m</code></td><td style="text-align:center"><strong><code>$1,955.60/mo</code></strong></td><td style="text-align:center"><code>$3,005.89/mo</code></td><td style="text-align:center"><strong><code>$1,050.28/mo</code> (<code>-34.9%</code>)</strong></td></tr><tr><td style="text-align:left"><strong><code>langgenius/dify</code></strong></td><td style="text-align:left"><strong>Depot</strong></td><td style="text-align:center"><code>79 / 117</code></td><td style="text-align:left"><code>depot-ubuntu-24.04</code> (<code>2 vCPU</code>), <code>depot-ubuntu-24.04-4</code> (<code>4 vCPU</code>)</td><td style="text-align:center"><code>286.00m</code> vs. <code>322.00m</code></td><td style="text-align:center"><strong><code>$719.65/mo</code></strong></td><td style="text-align:center"><code>$1,208.07/mo</code></td><td style="text-align:center"><strong><code>$488.42/mo</code> (<code>-40.4%</code>)</strong></td></tr><tr><td style="text-align:left"><strong><code>n8n-io/n8n</code></strong></td><td style="text-align:left"><strong>Blacksmith</strong></td><td style="text-align:center"><code>21 / 44</code></td><td style="text-align:left"><code>blacksmith-{2,4,8}vcpu-ubuntu-2204</code></td><td style="text-align:center"><code>214.35m</code> vs. <code>218.00m</code></td><td style="text-align:center"><strong><code>$757.49/mo</code></strong></td><td style="text-align:center"><code>$1,144.85/mo</code></td><td style="text-align:center"><strong><code>$387.36/mo</code> (<code>-33.8%</code>)</strong></td></tr><tr><td style="text-align:left"><strong><code>supabase/supabase</code></strong></td><td style="text-align:left"><strong>Blacksmith</strong></td><td style="text-align:center"><code>19 / 25</code></td><td style="text-align:left"><code>blacksmith-{4,8}vcpu-ubuntu-2404</code></td><td style="text-align:center"><code>62.35m</code> vs. <code>68.00m</code></td><td style="text-align:center"><strong><code>$255.47/mo</code></strong></td><td style="text-align:center"><code>$405.29/mo</code></td><td style="text-align:center"><strong><code>$149.82/mo</code> (<code>-37.0%</code>)</strong></td></tr><tr><td style="text-align:left"><strong><code>pydantic/pydantic</code></strong></td><td style="text-align:left"><strong>RunsOn (AWS EC2)</strong></td><td style="text-align:center"><code>9 / 175</code></td><td style="text-align:left"><code>aws-ec2-runs-on</code> (<code>4 vCPU</code>)</td><td style="text-align:center"><code>25.70m</code> vs. <code>29.00m</code></td><td style="text-align:center"><strong><code>$26.67/mo</code></strong></td><td style="text-align:center"><code>$150.68/mo</code></td><td style="text-align:center"><strong><code>$124.01/mo</code> (<code>-82.3%</code>)</strong></td></tr></tbody></table></div>
+<h3>Contextual Intelligence: MiniCI Never Double-Counts Already-Optimized Fleets</h3>
+<p>When you run <code>minici breakdown</code> on <strong><code>supabase/supabase</code></strong> (<code>19/25</code> jobs already on Blacksmith) or <strong><code>mendableai/firecrawl</code></strong> (<code>50/82</code> jobs already on Blacksmith), <code>minici</code> recognizes the custom runners, excludes them from GitHub&#x27;s <code>20</code>-job concurrency cap (<code>Concurrency: 25 peak jobs (6 hosted / 19 custom)</code>), and skips generic runner-migration advice in favor of the actual remaining bottleneck:</p>
+<pre><code class="lang-text">$ minici breakdown --repo supabase/supabase
+...
+ OVERALL TOTAL (433 runs/mo • paid tier)     25 expanded job(s)              73.3m           —      $0.656     $284.05/mo
+
+ • Free-Tier Quota  : 31761 / 2000 mins (238.2% of monthly quota) • Net Billed: $272.05/mo • Rounding Overhead: 1.6m/run ($6.39/mo)
+ • Dev Wait-Time    : 7.7m critical path ($3.34/run • $1446.22/mo at 40% DORA context-switch loss) • Concurrency: 25 peak jobs (6 hosted / 19 custom)
+ • Artifact Storage : 2 upload job(s) • 90d retention ($162.38/mo, 649.50 GB steady-state) (14d retention reduces storage to $25.26/mo)
+ • Recommendation   : Pipeline compute already optimized (19/25 jobs on custom runners); set artifact `retention-days: 14` to cut storage from $162.38/mo to $25.26/mo</code></pre>
+<hr />
+<h2>Verifying a Runner Migration in a Pull Request (<code>minici diff</code> in <code>364 µs</code>)</h2>
+<p>When evaluating a move from GitHub Larger/macOS runners (<code>4x ubuntu-4core</code>, <code>1x ubuntu-8core</code>, <code>1x macos-latest</code>) to hardware-matched third-party runners (<code>4x blacksmith-4vcpu-ubuntu-2404</code>, <code>1x depot-ubuntu-24.04-8</code>, <code>1x namespace-profile-macos-15</code>), <code>minici diff</code> and <code>minici comment github</code> prove the exact Pull Request savings before merge:</p>
+<pre><code class="lang-text">$ minici diff --path . --compare-to main
+
++====================================================================================+
+| MINICI — PULL REQUEST COST DIFF (364 µs • Exit Code 0 Informational)                |
++====================================================================================+
+Comparing            : `git-ref:main` (Base) -&gt; `./runner-migration-demo` (PR Head)
+1. Matrix Jobs       : 6 jobs -&gt; 6 jobs (+0 jobs)
+2. Billed Mins / Run : 27.0m -&gt; 23.6m (-3.4m / run)
+3. Monthly CI Cost   : $257.20/mo -&gt; $140.29/mo (-$116.91/mo • -45.5%)
+4. Dev Wait Cost ($) : $1286.01/mo -&gt; $1286.01/mo (+$0.00/mo) [Assumed Rate Configurable]
+5. Key Change        : Modified `api-tests` (`.github/workflows/ci.yml`): `4x ubuntu-4core` (16.0m • $0.192/run) -&gt; `4x blacksmith-4vcpu-ubuntu-2404` (13.4m • $0.107/run) (total changes: 3)
++====================================================================================+</code></pre>
+<hr />
+<h2>When to Pick Managed MicroVMs vs. BYO-Cloud (<code>RunsOn</code>) vs. GitHub Hosted</h2>
+<ol><li><strong>Managed High-Speed Runners (<code>Blacksmith</code>, <code>Depot</code>, <code>Namespace</code>, <code>WarpBuild</code>, <code>BuildJet</code>):</strong> Best when you want zero AWS/IAM maintenance, <code>1</code>-line <code>runs-on:</code> adoption, co-located NVMe build caches, fractional-minute billing, and <code>33%–48%</code> lower per-minute rates at matched <code>vCPU + RAM</code>. (<code>Depot</code> and <code>Namespace</code> also shine on native container build acceleration and Windows/macOS profiles, as seen in <code>astral-sh/uv</code> and <code>langgenius/dify</code>.)</li><li><strong>BYO AWS EC2 Orchestration (<code>RunsOn</code>):</strong> Best when you already manage an AWS organization, want <code>75%–82%</code> raw compute savings (<code>$0.0024/m</code> <code>4-vCPU</code> On-Demand or Spot), and keep S3/ECR Gateway VPC Endpoints configured so private-subnet NAT Gateway charges stay near <code>$0</code>.</li><li><strong>GitHub Hosted (<code>ubuntu-slim</code>, <code>ubuntu-24.04-arm</code>, <code>ubuntu-latest</code>):</strong> Optimal for lightweight <code>1–2</code> minute lint, PR-title, and governance checks (<code>$0.0020/m</code> on <code>ubuntu-slim</code> or covered by included plan minutes)—exactly why <code>n8n-io/n8n</code>, <code>supabase/supabase</code>, and <code>mendableai/firecrawl</code> keep lightweight checks on GitHub Hosted while routing heavy test/build jobs to custom runners.</li></ol>
+<hr />
+<h2>Verify on Your Own Repository in <code>30 Seconds</code></h2>
+<pre><code class="lang-bash"># Install MiniCI (zero-dependency Rust CLI)
+curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+
+# Audit live OSS repos using Blacksmith, Depot, Namespace &amp; RunsOn:
+minici breakdown --repo supabase/supabase
+minici breakdown --repo n8n-io/n8n
+minici breakdown --repo langgenius/dify
+minici breakdown --repo astral-sh/uv
+minici breakdown --repo pydantic/pydantic
+
+# Inspect all compiled runner &amp; cloud VM rates:
+minici catalog</code></pre>
+<hr />
+<h2>Frequently Asked Questions (FAQ)</h2>
+<h3>Why do Blacksmith, Depot, Namespace, WarpBuild, and BuildJet bill fewer minutes than GitHub Actions for the exact same runtime?</h3>
+<p>GitHub Actions rounds every job&#x27;s duration up to the next whole minute (<code>ceil(minutes)</code>), so ten <code>2.1-minute</code> matrix shards bill <code>30.0</code> minutes. Managed MicroVM runner providers bill per second / fractional minute, so those same ten <code>2.1-minute</code> shards bill <code>21.0</code> minutes—saving <code>30%</code> in billed time before per-minute rate discounts are even applied.</p>
+<h3>How do I choose between Managed MicroVM runners and RunsOn (self-hosted AWS EC2)?</h3>
+<p>Managed MicroVM providers (<code>Blacksmith</code>, <code>Depot</code>, <code>Namespace</code>, <code>WarpBuild</code>, <code>BuildJet</code>) require zero cloud infrastructure management and save <code>33%–54%</code> vs. matched GitHub Larger/macOS runners. <code>RunsOn</code> runs ephemeral VMs inside your own AWS account, saving <code>77%–82%</code> on compute, provided you manage AWS quotas and configure S3/ECR VPC Endpoints to avoid <code>$0.045/GB</code> NAT Gateway fees.</p>
+<h3>Does MiniCI work with custom enterprise runner labels?</h3>
+<p>Yes. MiniCI automatically detects <code>blacksmith-*</code>, <code>depot-*</code>, <code>namespace-profile-*</code>, <code>warpbuild-*</code>, <code>buildjet-*</code>, <code>runs-on-*</code>, and <code>self-hosted*</code> labels out of the box, and supports custom per-label rate overrides via <code>minici catalog set &lt;label&gt; &lt;usd_per_min&gt;</code>.</p>
+      <div class="cta-box">
+        <div>
+          <strong style="font-size:1.1rem;display:block;margin-bottom:4px;">See What Every Pull Request Costs in &lt; 2 ms</strong>
+          <span style="color:var(--muted);font-size:0.9rem;">Zero external Rust crates • Zero API keys • Sticky GitHub PR Cost Diff + 1-click YAML fixes.</span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <a class="btn" href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Install GitHub Action</a>
+          <a class="btn" style="background:#1e293b;color:#f8fafc;" href="https://polar.sh/minici">Sponsor on Polar.sh</a>
+        </div>
+      </div>
+    </article>
+
+  </main>
+  <footer class="container">
+    <span>Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a> • Apache-2.0</span>
+    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a></span>
+  </footer>
+</body>
+</html>
