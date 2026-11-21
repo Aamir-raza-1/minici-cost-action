@@ -12,7 +12,7 @@
 
 Most CI/CD platforms—including GitHub Actions, GitLab CI, and CircleCI—report runner charges in monthly billing dashboards rather than inside Pull Requests. When an engineer modifies `.github/workflows/*.yml` to expand a test `strategy.matrix`, switch a build job to an `8-core` or `macOS` runner, or upload build artifacts without a retention policy, code reviewers see the YAML diff—but **zero dollar or quota impact** before clicking *Merge*.
 
-**[MiniCI](https://github.com/Aamir-raza-1/minici-cost-action)** (`minici v0.9.0`) solves this locally and in CI. Written in `100%` pure Rust (`std` only, `0` external crates, `1.6 MiB` static binary), MiniCI expands workflow matrices, applies vendor billing rules (`1x` Linux, `2x` Windows, `10x` macOS quota multipliers, whole-minute ceiling rounding, and `227+` runner & cloud VM rates across `7` CI platforms), and posts a non-blocking (`exit 0`) cost receipt on every Pull Request—requiring **zero API keys and zero source-code read permissions (`Contents: None` default)**.
+**[MiniCI](https://github.com/minici-dev/minici-cost-action)** (`minici v0.9.0`) solves this locally and in CI. Written in `100%` pure Rust (`std` only, `0` external crates, `1.6 MiB` static binary), MiniCI expands workflow matrices, applies vendor billing rules (`1x` Linux, `2x` Windows, `10x` macOS quota multipliers, whole-minute ceiling rounding, and `227+` runner & cloud VM rates across `7` CI platforms), and posts a non-blocking (`exit 0`) cost receipt on every Pull Request—requiring **zero API keys and zero source-code read permissions (`Contents: None` default)**.
 
 To test MiniCI at real engineering scale, we benchmarked it offline against **10 of the world's most active open-source GitHub repositories**.
 
@@ -109,7 +109,7 @@ In **`supabase/supabase`**, compute is already lean (`$284.05/mo`), so `minici` 
 
 ```bash
 # 1. Install MiniCI (Linux & macOS static binary, 0 dependencies)
-curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/scripts/install.sh | bash
 
 # 2. Audit any public GitHub repository remotely without cloning:
 minici breakdown --repo pydantic/pydantic
@@ -131,4 +131,4 @@ GitHub Actions bills per expanded job by rounding each job's runtime up to the n
 No. `minici` is a standalone Rust binary (`0` third-party crates) that parses workflow YAML files locally with `Contents: None` source-code access by default and zero external network calls during `breakdown`, `diff`, `shrink`, or `comment`.
 
 ### Can MiniCI run inside GitHub Actions on every Pull Request?
-Yes. Adding `uses: Aamir-raza-1/minici-cost-action@v1` with `compare-to: "origin/${{ github.base_ref }}"` and `post-pr-comment: "true"` posts a single auto-updating sticky Pull Request cost diff comment and always exits `0` so developer builds are never blocked.
+Yes. Adding `uses: minici-dev/minici-cost-action@v1` with `compare-to: "origin/${{ github.base_ref }}"` and `post-pr-comment: "true"` posts a single auto-updating sticky Pull Request cost diff comment and always exits `0` so developer builds are never blocked.

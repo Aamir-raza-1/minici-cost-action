@@ -271,7 +271,7 @@ def render_page(title: str, desc: str, slug_path: str, keywords: list[str], body
   <meta property="og:title" content="{html.escape(title)}" />
   <meta property="og:description" content="{html.escape(desc)}" />
   <meta property="og:url" content="{url}" />
-  <meta property="og:image" content="https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/social-preview-1280x640.png" />
+  <meta property="og:image" content="https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/web/social-preview-1280x640.png" />
   <script type="application/ld+json">{json.dumps(ld)}</script>
   <style>{CSS}</style>
 </head>
@@ -288,7 +288,7 @@ def render_page(title: str, desc: str, slug_path: str, keywords: list[str], body
         <a href="/blog/">All Benchmarks</a>
         <a href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Marketplace</a>
         <a href="https://polar.sh/minici" style="color:var(--emerald);font-weight:600;">♥ Sponsor</a>
-        <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a>
+        <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a>
       </nav>
     </div>
   </header>
@@ -297,7 +297,7 @@ def render_page(title: str, desc: str, slug_path: str, keywords: list[str], body
   </main>
   <footer class="container">
     <span>Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a> • Apache-2.0</span>
-    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a></span>
+    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a></span>
   </footer>
 </body>
 </html>

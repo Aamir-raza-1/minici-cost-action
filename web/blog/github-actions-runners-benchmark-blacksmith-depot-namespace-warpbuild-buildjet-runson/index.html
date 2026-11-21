@@ -12,7 +12,7 @@
   <meta property="og:title" content="Blacksmith vs Depot vs Namespace vs WarpBuild vs GitHub Runners" />
   <meta property="og:description" content="Hardware-matched (vCPU + RAM) GitHub Actions runner pricing benchmark across Blacksmith, Depot, Namespace, WarpBuild, BuildJet &amp; RunsOn on real OSS repos with MiniCI." />
   <meta property="og:url" content="https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-runners-benchmark-blacksmith-depot-namespace-warpbuild-buildjet-runson/" />
-  <meta property="og:image" content="https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/social-preview-1280x640.png" />
+  <meta property="og:image" content="https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/web/social-preview-1280x640.png" />
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Blacksmith vs Depot vs Namespace vs WarpBuild vs GitHub Runners", "description": "Hardware-matched (vCPU + RAM) GitHub Actions runner pricing benchmark across Blacksmith, Depot, Namespace, WarpBuild, BuildJet & RunsOn on real OSS repos with MiniCI.", "datePublished": "2026-11-21", "author": {"@type": "Person", "name": "Aamir Raza", "url": "https://github.com/Aamir-raza-1"}, "publisher": {"@type": "Organization", "name": "MiniCI", "url": "https://minici-cost-action.raza-aamir01.workers.dev"}, "url": "https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-runners-benchmark-blacksmith-depot-namespace-warpbuild-buildjet-runson/", "keywords": "GitHub Actions alternative runners, Blacksmith vs Depot vs Namespace, WarpBuild vs BuildJet pricing, RunsOn GitHub Actions cost, GitHub Larger Runners pricing per minute, reduce GitHub Actions runner cost, MiniCI"}</script>
   <style>
 :root {
@@ -70,7 +70,7 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; font-size: 0.84re
         <a href="/blog/">All Benchmarks</a>
         <a href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Marketplace</a>
         <a href="https://polar.sh/minici" style="color:var(--emerald);font-weight:600;">♥ Sponsor</a>
-        <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a>
+        <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a>
       </nav>
     </div>
   </header>
@@ -85,7 +85,7 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; font-size: 0.84re
       <h2>Why Runner Comparisons Fail Without <code>vCPU + RAM</code> Parity and Billing-Unit Math</h2>
 <p>Comparing GitHub Actions runner providers by headline percentage claims is often misleading unless two variables are held strictly constant:</p>
 <ol><li><strong>Matched <code>vCPU + RAM</code> Hardware Tiers:</strong> Comparing a <code>2 vCPU</code> runner against an <code>8 vCPU</code> runner—or ignoring RAM differences (<code>7 GB</code> vs. <code>16 GB</code> vs. <code>32 GB</code>)—distorts unit economics.</li><li><strong>Billing Granularity (<code>Whole-Minute Ceiling</code> vs. <code>Fractional/Per-Second Billing</code>):</strong> Standard and Larger GitHub-hosted runners round every expanded matrix job up to the next whole minute (<code>ceil(duration_minutes)</code>). High-speed third-party MicroVM providers (<strong>Blacksmith</strong>, <strong>Depot</strong>, <strong>Namespace</strong>, <strong>WarpBuild</strong>, <strong>BuildJet</strong>) and BYO-cloud orchestrators (<strong>RunsOn</strong>) bill fractional minutes—meaning a <code>2.1-minute</code> shard bills <code>2.1m</code>, not <code>3.0m</code>.</li></ol>
-<p><strong><a href="https://github.com/Aamir-raza-1/minici-cost-action">MiniCI</a></strong> (<code>minici v0.9.0</code>) compiles all <code>7</code> runner ecosystems—including exact <code>vCPU</code>, <code>RAM (GB)</code>, <code>OS/Arch</code>, per-minute rates, and <code>ceil_to_whole_minute</code> billing rules—into a <code>1.6 MiB</code> zero-dependency Rust binary. Below is the hardware-matched verification matrix and live results from <strong>6 major open-source repositories already running these providers in production</strong>.</p>
+<p><strong><a href="https://github.com/minici-dev/minici-cost-action">MiniCI</a></strong> (<code>minici v0.9.0</code>) compiles all <code>7</code> runner ecosystems—including exact <code>vCPU</code>, <code>RAM (GB)</code>, <code>OS/Arch</code>, per-minute rates, and <code>ceil_to_whole_minute</code> billing rules—into a <code>1.6 MiB</code> zero-dependency Rust binary. Below is the hardware-matched verification matrix and live results from <strong>6 major open-source repositories already running these providers in production</strong>.</p>
 <hr />
 <h2>Hardware-Matched (<code>vCPU + RAM</code>) Pricing &amp; Billing Matrix (<code>2026</code> Verified in MiniCI)</h2>
 <p>Every <code>runs-on</code> label below was verified directly through <code>minici breakdown</code> and <code>minici catalog</code>:</p>
@@ -146,7 +146,7 @@ Comparing            : `git-ref:main` (Base) -&gt; `./runner-migration-demo` (PR
 <hr />
 <h2>Verify on Your Own Repository in <code>30 Seconds</code></h2>
 <pre><code class="lang-bash"># Install MiniCI (zero-dependency Rust CLI)
-curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/scripts/install.sh | bash
 
 # Audit live OSS repos using Blacksmith, Depot, Namespace &amp; RunsOn:
 minici breakdown --repo supabase/supabase
@@ -180,7 +180,7 @@ minici catalog</code></pre>
   </main>
   <footer class="container">
     <span>Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a> • Apache-2.0</span>
-    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a></span>
+    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a></span>
   </footer>
 </body>
 </html>

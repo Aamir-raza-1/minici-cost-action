@@ -934,7 +934,7 @@ pub fn run_permissions_audit_with_vendor(
         minimal_bundle_guide.to_string()
     } else if attributes_unlocked >= 99 {
         format!(
-            "Tier 3 Invoice-Reconciled ({:.1}% — {}/108 attributes). Optional: add `uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1` in workflow YAML to unlock the final kernel CPU/RAM attributes (108/108 = 100.0%).",
+            "Tier 3 Invoice-Reconciled ({:.1}% — {}/108 attributes). Optional: add `uses: minici-dev/minici-cost-action/telemetry-step@v1` in workflow YAML to unlock the final kernel CPU/RAM attributes (108/108 = 100.0%).",
             coverage_pct, attributes_unlocked
         )
     } else if attributes_unlocked >= 89 {
@@ -1041,10 +1041,10 @@ mod tests {
         assert_eq!(rep_cci.attributes_unlocked, 104);
         assert!((rep_cci.coverage_pct - 96.3).abs() < 0.1);
 
-        // Tier 4: + `Aamir-raza-1/minici-cost-action/telemetry-step@v1` in workflow YAML = 108/108 (100.0%)
+        // Tier 4: + `minici-dev/minici-cost-action/telemetry-step@v1` in workflow YAML = 108/108 (100.0%)
         let wf_dir = tmp.join(".github").join("workflows");
         fs::create_dir_all(&wf_dir).unwrap();
-        fs::write(wf_dir.join("ci.yml"), "steps:\n  - uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1\n").unwrap();
+        fs::write(wf_dir.join("ci.yml"), "steps:\n  - uses: minici-dev/minici-cost-action/telemetry-step@v1\n").unwrap();
         let rep_t4 = run_permissions_audit(
             tmp.to_str().unwrap(),
             Some(&gh_csv),

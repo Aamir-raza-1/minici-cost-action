@@ -42,7 +42,7 @@ jobs:
             cargo build --release --manifest-path crates/minici/Cargo.toml
             BIN="$(pwd)/crates/minici/target/release/minici"
           else
-            curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/v1/scripts/install.sh | MINICI_INSTALL_DIR="$(pwd)/.minici-bin" bash
+            curl -fsSL https://raw.githubusercontent.com/minici-dev/minici-cost-action/v1/scripts/install.sh | MINICI_INSTALL_DIR="$(pwd)/.minici-bin" bash
             BIN="$(pwd)/.minici-bin/minici"
           fi
           if [ "$EVENT_NAME" = "issue_comment" ]; then

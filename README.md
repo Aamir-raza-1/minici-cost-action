@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/minici-icon-128.png" width="60" height="60" alt="MiniCI" />
+  <img src="https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/web/minici-icon-128.png" width="60" height="60" alt="MiniCI" />
 </p>
 
 <h1 align="center">MiniCI — See What Every Pull Request Costs Before You Merge</h1>
@@ -12,9 +12,9 @@
 
 <p align="center">
   <a href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt"><img src="https://img.shields.io/badge/Marketplace-MiniCI_Cost_Action-0969da?logo=github" alt="GitHub Marketplace" /></a>
-  <a href="https://github.com/Aamir-raza-1/minici-cost-action/actions/workflows/ci.yml"><img src="https://github.com/Aamir-raza-1/minici-cost-action/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://github.com/Aamir-raza-1/minici-cost-action/releases/latest"><img src="https://img.shields.io/github/v/release/Aamir-raza-1/minici-cost-action?color=0ea5e9&amp;label=release" alt="Release" /></a>
-  <a href="https://github.com/Aamir-raza-1/minici-cost-action/blob/main/crates/minici/Cargo.toml"><img src="https://img.shields.io/badge/rust-std_only_(0_crates)-f97316.svg" alt="Pure Rust" /></a>
+  <a href="https://github.com/minici-dev/minici-cost-action/actions/workflows/ci.yml"><img src="https://github.com/minici-dev/minici-cost-action/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/minici-dev/minici-cost-action/releases/latest"><img src="https://img.shields.io/github/v/release/minici-dev/minici-cost-action?color=0ea5e9&amp;label=release" alt="Release" /></a>
+  <a href="https://github.com/minici-dev/minici-cost-action/blob/main/crates/minici/Cargo.toml"><img src="https://img.shields.io/badge/rust-std_only_(0_crates)-f97316.svg" alt="Pure Rust" /></a>
   <a href="https://polar.sh/minici"><img src="https://img.shields.io/badge/Sponsor-Polar.sh-10b981?logo=githubsponsors" alt="Sponsor on Polar" /></a>
 </p>
 
@@ -97,7 +97,7 @@ jobs:
 
       - name: MiniCI PR Cost Diff & 1-Click Fixes
         id: cost
-        uses: Aamir-raza-1/minici-cost-action@v1
+        uses: minici-dev/minici-cost-action@v1
         with:
           compare-to: "origin/${{ github.base_ref }}"
           post-pr-comment: "true"
@@ -139,7 +139,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: Aamir-raza-1/minici-cost-action@v1
+      - uses: minici-dev/minici-cost-action@v1
         with:
           compare-to: "origin/${{ github.base_ref }}"
           post-pr-comment: "true"
@@ -168,14 +168,14 @@ MiniCI never blocks PRs by default (`exit 0`), but platform teams can gate extre
 
 ## Local CLI Quickstart (Zero-Clone Audit)
 
-Install the SHA-256 verified binary (Linux & macOS), install via Cargo, or download from [GitHub Releases](https://github.com/Aamir-raza-1/minici-cost-action/releases/latest):
+Install the SHA-256 verified binary (Linux & macOS), install via Cargo, or download from [GitHub Releases](https://github.com/minici-dev/minici-cost-action/releases/latest):
 
 ```bash
 # Option A: Prebuilt SHA-256 verified installer (Linux & macOS)
-curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/scripts/install.sh | bash
 
 # Option B: Cargo install (or `cargo build --release` offline — 0 external crates)
-cargo install --git https://github.com/Aamir-raza-1/minici-cost-action.git minici
+cargo install --git https://github.com/minici-dev/minici-cost-action.git minici
 ```
 
 Try it immediately — locally or against any public GitHub repo without cloning:
@@ -189,7 +189,7 @@ minici migrate --path . --to github-arm64        # Check 6-gate ARM64 savings or
 minici init-hooks --path .                       # Wire Antigravity, Claude Code, VS Code, Git & PR hooks
 ```
 
-[![MiniCI Terminal Demo](https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/how-to-install-and-use.png)](https://minici-cost-action.raza-aamir01.workers.dev/how-to-install-and-use.mp4)
+[![MiniCI Terminal Demo](https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/web/how-to-install-and-use.png)](https://minici-cost-action.raza-aamir01.workers.dev/how-to-install-and-use.mp4)
 
 ### Verified Speed on World-Scale Open-Source Pipelines
 
@@ -229,7 +229,7 @@ Reproduce any row below in seconds with `minici breakdown --repo <owner/repo>`:
 
 ## Permissions & Zero-Egress Security
 
-![MiniCI Architecture Overview](https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/customer-diagram.svg)
+![MiniCI Architecture Overview](https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/web/customer-diagram.svg)
 
 MiniCI compiles strictly against the Rust standard library (`0` third-party Cargo crates) and **never uploads or transmits application source code**:
 
@@ -241,7 +241,7 @@ MiniCI compiles strictly against the Rust standard library (`0` third-party Carg
 | **`actions: read` *(Optional)*** | Used only when `live-telemetry: "true"` is enabled to fetch historical run durations. | GitHub API (`GET` only) |
 | **Fork & Dependabot PRs** | GitHub automatically provides a read-only token on untrusted forks; MiniCI skips PR commenting cleanly (`exit 0`) and writes the receipt to `$GITHUB_STEP_SUMMARY`. Never use `pull_request_target` with untrusted checkouts. | **None** |
 
-See [SECURITY.md](https://github.com/Aamir-raza-1/minici-cost-action/blob/main/SECURITY.md) for the full threat model, SHA-256 verification, and 40-char commit-SHA pinning guide.
+See [SECURITY.md](https://github.com/minici-dev/minici-cost-action/blob/main/SECURITY.md) for the full threat model, SHA-256 verification, and 40-char commit-SHA pinning guide.
 
 ---
 
@@ -292,7 +292,7 @@ Expose all 8 deterministic CI FinOps tools (`minici_breakdown`, `minici_diff`, `
 | `billing-csv` | `""` | Optional `FOCUS v1.1` or CI vendor billing CSV path for exact invoice lock |
 | `slack-webhook-url` | `""` | Optional Slack Incoming Webhook URL for Block Kit cost & diff alerts |
 
-**Key Outputs (`steps.<id>.outputs.*`):** `gross_monthly_compute_cost_usd`, `net_billed_monthly_compute_cost_usd`, `monthly_rounding_tax_usd`, `monthly_productive_payroll_loss_usd`, `arm64_migration_monthly_savings_usd`, `recoverable_ci_and_wait_monthly_usd`, `cost_per_merged_pr_usd`, `spend_anomaly_alert_active`, `provenance_mode` (+ 25 more in [action.yml](https://github.com/Aamir-raza-1/minici-cost-action/blob/main/action.yml)).
+**Key Outputs (`steps.<id>.outputs.*`):** `gross_monthly_compute_cost_usd`, `net_billed_monthly_compute_cost_usd`, `monthly_rounding_tax_usd`, `monthly_productive_payroll_loss_usd`, `arm64_migration_monthly_savings_usd`, `recoverable_ci_and_wait_monthly_usd`, `cost_per_merged_pr_usd`, `spend_anomaly_alert_active`, `provenance_mode` (+ 25 more in [action.yml](https://github.com/minici-dev/minici-cost-action/blob/main/action.yml)).
 
 ---
 
@@ -348,14 +348,14 @@ Instead of re-serializing YAML ASTs (which destroys comments and formatting), `m
 <details>
 <summary><strong>6. What are the known static-analysis boundaries in offline mode?</strong></summary>
 
-Local reusable workflows (`uses: ./.github/workflows/...`) resolve automatically without double-counting orchestrator jobs. Dynamic runtime matrices (`${{ fromJSON(...) }}`), YAML merge anchors (`<<: *base`), and cross-repository reusable workflows default to `1x` cardinality offline unless paired with `live-telemetry: "true"`. Full details in [CAPABILITIES_AND_LIMITATIONS.md](https://github.com/Aamir-raza-1/minici-cost-action/blob/main/docs/CAPABILITIES_AND_LIMITATIONS.md) and [BENCHMARK_217_CASES_3ARM_RESULTS.md](https://github.com/Aamir-raza-1/minici-cost-action/blob/main/docs/BENCHMARK_217_CASES_3ARM_RESULTS.md).
+Local reusable workflows (`uses: ./.github/workflows/...`) resolve automatically without double-counting orchestrator jobs. Dynamic runtime matrices (`${{ fromJSON(...) }}`), YAML merge anchors (`<<: *base`), and cross-repository reusable workflows default to `1x` cardinality offline unless paired with `live-telemetry: "true"`. Full details in [CAPABILITIES_AND_LIMITATIONS.md](https://github.com/minici-dev/minici-cost-action/blob/main/docs/CAPABILITIES_AND_LIMITATIONS.md) and [BENCHMARK_217_CASES_3ARM_RESULTS.md](https://github.com/minici-dev/minici-cost-action/blob/main/docs/BENCHMARK_217_CASES_3ARM_RESULTS.md).
 
 </details>
 
 ---
 
 <p align="center">
-  Licensed under <a href="https://github.com/Aamir-raza-1/minici-cost-action/blob/main/LICENSE">Apache-2.0</a> &middot;
+  Licensed under <a href="https://github.com/minici-dev/minici-cost-action/blob/main/LICENSE">Apache-2.0</a> &middot;
   <a href="https://polar.sh/minici">Sponsor on Polar.sh</a> &middot;
   Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a>.
 </p>

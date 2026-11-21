@@ -14,7 +14,7 @@ This guide covers installing and running `minici` (`v0.9.0`) as a **Local CLI**,
 ### Option A: 1-Line Prebuilt Installer (Linux & macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/scripts/install.sh | bash
 minici --version
 # -> minici 0.9.0
 ```
@@ -22,7 +22,7 @@ minici --version
 ### Option B: Build Offline from Source (`~1.5s`)
 
 ```bash
-git clone https://github.com/Aamir-raza-1/minici-cost-action.git
+git clone https://github.com/minici-dev/minici-cost-action.git
 cd minici-cost-action
 cargo build --release --manifest-path crates/minici/Cargo.toml
 
@@ -33,7 +33,7 @@ cp crates/minici/target/release/minici ~/.local/bin/minici
 ### Option C: Install via `cargo install`
 
 ```bash
-cargo install --git https://github.com/Aamir-raza-1/minici-cost-action.git minici
+cargo install --git https://github.com/minici-dev/minici-cost-action.git minici
 ```
 
 ---
@@ -138,7 +138,7 @@ jobs:
 
       - name: Compute CI Cost Breakdown
         id: cost
-        uses: Aamir-raza-1/minici-cost-action@v1
+        uses: minici-dev/minici-cost-action@v1
         with:
           path: "."
           tier: "auto"

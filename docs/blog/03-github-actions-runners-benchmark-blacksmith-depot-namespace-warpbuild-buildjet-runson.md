@@ -15,7 +15,7 @@ Comparing GitHub Actions runner providers by headline percentage claims is often
 1. **Matched `vCPU + RAM` Hardware Tiers:** Comparing a `2 vCPU` runner against an `8 vCPU` runner—or ignoring RAM differences (`7 GB` vs. `16 GB` vs. `32 GB`)—distorts unit economics.
 2. **Billing Granularity (`Whole-Minute Ceiling` vs. `Fractional/Per-Second Billing`):** Standard and Larger GitHub-hosted runners round every expanded matrix job up to the next whole minute (`ceil(duration_minutes)`). High-speed third-party MicroVM providers (**Blacksmith**, **Depot**, **Namespace**, **WarpBuild**, **BuildJet**) and BYO-cloud orchestrators (**RunsOn**) bill fractional minutes—meaning a `2.1-minute` shard bills `2.1m`, not `3.0m`.
 
-**[MiniCI](https://github.com/Aamir-raza-1/minici-cost-action)** (`minici v0.9.0`) compiles all `7` runner ecosystems—including exact `vCPU`, `RAM (GB)`, `OS/Arch`, per-minute rates, and `ceil_to_whole_minute` billing rules—into a `1.6 MiB` zero-dependency Rust binary. Below is the hardware-matched verification matrix and live results from **6 major open-source repositories already running these providers in production**.
+**[MiniCI](https://github.com/minici-dev/minici-cost-action)** (`minici v0.9.0`) compiles all `7` runner ecosystems—including exact `vCPU`, `RAM (GB)`, `OS/Arch`, per-minute rates, and `ceil_to_whole_minute` billing rules—into a `1.6 MiB` zero-dependency Rust binary. Below is the hardware-matched verification matrix and live results from **6 major open-source repositories already running these providers in production**.
 
 ---
 
@@ -134,7 +134,7 @@ Comparing            : `git-ref:main` (Base) -> `./runner-migration-demo` (PR He
 
 ```bash
 # Install MiniCI (zero-dependency Rust CLI)
-curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/scripts/install.sh | bash
 
 # Audit live OSS repos using Blacksmith, Depot, Namespace & RunsOn:
 minici breakdown --repo supabase/supabase
