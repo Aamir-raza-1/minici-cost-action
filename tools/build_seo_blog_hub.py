@@ -287,7 +287,7 @@ def render_page(title: str, desc: str, slug_path: str, keywords: list[str], body
         <a href="/">Calculator</a>
         <a href="/blog/">All Benchmarks</a>
         <a href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Marketplace</a>
-        <a href="https://polar.sh/minici" style="color:var(--emerald);font-weight:600;">♥ Sponsor</a>
+        <a href="/#pricing" style="color:var(--emerald);font-weight:600;">Plans</a>
         <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a>
       </nav>
     </div>
@@ -297,7 +297,7 @@ def render_page(title: str, desc: str, slug_path: str, keywords: list[str], body
   </main>
   <footer class="container">
     <span>Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a> • Apache-2.0</span>
-    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a></span>
+    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici/portal">Customer Portal</a> • <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a></span>
   </footer>
 </body>
 </html>
@@ -338,7 +338,7 @@ def main(src_dir: Path) -> None:
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <a class="btn" href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Install GitHub Action</a>
-          <a class="btn" style="background:#1e293b;color:#f8fafc;" href="https://polar.sh/minici">Sponsor on Polar.sh</a>
+          <a class="btn" style="background:#1e293b;color:#f8fafc;" href="/#pricing">View Plans</a>
         </div>
       </div>
     </article>
