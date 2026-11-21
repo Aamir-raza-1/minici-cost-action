@@ -41,7 +41,7 @@ rm -f "$REPO_ROOT/target/release/minici" "$HOME/.local/bin/minici" 2>/dev/null |
 cp "$BIN" "$REPO_ROOT/target/release/minici"
 cp "$BIN" "$HOME/.local/bin/minici" 2>/dev/null || true
 VER=$("$BIN" --version)
-[[ "$VER" == "minici 0.8.0" || "$VER" == "minici 0.7.0" || "$VER" == "minici 0.6.0" || "$VER" == "minici 0.5.0" || "$VER" == "minici 0.4.0" || "$VER" == "minici 0.3.0" || "$VER" == "minici 0.2.0" || "$VER" == "minici 0.1.0" ]] || { echo "❌ FAIL: Unexpected version $VER"; exit 1; }
+[[ "$VER" == "minici 0.9.0" || "$VER" == "minici 0.8.0" || "$VER" == "minici 0.7.0" || "$VER" == "minici 0.6.0" || "$VER" == "minici 0.5.0" || "$VER" == "minici 0.4.0" || "$VER" == "minici 0.3.0" || "$VER" == "minici 0.2.0" || "$VER" == "minici 0.1.0" ]] || { echo "❌ FAIL: Unexpected version $VER"; exit 1; }
 echo "✅ PASS ($VER synced)"
 PASS_COUNT=$((PASS_COUNT + 1))
 

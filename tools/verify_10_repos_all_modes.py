@@ -461,9 +461,9 @@ def write_markdown_baseline_doc(
     fresh_results: list[dict],
 ) -> None:
     lines = [
-        "# Locked 27-Repository Golden Baseline: KPIs, 24 Unified CI/CD Cost Models & 3-Mode Latency (`v0.8.0`)",
+        "# Locked 27-Repository Golden Baseline: KPIs, 24 Unified CI/CD Cost Models & 3-Mode Latency (`v0.9.0`)",
         "",
-        "**Locked Version:** `minici 0.8.0` (`tag: v0.8.0`)  ",
+        "**Locked Version:** `minici 0.9.0` (`tag: v0.9.0`)  ",
         "**Total Repositories Locked:** `27` (`10` Primary + `7` Internal Edge-Case + `10` Fresh World-Scale OSS)  ",
         "**Execution Modes Verified on Every Repo:** `Mode 1: CLI` • `Mode 2: GitHub Action Workflow` • `Mode 3: MCP JSON-RPC 2.0 (7 Tools) + Shift-Left Hook`  ",
         "**Machine-Readable Companion Lock:** [`tests/golden_baseline_10_repos.json`](../tests/golden_baseline_10_repos.json)",
@@ -700,7 +700,7 @@ def main():
     edge_case_results = []
 
     print("=" * 118)
-    print(" MINICI-COST-ACTION (v0.8.0) — 27-REPOSITORY (17 EXISTING + 10 FRESH) x 3-MODE PARALLEL VALIDATION & GOLDEN LOCK")
+    print(" MINICI-COST-ACTION (v0.9.0) — 27-REPOSITORY (17 EXISTING + 10 FRESH) x 3-MODE PARALLEL VALIDATION & GOLDEN LOCK")
     print("=" * 118)
 
     with tempfile.TemporaryDirectory(prefix="minici-27repo-reports-") as tmp_rep_dir:
@@ -850,7 +850,7 @@ def main():
     md_path = Path(args.markdown_baseline)
     locked_deterministic = {
         "schema_version": "1.6.0",
-        "minici_version": "0.8.0",
+        "minici_version": "0.9.0",
         "repos": {r["repo"]: extract_locked_kpi(r) for r in results},
         "fresh_10_repos": {r["repo"]: extract_locked_kpi(r) for r in fresh_results},
         "edge_case_repos": {
@@ -907,7 +907,7 @@ def main():
     summary_payload = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "binary": str(MINICI_BIN),
-        "minici_version": "0.8.0",
+        "minici_version": "0.9.0",
         "ten_repos": results,
         "fresh_10_repos": fresh_results,
         "edge_case_repos": edge_case_results,

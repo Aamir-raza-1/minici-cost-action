@@ -480,7 +480,7 @@ fn http_get_with_etag_inner(
         "-H",
         &format!("Accept: {}", accept_header),
         "-H",
-        "User-Agent: minici-telemetry-sync/0.8.0",
+        "User-Agent: minici-telemetry-sync/0.9.0",
     ]);
     if let Some(hdr) = auth_header {
         cmd.arg("-H").arg(hdr);
