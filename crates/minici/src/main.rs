@@ -807,7 +807,13 @@ fn infer_github_slug_from_dir(dir: &Path) -> Option<String> {
     }
 }
 
-/// Scaffolds `.minici/hooks.json`, `.mcp.json`, and `.github/workflows/minici-cost.yml` into `target`.
+const EMBEDDED_SKILL_MD: &str = include_str!("../../../skills/minici-cost/SKILL.md");
+const EMBEDDED_SKILL_REF_MD: &str =
+    include_str!("../../../skills/minici-cost/references/cli-and-mcp-reference.md");
+const EMBEDDED_OPENAI_YAML: &str =
+    include_str!("../../../skills/minici-cost/agents/openai.yaml");
+
+/// Scaffolds `.minici/hooks.json`, `.mcp.json`, multi-agent `SKILL.md` bundles, and `.github/workflows/minici-cost.yml` into `target`.
 fn scaffold_init_hooks(target: &Path) -> (PathBuf, PathBuf, PathBuf) {
     let hooks_dir = target.join(".minici");
     let _ = fs::create_dir_all(&hooks_dir);
@@ -909,6 +915,34 @@ fn scaffold_init_hooks(target: &Path) -> (PathBuf, PathBuf, PathBuf) {
 }
 "#;
         let _ = fs::write(&vscode_mcp_file, vscode_mcp);
+    }
+
+    // Non-destructively scaffold workspace Agent Skills across all major AI coding agents:
+    // `.agents/skills/` (Antigravity, OpenAI Codex, Windsurf, Gemini CLI, Amp, Cline, Goose),
+    // `.claude/skills/` (Claude Code), `.cursor/skills/` (Cursor), and `.github/skills/` (GitHub Copilot).
+    for (root_dir, include_openai_meta) in [
+        (".agents", true),
+        (".claude", false),
+        (".cursor", false),
+        (".github", false),
+    ] {
+        let skill_dir = target.join(root_dir).join("skills").join("minici-cost");
+        let skill_md = skill_dir.join("SKILL.md");
+        if !skill_md.exists() {
+            let _ = fs::create_dir_all(skill_dir.join("references"));
+            let _ = fs::write(&skill_md, EMBEDDED_SKILL_MD);
+            let _ = fs::write(
+                skill_dir.join("references").join("cli-and-mcp-reference.md"),
+                EMBEDDED_SKILL_REF_MD,
+            );
+            if include_openai_meta {
+                let _ = fs::create_dir_all(skill_dir.join("agents"));
+                let _ = fs::write(
+                    skill_dir.join("agents").join("openai.yaml"),
+                    EMBEDDED_OPENAI_YAML,
+                );
+            }
+        }
     }
 
     let git_dir = target.join(".git");
@@ -3206,6 +3240,7 @@ fn main() {
             println!("  1. Shift-Left CLI Hooks  : {} (.agents/hooks.json + .claude/settings.json)", hooks_file.display());
             println!("  2. Universal Agent MCP   : {} (+ .vscode/mcp.json LSP stdio)", mcp_file.display());
             println!("  3. GitHub Action Workflow: {} (PR sticky cost comment + @minici bot)", gh_action_file.display());
+            println!("  4. Multi-Agent Skill     : {} (.agents, .claude, .cursor, .github)", target.join(".agents/skills/minici-cost/SKILL.md").display());
             println!("+====================================================================================+");
         }
 
@@ -5160,12 +5195,17 @@ jobs:
         assert_eq!(csv_snap.workflow_monthly_runs.len(), 2);
         assert_eq!(csv_snap.invoice_net_billed_usd, Some(19.50));
 
-        // 3. Verify 4-IDE `scaffold_init_hooks` (Bug #11): Antigravity, Claude Code, VS Code, and Git pre-commit!
+        // 3. Verify 4-IDE `scaffold_init_hooks` (Bug #11) + Multi-Agent `SKILL.md` bundles:
         let _ = scaffold_init_hooks(&dir);
         assert!(dir.join(".agents/hooks.json").is_file());
         assert!(dir.join(".claude/settings.json").is_file());
         assert!(dir.join(".vscode/mcp.json").is_file());
         assert!(dir.join(".git/hooks/pre-commit").is_file());
+        assert!(dir.join(".agents/skills/minici-cost/SKILL.md").is_file());
+        assert!(dir.join(".agents/skills/minici-cost/agents/openai.yaml").is_file());
+        assert!(dir.join(".claude/skills/minici-cost/SKILL.md").is_file());
+        assert!(dir.join(".cursor/skills/minici-cost/SKILL.md").is_file());
+        assert!(dir.join(".github/skills/minici-cost/SKILL.md").is_file());
 
         let _ = fs::remove_dir_all(&dir);
     }
