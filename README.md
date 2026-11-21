@@ -15,7 +15,7 @@
   <a href="https://github.com/minici-dev/minici-cost-action/actions/workflows/ci.yml"><img src="https://github.com/minici-dev/minici-cost-action/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/minici-dev/minici-cost-action/releases/latest"><img src="https://img.shields.io/github/v/release/minici-dev/minici-cost-action?color=0ea5e9&amp;label=release" alt="Release" /></a>
   <a href="https://github.com/minici-dev/minici-cost-action/blob/main/crates/minici/Cargo.toml"><img src="https://img.shields.io/badge/rust-std_only_(0_crates)-f97316.svg" alt="Pure Rust" /></a>
-  <a href="https://polar.sh/minici"><img src="https://img.shields.io/badge/Sponsor-Polar.sh-10b981?logo=githubsponsors" alt="Sponsor on Polar" /></a>
+  <a href="https://polar.sh/minici/portal"><img src="https://img.shields.io/badge/Plans_%26_Portal-Polar.sh-10b981" alt="MiniCI Plans on Polar" /></a>
 </p>
 
 <p align="center">
@@ -356,6 +356,6 @@ Local reusable workflows (`uses: ./.github/workflows/...`) resolve automatically
 
 <p align="center">
   Licensed under <a href="https://github.com/minici-dev/minici-cost-action/blob/main/LICENSE">Apache-2.0</a> &middot;
-  <a href="https://polar.sh/minici">Sponsor on Polar.sh</a> &middot;
+  <a href="https://polar.sh/minici/portal">Plans &amp; Customer Portal (Polar.sh)</a> &middot;
   Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a>.
 </p>
