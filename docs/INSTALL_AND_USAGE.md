@@ -1,17 +1,25 @@
-# 📘 MiniCI (`minici-cost-action`) — Installation & Complete Usage Guide
+# MiniCI (`minici-cost-action`) — Installation & Usage Guide
 
-This guide walks through every way to install and run `minici` (`v0.8.0`) as a **Local CLI**, **GitHub Action**, **Git Pre-Push / MCP Hook**, and **`7`-Tool MCP Server for AI Coding Agents**.
+This guide covers installing and running `minici` (`v0.8.0`) as a **Local CLI**, **GitHub Action**, **Interactive `@minici` PR Bot**, **Shift-Left Git / IDE Hook**, and **`8`-Tool MCP Server**.
 
-* ▶️ **Video Walkthrough (`.mp4`):** [`../web/how-to-install-and-use.mp4`](../web/how-to-install-and-use.mp4)
-* 📼 **Asciinema Recording (`.cast`):** [`../web/how-to-install-and-use.cast`](../web/how-to-install-and-use.cast)
+* **Terminal Demo (`.mp4`):** [`../web/how-to-install-and-use.mp4`](../web/how-to-install-and-use.mp4)
+* **Asciinema Recording (`.cast`):** [`../web/how-to-install-and-use.cast`](../web/how-to-install-and-use.cast)
 
 ---
 
 ## 1. Local CLI Installation
 
-`crates/minici` uses **100% Rust standard library (`std`) with zero external crate dependencies**. It compiles cleanly in `~1.5 seconds` even in offline or air-gapped environments.
+`crates/minici` uses **100% Rust standard library (`std`) with zero external crate dependencies**. Prebuilt binaries are published for Linux (`x86_64`, `aarch64`), macOS (`aarch64`, `x86_64`), and Windows (`x86_64`), verified against `SHA256SUMS.txt`.
 
-### Option A: Build from Source (Recommended)
+### Option A: 1-Line Prebuilt Installer (Linux & macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+minici --version
+# -> minici 0.8.0
+```
+
+### Option B: Build Offline from Source (`~1.5s`)
 
 ```bash
 git clone https://github.com/Aamir-raza-1/minici-cost-action.git
@@ -20,11 +28,9 @@ cargo build --release --manifest-path crates/minici/Cargo.toml
 
 mkdir -p ~/.local/bin
 cp crates/minici/target/release/minici ~/.local/bin/minici
-minici --version
-# -> minici 0.8.0
 ```
 
-### Option B: Install via `cargo install`
+### Option C: Install via `cargo install`
 
 ```bash
 cargo install --git https://github.com/Aamir-raza-1/minici-cost-action.git minici
@@ -164,11 +170,11 @@ jobs:
 
 ---
 
-## 4. Shift-Left Hooks & 7-Tool MCP Server
+## 4. Shift-Left Hooks & 8-Tool MCP Server
 
 Run `minici init-hooks --path .` inside any repository to scaffold all 3 shift-left & CI integration files:
 1. `.minici/hooks.json` — Configures `PreToolUse` (`minici breakdown --path . --hook pre-tool-use`) and `PostToolUse` (`minici diff --path . --compare-to HEAD`) shift-left workflow cost-delta hooks.
-2. `.mcp.json` — Registers the stdio JSON-RPC 2.0 MCP server (`minici mcp`) so AI agents can call all `7` live tools (`minici_breakdown`, `minici_diff`, `minici_sync_live`, `minici_permissions`, `minici_anomalies`, `minici_shrink`, and `minici_migrate`) directly during workflow edits.
+2. `.mcp.json` — Registers the stdio JSON-RPC 2.0 MCP server (`minici mcp`, supporting both NDJSON and LSP `Content-Length` framing) so AI coding agents can call all `8` live tools (`minici_breakdown`, `minici_diff`, `minici_sync_live`, `minici_permissions`, `minici_anomalies`, `minici_shrink`, `minici_migrate`, and `minici_ask`) directly during workflow edits.
 3. `.github/workflows/minici-cost.yml` — Installs the non-blocking GitHub Action Pull Request & push cost receipt workflow (`exit 0` informational).
 
 Test the MCP server directly from your shell:
@@ -179,12 +185,20 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"
 
 ---
 
-## 5. Pairing with `minici-yaml-fixer`
+## 5. Surgical YAML Optimization & Safe Runner Migration (`shrink` & `migrate`)
 
-Once `minici breakdown` highlights missing `cancel-in-progress`, uncached dependencies, bloated `fetch-depth: 0` clones, or eligible `x86_64 -> ARM64` runner savings, run [`minici-yaml-fixer`](https://github.com/Aamir-raza-1/minici-yaml-fixer) to patch the YAML automatically while preserving every `#` comment:
+Once `minici breakdown` highlights missing `cancel-in-progress`, uncached dependencies, full-history `actions/checkout` clones, long `upload-artifact` retention, or eligible `x86_64 -> ARM64` runner savings, use `minici`'s built-in comment-preserving optimizer directly:
 
 ```bash
-minici-yaml-fixer fix --workflow .github/workflows
-git apply .minici/workflow-fixes.patch
+# Preview surgical YAML optimizations and verified dollar/minute savings
+minici shrink --path .
+
+# Apply optimizations in-place while preserving 100% of # YAML comments
+minici shrink --path . --apply
+
+# Evaluate 6-gate verified runner or 7x7 cross-platform migration
+minici migrate --path . --to github-arm64
+
+# Verify the exact before/after cost delta against Git HEAD
 minici diff --path . --compare-to HEAD
 ```

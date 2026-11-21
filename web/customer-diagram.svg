@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 340" width="100%" height="100%" role="img" aria-label="MiniCI Customer Architecture Diagram: How Sub-Millisecond CI Cost Receipts Work">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 340" width="100%" height="100%" role="img" aria-label="MiniCI Architecture Overview: Sub-Millisecond CI/CD Cost &amp; Quota Engine">
   <defs>
     <style>
       .bg { fill: #0a0e14; }
@@ -49,7 +49,7 @@
   <rect class="pill" x="426" y="208" width="280" height="26"/>
   <text x="438" y="225" class="mono">2. Applies 1-Min Ceiling &amp; macOS 10x</text>
   <rect class="pill" x="426" y="240" width="280" height="26"/>
-  <text x="438" y="257" class="mono">3. 23 SaaS + Cloud Spot Runner SKUs</text>
+  <text x="438" y="257" class="mono">3. 7 CI Vendors • 225+ Cloud SKUs</text>
   <text x="426" y="288" class="sub" fill="#10b981">✓ Zero network lag • ✓ Zero telemetry egress</text>
 
   <!-- Arrow 2 -> 3 -->
