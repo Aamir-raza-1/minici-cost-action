@@ -1258,9 +1258,11 @@ pub fn pull_gitlab_telemetry_csv(project_id_or_slug: &str, out_csv: &Path) -> Re
         "https://gitlab.com/api/v4/projects/{}/jobs?per_page=100",
         encoded
     );
-    let tok = env::var("GITLAB_TOKEN")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
+    let tok = crate::permissions::discover_provider_token_with_consent(
+        "gitlab",
+        true,
+        "read-only GitLab CI telemetry",
+    );
     let auth = tok.map(|t| format!("PRIVATE-TOKEN: {}", t));
     let resp = http_get_with_etag(&url, auth.as_deref(), "application/json")
         .ok_or_else(|| format!("Failed to reach GitLab Jobs API for {}", project_id_or_slug))?;
@@ -1331,9 +1333,11 @@ pub fn pull_circleci_telemetry_csv(
         "https://circleci.com/api/v2/insights/{}/workflows?reporting-window={}",
         clean_slug, win
     );
-    let tok = env::var("CIRCLE_TOKEN")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
+    let tok = crate::permissions::discover_provider_token_with_consent(
+        "circleci",
+        true,
+        "read-only CircleCI Insights telemetry",
+    );
     let auth = tok.map(|t| format!("Circle-Token: {}", t));
     let resp = http_get_with_etag(&url, auth.as_deref(), "application/json")
         .ok_or_else(|| format!("Failed to reach CircleCI v2 Insights API for {}", clean_slug))?;
@@ -1373,9 +1377,11 @@ pub fn pull_bitbucket_telemetry_csv(ws_repo: &str, out_csv: &Path) -> Result<usi
         "https://api.bitbucket.org/2.0/repositories/{}/pipelines/?pagelen=50&sort=-created_on",
         ws_repo.trim_matches('/')
     );
-    let tok = env::var("BITBUCKET_TOKEN")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
+    let tok = crate::permissions::discover_provider_token_with_consent(
+        "bitbucket",
+        true,
+        "read-only Bitbucket Pipelines telemetry",
+    );
     let auth = tok.map(|t| format!("Authorization: Bearer {}", t));
     let resp = http_get_with_etag(&url, auth.as_deref(), "application/json")
         .ok_or_else(|| format!("Failed to reach Bitbucket Pipelines API for {}", ws_repo))?;

@@ -14,6 +14,7 @@
 # ==============================================================================
 
 set -euo pipefail
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX 2>/dev/null || true
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
