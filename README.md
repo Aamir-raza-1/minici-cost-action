@@ -22,6 +22,7 @@
   <a href="#what-your-team-sees-on-every-pull-request">PR Preview</a> &middot;
   <a href="#15-second-github-action-quickstart">Action Quickstart</a> &middot;
   <a href="#local-cli-quickstart-zero-clone-audit">CLI Quickstart</a> &middot;
+  <a href="#ai-agent-skill--plugin-all-agents">AI Agent Skill</a> &middot;
   <a href="#permissions--zero-egress-security">Permissions &amp; Security</a> &middot;
   <a href="#action-inputs--outputs">Inputs &amp; Outputs</a> &middot;
   <a href="#troubleshooting">Troubleshooting</a> &middot;
@@ -219,11 +220,37 @@ Reproduce any row below in seconds with `minici breakdown --repo <owner/repo>`:
 | `catalog` | Inspect, filter, or override 227+ runner and cloud VM rates (`~/.minici/pricing_overrides.json`) |
 | `cloud-price` | Query On-Demand and Spot VM pricing across AWS EC2, GCP, and Azure across 26 regions |
 | `mcp` | Launch the 8-tool stdio MCP server for Claude Code, Antigravity, Cursor, Windsurf, and VS Code |
-| `init-hooks` | Scaffold `.github/workflows/minici-cost.yml`, `.mcp.json`, `.agents/hooks.json`, `.claude/settings.json`, `.vscode/mcp.json`, and `.git/hooks/pre-commit` |
+| `init-hooks` | Scaffold `.github/workflows/minici-cost.yml`, `.mcp.json`, `.agents/hooks.json`, `.claude/settings.json`, `.vscode/mcp.json`, `.git/hooks/pre-commit`, and multi-agent `SKILL.md` bundles |
 | `self-update` | Verify zero SKU catalog drift and update the local `minici` binary |
 | `launch-pack` | Export structured repository FinOps summary profiles |
 
 </details>
+
+---
+
+## AI Agent Skill & Plugin (All Agents)
+
+Give any AI coding assistant deterministic sub-millisecond CI/CD FinOps math, PR cost diffs, `ARM64` runner right-sizing, and comment-preserving YAML fixes via the bundled [`skills/minici-cost/SKILL.md`](https://github.com/minici-dev/minici-cost-action/blob/main/skills/minici-cost/SKILL.md) skill and native plugin manifests:
+
+```bash
+# Universal Open Agent Skills CLI (Claude Code, Cursor, Codex, Copilot, Antigravity, Windsurf, Cline, Goose, Amp)
+npx skills add minici-dev/minici-cost-action
+
+# Claude Code Plugin Marketplace (1-step install)
+/plugin install minici-cost --marketplace minici-dev/minici-cost-action
+
+# Or wire workspace Skills + MCP + Shift-Left Hooks + GitHub Action in one command
+minici init-hooks --path .
+```
+
+| AI Agent / Ecosystem | Included Manifest / Path | What It Enables |
+| :--- | :--- | :--- |
+| **35+ Agents (`skills.sh`)** | [`skills/minici-cost/SKILL.md`](https://github.com/minici-dev/minici-cost-action/blob/main/skills/minici-cost/SKILL.md) | Progressive-disclosure CI FinOps runbook + auto-bootstrap installer |
+| **Google Antigravity** | [`plugin.json`](https://github.com/minici-dev/minici-cost-action/blob/main/plugin.json) + `.agents/skills/minici-cost/` | Native plugin card, starter prompts, `SKILL.md`, and `PreToolUse`/`PostToolUse` hooks |
+| **Claude Code** | [`.claude-plugin/plugin.json`](https://github.com/minici-dev/minici-cost-action/blob/main/.claude-plugin/plugin.json) + [`.mcp.json`](https://github.com/minici-dev/minici-cost-action/blob/main/.mcp.json) | 1-step `/plugin install`, `/minici-cost` skill, and 8-tool stdio MCP server |
+| **Cursor** | [`.cursor-plugin/plugin.json`](https://github.com/minici-dev/minici-cost-action/blob/main/.cursor-plugin/plugin.json) + `.cursor/skills/` | Native Cursor plugin bundle (`skills/` + `.mcp.json`) |
+| **OpenAI Codex & ChatGPT** | [`skills/minici-cost/agents/openai.yaml`](https://github.com/minici-dev/minici-cost-action/blob/main/skills/minici-cost/agents/openai.yaml) + `.agents/skills/` | `$minici-cost` UI card, implicit workflow invocation, and starter prompt |
+| **GitHub Copilot & VS Code** | `.github/skills/minici-cost/SKILL.md` + `.vscode/mcp.json` | Workspace Copilot skill + stdio MCP server |
 
 ---
 
