@@ -15,7 +15,7 @@ When a Pull Request changes infrastructure and deployment code, it affects **two
 1. **The Provisioned Cloud Infrastructure Bill (`AWS` / `GCP` / `Azure`):** What the databases, compute instances, Kubernetes clusters, storage buckets, and load balancers defined in Terraform, OpenTofu, Terragrunt, or CloudFormation cost to run 24/7 in staging and production.
 2. **The CI/CD Build & Delivery Pipeline Bill (`GitHub Actions` / `GitLab CI` / `CircleCI`):** What the CI runners, test matrices, container builds, artifact storage, and developer wait-time defined in `.github/workflows/*.yml` cost every time engineers push commits and open Pull Requests.
 
-**Infracost** is purpose-built for the first bill. **[MiniCI](https://github.com/Aamir-raza-1/minici-cost-action)** (`minici v0.9.0`) is purpose-built for the second. They do not overlap, replace, or wrap one another—running **both side-by-side on the same repository** gives engineering and FinOps teams `100%` shift-left cost visibility before merge.
+**Infracost** is purpose-built for the first bill. **[MiniCI](https://github.com/minici-dev/minici-cost-action)** (`minici v0.9.0`) is purpose-built for the second. They do not overlap, replace, or wrap one another—running **both side-by-side on the same repository** gives engineering and FinOps teams `100%` shift-left cost visibility before merge.
 
 ---
 
@@ -152,7 +152,7 @@ jobs:
 
       # 2. CI/CD Workflow & Matrix Cost Visibility (< 5 ms, zero API keys)
       - name: MiniCI Workflow Cost Breakdown & PR Diff
-        uses: Aamir-raza-1/minici-cost-action@v1
+        uses: minici-dev/minici-cost-action@v1
         with:
           compare-to: "origin/${{ github.base_ref }}"
           post-pr-comment: "true"

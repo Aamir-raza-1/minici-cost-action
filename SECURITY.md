@@ -23,7 +23,7 @@ Run `minici permissions check --repo owner/repo` (or `--path . --offline`) at an
 | **Tier 1** | Public Repo Live API (`minici sync --repo owner/repo`) | **None (`Zero-Token` Public API + `ETag 304`)** | **`None`** | **`68 / 108` (`63.0%`)** |
 | **Tier 2** | Least-Privilege Read Token (`GitHub` / `GitLab` / `CircleCI` / `Bitbucket`) | `Actions: Read`, `Metadata: Read` *(+ `Contents: Read` only for remote private YAML)* | **`None`** | **`89 / 108` (`82.4%`)** |
 | **Tier 3** | Read Token + Billing CSV (`--billing-csv focus.csv`) | Same Read-Only token + `FOCUS v1.1` / Vendor CSV (`100%` local) | **`None`** | **`99 / 108` (`91.7%`)** *(`104 / 108` = `96.3%` w/ CircleCI CPU/RAM CSV)* |
-| **Tier 4** | Tier 3 + In-Workflow Hardware Sampler (`telemetry-step`) | `uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1` (`0` network egress) | **`None`** | **`108 / 108` (`100.0%`)** |
+| **Tier 4** | Tier 3 + In-Workflow Hardware Sampler (`telemetry-step`) | `uses: minici-dev/minici-cost-action/telemetry-step@v1` (`0` network egress) | **`None`** | **`108 / 108` (`100.0%`)** |
 
 > **Note on Sticky PR Comments (`post-pr-comment: "true"` or `minici comment github --post`):** Only when you explicitly opt into posting sticky PR comments inside GitHub Actions does the workflow job use GitHub's ephemeral `GITHUB_TOKEN` with `pull-requests: write` scoped strictly to that pull request.
 

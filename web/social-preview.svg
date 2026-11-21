@@ -53,5 +53,5 @@
 
   <text x="116" y="456" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="21" fill="#38BDF8">$ minici breakdown --path .   |   minici shrink --path . --apply   |   minici mcp</text>
   <text x="116" y="494" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19" fill="#34D399">✓ 7 CI Vendors • 225+ Cloud &amp; Runner SKUs • 8-Tool MCP Server • Zero Source-Code Access</text>
-  <text x="116" y="528" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#94A3B8">github.com/Aamir-raza-1/minici-cost-action</text>
+  <text x="116" y="528" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#94A3B8">github.com/minici-dev/minici-cost-action</text>
 </svg>

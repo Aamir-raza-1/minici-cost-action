@@ -961,7 +961,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Run MiniCI Cost Diff, Auto-Fix Suggestions & @minici Bot
-        uses: Aamir-raza-1/minici-cost-action@v1
+        uses: minici-dev/minici-cost-action@v1
         with:
           compare-to: "origin/main"
           tier: "auto"
@@ -4535,7 +4535,7 @@ jobs:
         fs::create_dir_all(dir.join(".minici")).unwrap();
         fs::write(
             dir.join(".github/workflows/ci.yml"),
-            "name: HW\non: push\njobs:\n  b:\n    runs-on: ubuntu-latest\n    est-minutes: 4.0\n    steps:\n      - uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1\n      - run: cargo test\n",
+            "name: HW\non: push\njobs:\n  b:\n    runs-on: ubuntu-latest\n    est-minutes: 4.0\n    steps:\n      - uses: minici-dev/minici-cost-action/telemetry-step@v1\n      - run: cargo test\n",
         ).unwrap();
         fs::write(
             dir.join(".minici/step_hardware_telemetry.json"),
@@ -4572,7 +4572,7 @@ jobs:
         // Guardrail B: RAM >= 85% on a short job (`0.5m` where default is `standard-2-core`) upgrades to `larger-4-core` to prevent OOM!
         fs::write(
             dir.join(".github/workflows/ci.yml"),
-            "name: HW\non: push\njobs:\n  b:\n    runs-on: ubuntu-latest\n    est-minutes: 0.5\n    steps:\n      - uses: Aamir-raza-1/minici-cost-action/telemetry-step@v1\n      - run: echo fast\n",
+            "name: HW\non: push\njobs:\n  b:\n    runs-on: ubuntu-latest\n    est-minutes: 0.5\n    steps:\n      - uses: minici-dev/minici-cost-action/telemetry-step@v1\n      - run: echo fast\n",
         ).unwrap();
         fs::write(
             dir.join(".minici/step_hardware_telemetry.json"),

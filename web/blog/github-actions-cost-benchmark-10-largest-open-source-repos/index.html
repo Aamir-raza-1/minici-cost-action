@@ -12,7 +12,7 @@
   <meta property="og:title" content="GitHub Actions Cost Benchmark: 10 World-Scale Repos Audited" />
   <meta property="og:description" content="Live CI/CD cost benchmark of VS Code, Pydantic, Next.js, Ollama, Supabase &amp; 5 more huge GitHub repos in 41 ms (&lt;7 MiB RAM) using MiniCI, an open-source Rust CLI." />
   <meta property="og:url" content="https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-cost-benchmark-10-largest-open-source-repos/" />
-  <meta property="og:image" content="https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/social-preview-1280x640.png" />
+  <meta property="og:image" content="https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/web/social-preview-1280x640.png" />
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "GitHub Actions Cost Benchmark: 10 World-Scale Repos Audited", "description": "Live CI/CD cost benchmark of VS Code, Pydantic, Next.js, Ollama, Supabase & 5 more huge GitHub repos in 41 ms (<7 MiB RAM) using MiniCI, an open-source Rust CLI.", "datePublished": "2026-11-21", "author": {"@type": "Person", "name": "Aamir Raza", "url": "https://github.com/Aamir-raza-1"}, "publisher": {"@type": "Organization", "name": "MiniCI", "url": "https://minici-cost-action.raza-aamir01.workers.dev"}, "url": "https://minici-cost-action.raza-aamir01.workers.dev/blog/github-actions-cost-benchmark-10-largest-open-source-repos/", "keywords": "GitHub Actions cost calculator, GitHub Actions pricing per minute 2026, CI/CD FinOps, GitHub Actions matrix cost, reduce GitHub Actions bill, GitHub Larger Runners pricing, MiniCI"}</script>
   <style>
 :root {
@@ -70,7 +70,7 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; font-size: 0.84re
         <a href="/blog/">All Benchmarks</a>
         <a href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Marketplace</a>
         <a href="https://polar.sh/minici" style="color:var(--emerald);font-weight:600;">♥ Sponsor</a>
-        <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a>
+        <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a>
       </nav>
     </div>
   </header>
@@ -84,7 +84,7 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; font-size: 0.84re
       <h1>Benchmarking GitHub Actions Costs Across 10 of the World&#x27;s Largest Repositories with MiniCI</h1>
       <h2>Why CI/CD Cost Remains Invisible Until the End-of-Month Invoice</h2>
 <p>Most CI/CD platforms—including GitHub Actions, GitLab CI, and CircleCI—report runner charges in monthly billing dashboards rather than inside Pull Requests. When an engineer modifies <code>.github/workflows/*.yml</code> to expand a test <code>strategy.matrix</code>, switch a build job to an <code>8-core</code> or <code>macOS</code> runner, or upload build artifacts without a retention policy, code reviewers see the YAML diff—but <strong>zero dollar or quota impact</strong> before clicking <em>Merge</em>.</p>
-<p><strong><a href="https://github.com/Aamir-raza-1/minici-cost-action">MiniCI</a></strong> (<code>minici v0.9.0</code>) solves this locally and in CI. Written in <code>100%</code> pure Rust (<code>std</code> only, <code>0</code> external crates, <code>1.6 MiB</code> static binary), MiniCI expands workflow matrices, applies vendor billing rules (<code>1x</code> Linux, <code>2x</code> Windows, <code>10x</code> macOS quota multipliers, whole-minute ceiling rounding, and <code>227+</code> runner &amp; cloud VM rates across <code>7</code> CI platforms), and posts a non-blocking (<code>exit 0</code>) cost receipt on every Pull Request—requiring <strong>zero API keys and zero source-code read permissions (<code>Contents: None</code> default)</strong>.</p>
+<p><strong><a href="https://github.com/minici-dev/minici-cost-action">MiniCI</a></strong> (<code>minici v0.9.0</code>) solves this locally and in CI. Written in <code>100%</code> pure Rust (<code>std</code> only, <code>0</code> external crates, <code>1.6 MiB</code> static binary), MiniCI expands workflow matrices, applies vendor billing rules (<code>1x</code> Linux, <code>2x</code> Windows, <code>10x</code> macOS quota multipliers, whole-minute ceiling rounding, and <code>227+</code> runner &amp; cloud VM rates across <code>7</code> CI platforms), and posts a non-blocking (<code>exit 0</code>) cost receipt on every Pull Request—requiring <strong>zero API keys and zero source-code read permissions (<code>Contents: None</code> default)</strong>.</p>
 <p>To test MiniCI at real engineering scale, we benchmarked it offline against <strong>10 of the world&#x27;s most active open-source GitHub repositories</strong>.</p>
 <hr />
 <h2>Benchmark Methodology &amp; Exact Hardware Disclosure</h2>
@@ -134,7 +134,7 @@ Project: ./01-microsoft-vscode (5 workflow(s), 36 expanded jobs • 3.25 ms)
 <hr />
 <h2>Reproduce This Benchmark Locally in <code>&lt; 1 Second</code></h2>
 <pre><code class="lang-bash"># 1. Install MiniCI (Linux &amp; macOS static binary, 0 dependencies)
-curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/scripts/install.sh | bash
 
 # 2. Audit any public GitHub repository remotely without cloning:
 minici breakdown --repo pydantic/pydantic
@@ -150,7 +150,7 @@ minici breakdown --path . --benchmark</code></pre>
 <h3>Does MiniCI require GitHub tokens or send source code externally?</h3>
 <p>No. <code>minici</code> is a standalone Rust binary (<code>0</code> third-party crates) that parses workflow YAML files locally with <code>Contents: None</code> source-code access by default and zero external network calls during <code>breakdown</code>, <code>diff</code>, <code>shrink</code>, or <code>comment</code>.</p>
 <h3>Can MiniCI run inside GitHub Actions on every Pull Request?</h3>
-<p>Yes. Adding <code>uses: Aamir-raza-1/minici-cost-action@v1</code> with <code>compare-to: &quot;origin/${{ github.base_ref }}&quot;</code> and <code>post-pr-comment: &quot;true&quot;</code> posts a single auto-updating sticky Pull Request cost diff comment and always exits <code>0</code> so developer builds are never blocked.</p>
+<p>Yes. Adding <code>uses: minici-dev/minici-cost-action@v1</code> with <code>compare-to: &quot;origin/${{ github.base_ref }}&quot;</code> and <code>post-pr-comment: &quot;true&quot;</code> posts a single auto-updating sticky Pull Request cost diff comment and always exits <code>0</code> so developer builds are never blocked.</p>
       <div class="cta-box">
         <div>
           <strong style="font-size:1.1rem;display:block;margin-bottom:4px;">See What Every Pull Request Costs in &lt; 2 ms</strong>
@@ -166,7 +166,7 @@ minici breakdown --path . --benchmark</code></pre>
   </main>
   <footer class="container">
     <span>Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a> • Apache-2.0</span>
-    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a></span>
+    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a></span>
   </footer>
 </body>
 </html>

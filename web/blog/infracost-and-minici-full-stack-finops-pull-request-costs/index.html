@@ -12,7 +12,7 @@
   <meta property="og:title" content="Infracost + MiniCI: Full Cloud IaC &amp; CI/CD Cost Visibility" />
   <meta property="og:description" content="Compare what Infracost (Terraform/IaC cloud costs) and MiniCI (CI/CD workflow &amp; matrix costs) measure, and run both in one Pull Request for 100% FinOps visibility." />
   <meta property="og:url" content="https://minici-cost-action.raza-aamir01.workers.dev/blog/infracost-and-minici-full-stack-finops-pull-request-costs/" />
-  <meta property="og:image" content="https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/web/social-preview-1280x640.png" />
+  <meta property="og:image" content="https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/web/social-preview-1280x640.png" />
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Infracost + MiniCI: Full Cloud IaC & CI/CD Cost Visibility", "description": "Compare what Infracost (Terraform/IaC cloud costs) and MiniCI (CI/CD workflow & matrix costs) measure, and run both in one Pull Request for 100% FinOps visibility.", "datePublished": "2026-11-21", "author": {"@type": "Person", "name": "Aamir Raza", "url": "https://github.com/Aamir-raza-1"}, "publisher": {"@type": "Organization", "name": "MiniCI", "url": "https://minici-cost-action.raza-aamir01.workers.dev"}, "url": "https://minici-cost-action.raza-aamir01.workers.dev/blog/infracost-and-minici-full-stack-finops-pull-request-costs/", "keywords": "Infracost GitHub Actions, shift-left FinOps, Terraform and CI/CD cost calculator, Pull Request cost estimation, Infracost vs CI/CD cost, GitHub Actions PR cost comment, MiniCI"}</script>
   <style>
 :root {
@@ -70,7 +70,7 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; font-size: 0.84re
         <a href="/blog/">All Benchmarks</a>
         <a href="https://github.com/marketplace/actions/minici-ci-cd-cost-breakdown-pr-diff-quota-receipt">Marketplace</a>
         <a href="https://polar.sh/minici" style="color:var(--emerald);font-weight:600;">♥ Sponsor</a>
-        <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a>
+        <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a>
       </nav>
     </div>
   </header>
@@ -85,7 +85,7 @@ footer { border-top: 1px solid var(--border); padding: 32px 0; font-size: 0.84re
       <h2>Every Engineering Repository Generates Two Separate Monthly Bills</h2>
 <p>When a Pull Request changes infrastructure and deployment code, it affects <strong>two completely distinct monthly invoices</strong>:</p>
 <ol><li><strong>The Provisioned Cloud Infrastructure Bill (<code>AWS</code> / <code>GCP</code> / <code>Azure</code>):</strong> What the databases, compute instances, Kubernetes clusters, storage buckets, and load balancers defined in Terraform, OpenTofu, Terragrunt, or CloudFormation cost to run 24/7 in staging and production.</li><li><strong>The CI/CD Build &amp; Delivery Pipeline Bill (<code>GitHub Actions</code> / <code>GitLab CI</code> / <code>CircleCI</code>):</strong> What the CI runners, test matrices, container builds, artifact storage, and developer wait-time defined in <code>.github/workflows/*.yml</code> cost every time engineers push commits and open Pull Requests.</li></ol>
-<p><strong>Infracost</strong> is purpose-built for the first bill. <strong><a href="https://github.com/Aamir-raza-1/minici-cost-action">MiniCI</a></strong> (<code>minici v0.9.0</code>) is purpose-built for the second. They do not overlap, replace, or wrap one another—running <strong>both side-by-side on the same repository</strong> gives engineering and FinOps teams <code>100%</code> shift-left cost visibility before merge.</p>
+<p><strong>Infracost</strong> is purpose-built for the first bill. <strong><a href="https://github.com/minici-dev/minici-cost-action">MiniCI</a></strong> (<code>minici v0.9.0</code>) is purpose-built for the second. They do not overlap, replace, or wrap one another—running <strong>both side-by-side on the same repository</strong> gives engineering and FinOps teams <code>100%</code> shift-left cost visibility before merge.</p>
 <hr />
 <h2>Infracost vs. MiniCI: Clear Side-by-Side Comparison</h2>
 <div class="table-wrap"><table><thead><tr><th style="text-align:left">Capability</th><th style="text-align:left">Infracost (<code>infracost scan</code> / <code>diff</code>)</th><th style="text-align:left">MiniCI (<code>minici breakdown</code> / <code>diff</code>)</th><th style="text-align:left">Combined Outcome</th></tr></thead><tbody><tr><td style="text-align:left"><strong>Primary Domain</strong></td><td style="text-align:left"><strong>Provisioned Cloud Infrastructure (IaC)</strong></td><td style="text-align:left"><strong>CI/CD Pipeline Execution &amp; Workflow Hygiene</strong></td><td style="text-align:left"><strong>100% Engineering Run-Rate Visibility</strong></td></tr><tr><td style="text-align:left"><strong>Files Scanned</strong></td><td style="text-align:left"><code>*.tf</code>, <code>*.tfvars</code>, <code>terragrunt.hcl</code>, CloudFormation</td><td style="text-align:left"><code>.github/workflows/*.yml</code>, <code>.gitlab-ci.yml</code>, <code>.circleci/config.yml</code>, <code>azure-pipelines.yml</code>, <code>bitbucket-pipelines.yml</code>, <code>buildspec.yml</code>, <code>cloudbuild.yaml</code></td><td style="text-align:left">Every infra + pipeline file in a monorepo or service repo is covered</td></tr><tr><td style="text-align:left"><strong>Cost Drivers Captured</strong></td><td style="text-align:left">EC2/GCE/Azure VMs, RDS/Cloud SQL, EKS/GKE, NAT Gateways, S3/GCS buckets, FinOps tagging policies</td><td style="text-align:left"><code>strategy.matrix</code> fan-out, Linux/Windows/macOS runner SKUs, <code>ceil(60s)</code> whole-minute rounding, <code>upload-artifact</code> storage, superseded PR runs &amp; critical-path wait</td><td style="text-align:left">Catches both an oversized <code>m6i.xlarge</code> in Terraform <strong>and</strong> a runaway <code>6-cell</code> matrix in GitHub Actions</td></tr><tr><td style="text-align:left"><strong>Pure App Repo (<code>0</code> <code>.tf</code> files)</strong></td><td style="text-align:left">Reports <code>$0.00/mo</code> (<code>0</code> IaC resources)</td><td style="text-align:left">Captures full CI/CD spend (e.g., <code>$4,316.14/mo</code> on <code>microsoft/vscode</code>)</td><td style="text-align:left">No blind spots on frontend/SDK/mobile repos</td></tr><tr><td style="text-align:left"><strong>Execution Model</strong></td><td style="text-align:left">Queries Infracost Cloud Pricing API (<code>infracost auth login</code> / <code>INFRACOST_API_KEY</code>)</td><td style="text-align:left"><code>100%</code> offline static Rust binary (<code>&lt; 5 ms</code>, <code>~3 MiB</code> RAM, zero API keys)</td><td style="text-align:left">Fast, non-blocking sticky PR comments side-by-side</td></tr></tbody></table></div>
@@ -185,7 +185,7 @@ jobs:
 
       # 2. CI/CD Workflow &amp; Matrix Cost Visibility (&lt; 5 ms, zero API keys)
       - name: MiniCI Workflow Cost Breakdown &amp; PR Diff
-        uses: Aamir-raza-1/minici-cost-action@v1
+        uses: minici-dev/minici-cost-action@v1
         with:
           compare-to: &quot;origin/${{ github.base_ref }}&quot;
           post-pr-comment: &quot;true&quot;
@@ -213,7 +213,7 @@ jobs:
   </main>
   <footer class="container">
     <span>Built in pure Rust by <a href="https://github.com/Aamir-raza-1">Aamir Raza</a> • Apache-2.0</span>
-    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/Aamir-raza-1/minici-cost-action">GitHub</a></span>
+    <span><a href="/">Home</a> • <a href="/blog/">Blog</a> • <a href="https://polar.sh/minici">Polar.sh</a> • <a href="https://github.com/minici-dev/minici-cost-action">GitHub</a></span>
   </footer>
 </body>
 </html>

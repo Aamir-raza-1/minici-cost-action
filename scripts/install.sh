@@ -2,11 +2,11 @@
 # ==============================================================================
 # MiniCI 1-Line Portable Installer (`scripts/install.sh`)
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Aamir-raza-1/minici-cost-action/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/minici-dev/minici-cost-action/main/scripts/install.sh | bash
 # ==============================================================================
 set -euo pipefail
 
-REPO="Aamir-raza-1/minici-cost-action"
+REPO="minici-dev/minici-cost-action"
 VERSION="${MINICI_VERSION:-latest}"
 INSTALL_DIR="${MINICI_INSTALL_DIR:-$HOME/.local/bin}"
 

@@ -190,9 +190,9 @@ runs:
           if [ "$OS_RAW" = "Linux" ] && { [ "$ARCH_RAW" = "aarch64" ] || [ "$ARCH_RAW" = "arm64" ]; }; then ASSET="minici-linux-aarch64"; fi
           if [ "$OS_RAW" = "Darwin" ] && [ "$ARCH_RAW" = "arm64" ]; then ASSET="minici-macos-aarch64"; fi
           if [ "$OS_RAW" = "Darwin" ] && [ "$ARCH_RAW" = "x86_64" ]; then ASSET="minici-macos-x86_64"; fi
-          REL_BASE="https://github.com/Aamir-raza-1/minici-cost-action/releases/latest/download"
+          REL_BASE="https://github.com/minici-dev/minici-cost-action/releases/latest/download"
           if [[ "${ACTION_REF:-}" == v*.*.* ]]; then
-            REL_BASE="https://github.com/Aamir-raza-1/minici-cost-action/releases/download/${ACTION_REF}"
+            REL_BASE="https://github.com/minici-dev/minici-cost-action/releases/download/${ACTION_REF}"
           fi
           TMP_DL="$(mktemp -d)"
           if [ -n "$ASSET" ] && curl -fsSL "${REL_BASE}/${ASSET}" -o "${TMP_DL}/${ASSET}" 2>/dev/null; then
